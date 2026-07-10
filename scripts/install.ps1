@@ -80,11 +80,23 @@ function Main {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
     try {
         $entries = @($zip.Entries)
-        if ($entries.Count -ne 1) {
-            throw "Archive contains $($entries.Count) entries, expected exactly 1 ($BINARY.exe). Entries: $($entries.FullName -join ', ')"
+        $foundBinary = $false
+        foreach ($entry in $entries) {
+            $name = $entry.FullName
+            if ($name -like "*..*" -or $name -like "/*" -or $name -like "\*") {
+                throw "Archive contains unsafe path '$name'."
+            }
+            switch ($name) {
+                "$BINARY.exe" { $foundBinary = $true }
+                "LICENSE" { }
+                "README.md" { }
+                default {
+                    throw "Archive contains unexpected entry '$name'. Only $BINARY.exe, LICENSE, and README.md are allowed."
+                }
+            }
         }
-        if ($entries[0].FullName -ne "$BINARY.exe") {
-            throw "Archive contains '$($entries[0].FullName)', expected '$BINARY.exe'."
+        if (-not $foundBinary) {
+            throw "Archive does not contain '$BINARY.exe'."
         }
     } finally {
         $zip.Dispose()

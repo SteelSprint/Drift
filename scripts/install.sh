@@ -91,18 +91,30 @@ validate_archive() {
   archive="$1"
 
   entries=$(tar -tzf "$archive")
-  count=$(echo "$entries" | wc -l | tr -d ' ')
+  found_binary=0
 
-  if [ "$count" -ne 1 ]; then
-    echo "error: archive contains $count entries, expected exactly 1 ($BINARY)" >&2
-    echo "  entries:" >&2
-    echo "$entries" | sed 's/^/    /' >&2
-    exit 1
-  fi
+  while IFS= read -r entry; do
+    # reject path traversal
+    case "$entry" in
+      ../* | */../* | /* | */..)
+        echo "error: archive contains unsafe path '$entry'" >&2
+        exit 1
+        ;;
+    esac
 
-  entry=$(echo "$entries" | head -1)
-  if [ "$entry" != "$BINARY" ]; then
-    echo "error: archive contains '$entry', expected '$BINARY'" >&2
+    case "$entry" in
+      "$BINARY") found_binary=1 ;;
+      LICENSE|README.md) ;; # allowed extra files from goreleaser
+      *)
+        echo "error: archive contains unexpected entry '$entry'" >&2
+        echo "  only $BINARY, LICENSE, and README.md are allowed" >&2
+        exit 1
+        ;;
+    esac
+  done <<< "$entries"
+
+  if [ "$found_binary" -ne 1 ]; then
+    echo "error: archive does not contain '$BINARY'" >&2
     exit 1
   fi
 }

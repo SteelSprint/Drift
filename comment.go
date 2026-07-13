@@ -65,6 +65,7 @@ func ScanMalformed(path string) ([]MalformedMatch, error) {
 	return matches, scanner.Err()
 }
 
+// #F id:u1usd213 public_api.file_walk
 // WalkPaths walks the given paths and returns all text files.
 func WalkPaths(paths []string) ([]string, error) {
 	var out []string

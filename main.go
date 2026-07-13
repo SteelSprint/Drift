@@ -817,7 +817,6 @@ func runSkill(quiet bool) error {
 
 // windowSizeFromEnv reads the content window size from the environment,
 // falling back to defaultContentWindow.
-// #F id:u1usd213 public_api.file_walk
 func windowSizeFromEnv() int {
 	s := os.Getenv("FILAMENT_WINDOW_SIZE")
 	if s == "" {

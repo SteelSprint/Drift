@@ -222,6 +222,7 @@ func Check(spec *Spec, lock *LockFile, paths []string, windowSize int) ([]Findin
 
 	// Detect missing clauses: in spec but not covered (directly or transitively).
 	// #F id:ttsbgeqq drift.missing
+	// #F id:x2k9m3vf drift.transitive_coverage
 
 	// Build reference graph: for each element, what does it reference?
 	refsGraph := make(map[string][]string)

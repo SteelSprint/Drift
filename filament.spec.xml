@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<spec name="filament">
+<spec name="filament" version="0.2.0">
 
   <description>
     This specification defines the filament command-line tool: the tool packaging, the marker format, the state file structure, the drift model, the public API, the output format, the self-hosting test, the versioning, and the parser rules. Anything not covered by these clauses is unspecified. The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY in this specification are to be interpreted as described in [RFC2119] and [RFC8174]. [RFC2119] Bradner, S., "Key words for use in RFCs to Indicate Requirement Levels," March 1997. [RFC8174] Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC 2119 Keywords," May 2017.

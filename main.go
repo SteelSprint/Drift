@@ -411,6 +411,7 @@ func runInit(specPath string, paths []string, quiet bool) error {
 		return err
 	}
 
+	// #F id:gegp90b7 output.result_prose
 	fmt.Printf("Created %s with %d spec hashes, %d site entries.\n", lockPath, len(lock.Spec), markerCount)
 	fmt.Println()
 	fmt.Println("The state file is the source of truth for drift detection. Run")

@@ -397,7 +397,6 @@ func FormatStatusResult(markerID string, clauseIDs []string, file string, line i
 	}
 }
 
-// #F id:gegp90b7 output.result_prose
 // FormatMarkerLine generates a #F marker line for the given marker_id and clause_ids.
 func FormatMarkerLine(markerID string, clauseIDs []string) string {
 	return fmt.Sprintf("#F id:%s %s", markerID, strings.Join(clauseIDs, " "))

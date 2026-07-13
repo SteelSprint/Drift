@@ -97,7 +97,7 @@ func MigrateSpec(content string) (string, string, error) {
 
 	result := content
 	for _, m := range pending {
-		fmt.Fprintf(os.Stderr, "Migrating %s -> %s: %s\n", m.FromVersion, m.ToVersion, m.Description)
+		fmt.Printf("Migrating %s -> %s: %s\n", m.FromVersion, m.ToVersion, m.Description)
 		var err error
 		result, err = m.Migrate(result)
 		if err != nil {
@@ -201,8 +201,8 @@ func runMigrateSpec(args []string) error {
 	if !IsValidVersion(currentVersion) {
 		return fmt.Errorf("invalid spec version %q: expected MAJOR.MINOR.PATCH format", currentVersion)
 	}
-	fmt.Fprintf(os.Stderr, "Current spec version: %s\n", currentVersion)
-	fmt.Fprintf(os.Stderr, "Latest spec version: %s\n", LatestVersion())
+	fmt.Printf("Current spec version: %s\n", currentVersion)
+	fmt.Printf("Latest spec version: %s\n", LatestVersion())
 
 	// Apply migrations
 	migrated, newVersion, err := MigrateSpec(string(content))

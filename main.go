@@ -40,7 +40,9 @@ Commands:
     failure gate. Default is current directory.
 
   filament status [file-or-dir]...
-    Show every marker and its drift state. Always exits 0.
+    Show every marker and its drift state, including OK markers. Detects
+    every condition that check detects. Prints a coverage summary. Exits 1
+    if any finding is found, 0 otherwise.
 
   filament init [file-or-dir]...
     Create .filament from the current spec and source markers.
@@ -62,6 +64,10 @@ Commands:
 
   filament skill
     Print the full usage guide for LLMs and new users.
+
+  filament doctor migrate-spec [--spec=<path>]
+    Migrate spec XML to the latest version. Detects current version and
+    applies all pending migrations.
 
 Options:
   --spec=<path>    Path to spec XML (default: ./filament.spec.xml)
@@ -109,6 +115,8 @@ func main() {
 		err = runMigrate(specPath, filtered, quiet)
 	case "skill":
 		err = runSkill(quiet)
+	case "doctor":
+		err = runDoctor(filtered)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n%s", cmd, usage)
 		os.Exit(2)

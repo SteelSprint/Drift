@@ -118,6 +118,13 @@
     <clause id="public_api.file_walk">File and directory arguments MUST be walked recursively. Non-text files MUST be skipped silently. If no file or directory arguments are given, the tool MUST default to the current directory.</clause>
   </section>
 
+  <section id="doctor" label="Doctor commands">
+    <clause id="doctor.subcommand">The tool MUST expose a doctor command that takes a subcommand as its first argument. The doctor command MUST print an error message and exit 1 if no subcommand is provided. The tool MUST print an error message and exit 1 if an unknown subcommand is provided.</clause>
+    <clause id="doctor.migrate_spec">The doctor migrate-spec subcommand MUST take an optional --spec flag to specify the spec XML path (default: ./filament.spec.xml). The tool MUST read the spec XML file. The tool MUST detect the current spec version from the version attribute of the spec element. If no version attribute is present, the tool MUST treat the spec as pre-versioned. The tool MUST apply all pending migrations sequentially from the current version to the latest version. The tool MUST write the migrated spec back to the same file. The tool MUST print the migration summary to standard output. The tool MUST exit 0 if migration succeeds, 1 if any migration fails.</clause>
+    <clause id="doctor.version_detection">The tool MUST detect the spec version by reading the version attribute of the spec element in the spec XML. If no version attribute is present, the tool MUST treat the spec as pre-versioned (version 0.0.0). The version format MUST be semantic versioning (MAJOR.MINOR.PATCH).</clause>
+    <clause id="doctor.migration_pipeline">The tool MUST maintain an ordered list of migrations. Each migration MUST have a from-version, a to-version, a description, and a migrate function. The tool MUST apply migrations sequentially from the current version to the latest version. The tool MUST skip migrations that have already been applied. The tool MUST print each migration's from-version, to-version, and description as it is applied.</clause>
+  </section>
+
   <section id="self_hosting" label="Self-hosting">
     <clause id="self_hosting.test">The tool's test suite MUST include a test that runs filament check against the filament.spec.xml file, a .filament state file, and a fixture source file containing a well_formed_marker for each of the tool.name, public_api.subcommands, and path_format.structure clauses, and expects exit 0.</clause>
   </section>

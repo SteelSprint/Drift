@@ -11,10 +11,12 @@ import (
 
 // #F id:gag85rik state_file.location
 // #F id:b1nwn0gi state_file.structure
+// #F id:excl0001 state_file.exclude
 type LockFile struct {
-	Spec  map[string]string // clause_id -> spec_hash
-	Site  map[string]string // marker_id -> content_hash
-	State map[string]string // marker_id:clause_id -> reviewed_spec_hash
+	Spec    map[string]string // clause_id -> spec_hash
+	Site    map[string]string // marker_id -> content_hash
+	State   map[string]string // marker_id:clause_id -> reviewed_spec_hash
+	Exclude []string          // path/glob patterns relative to lock file dir
 }
 
 func NewLockFile() *LockFile {
@@ -48,6 +50,12 @@ func ReadLockFile(path string) (*LockFile, error) {
 		}
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = line[1 : len(line)-1]
+			continue
+		}
+		if section == "exclude" {
+			if line != "" {
+				lock.Exclude = append(lock.Exclude, line)
+			}
 			continue
 		}
 		parts := strings.SplitN(line, "=", 2)
@@ -89,6 +97,13 @@ func WriteLockFile(path string, lock *LockFile) error {
 	b.WriteString("\n[state]\n")
 	for _, k := range sortedKeys(lock.State) {
 		b.WriteString(fmt.Sprintf("%s=%s\n", k, lock.State[k]))
+	}
+
+	if len(lock.Exclude) > 0 {
+		b.WriteString("\n[exclude]\n")
+		for _, pattern := range lock.Exclude {
+			b.WriteString(pattern + "\n")
+		}
 	}
 
 	return os.WriteFile(path, []byte(b.String()), 0644)

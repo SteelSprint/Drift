@@ -68,6 +68,13 @@ func ScanMalformed(path string) ([]MalformedMatch, error) {
 // #F id:u1usd213 public_api.file_walk
 // WalkPaths walks the given paths and returns all text files.
 func WalkPaths(paths []string) ([]string, error) {
+	return WalkPathsWithExcludes(paths, nil, "")
+}
+
+// WalkPathsWithExcludes walks the given paths and returns all text files,
+// skipping any file or directory matching an exclude pattern.
+// Exclude patterns are path/glob patterns relative to baseDir.
+func WalkPathsWithExcludes(paths []string, excludes []string, baseDir string) ([]string, error) {
 	var out []string
 	for _, p := range paths {
 		info, err := os.Stat(p)
@@ -75,6 +82,9 @@ func WalkPaths(paths []string) ([]string, error) {
 			return nil, err
 		}
 		if !info.IsDir() {
+			if isExcluded(p, baseDir, excludes) {
+				continue
+			}
 			out = append(out, p)
 			continue
 		}
@@ -83,6 +93,12 @@ func WalkPaths(paths []string) ([]string, error) {
 				return err
 			}
 			if info.IsDir() {
+				if isExcluded(path, baseDir, excludes) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if isExcluded(path, baseDir, excludes) {
 				return nil
 			}
 			if isTextFile(path) {
@@ -95,6 +111,50 @@ func WalkPaths(paths []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// isExcluded checks whether a path matches any exclude pattern.
+// Patterns are matched against the path relative to baseDir.
+// If baseDir is empty, patterns are matched against the full path.
+func isExcluded(path, baseDir string, excludes []string) bool {
+	if len(excludes) == 0 {
+		return false
+	}
+	rel := path
+	if baseDir != "" {
+		r, err := filepath.Rel(baseDir, path)
+		if err == nil {
+			rel = r
+		}
+	}
+	rel = filepath.ToSlash(rel)
+	for _, pattern := range excludes {
+		pattern = strings.TrimPrefix(pattern, "./")
+		matched, err := filepath.Match(pattern, rel)
+		if err == nil && matched {
+			return true
+		}
+		// Also check if any path component matches (for directory patterns like "testdata/")
+		parts := strings.Split(rel, "/")
+		for _, part := range parts {
+			matched, err := filepath.Match(pattern, part)
+			if err == nil && matched {
+				return true
+			}
+			// Handle patterns like "testdata/" — match the directory name
+			matched, err = filepath.Match(strings.TrimSuffix(pattern, "/"), part)
+			if err == nil && matched {
+				return true
+			}
+		}
+		// Check prefix match for directory patterns
+		if strings.HasSuffix(pattern, "/") {
+			if strings.HasPrefix(rel, pattern) || rel == strings.TrimSuffix(pattern, "/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isTextFile(path string) bool {
@@ -127,8 +187,13 @@ type Finding struct {
 }
 
 // Check runs the full drift detection against the spec, lock file, and workspace.
-func Check(spec *Spec, lock *LockFile, paths []string, windowSize int) ([]Finding, error) {
-	files, err := WalkPaths(paths)
+func Check(spec *Spec, lock *LockFile, paths []string, windowSize int, specPath string) ([]Finding, error) {
+	var excludes []string
+	baseDir := filepath.Dir(specPath)
+	if lock != nil {
+		excludes = lock.Exclude
+	}
+	files, err := WalkPathsWithExcludes(paths, excludes, baseDir)
 	if err != nil {
 		return nil, err
 	}

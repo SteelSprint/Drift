@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -152,7 +153,7 @@ func runCheck(specPath string, paths []string, quiet bool) error {
 	}
 
 	windowSize := defaultContentWindow
-	findings, err := Check(spec, lock, paths, windowSize)
+	findings, err := Check(spec, lock, paths, windowSize, specPath)
 	if err != nil {
 		return err
 	}
@@ -206,7 +207,7 @@ func runStatus(specPath string, paths []string, quiet bool) error {
 	}
 
 	windowSize := defaultContentWindow
-	findings, err := Check(spec, lock, paths, windowSize)
+	findings, err := Check(spec, lock, paths, windowSize, specPath)
 	if err != nil {
 		return err
 	}
@@ -220,7 +221,7 @@ func runStatus(specPath string, paths []string, quiet bool) error {
 	}
 
 	// Walk files and print status for each marker
-	files, err := WalkPaths(paths)
+	files, err := WalkPathsWithExcludes(paths, lock.Exclude, filepath.Dir(specPath))
 	if err != nil {
 		return err
 	}
@@ -375,7 +376,7 @@ func runInit(specPath string, paths []string, quiet bool) error {
 	}
 
 	// Scan workspace for markers
-	files, err := WalkPaths(paths)
+	files, err := WalkPathsWithExcludes(paths, nil, filepath.Dir(specPath))
 	if err != nil {
 		return err
 	}
@@ -527,7 +528,7 @@ func runResolve(specPath string, args []string, quiet bool) error {
 	} else {
 		// --site: update content hash
 		paths := []string{"."}
-		files, err := WalkPaths(paths)
+		files, err := WalkPathsWithExcludes(paths, lock.Exclude, filepath.Dir(specPath))
 		if err != nil {
 			return err
 		}
@@ -656,7 +657,7 @@ func runMigrate(specPath string, paths []string, quiet bool) error {
 	}
 
 	// Scan for old filament:hash comments and convert them
-	files, err := WalkPaths(paths)
+	files, err := WalkPathsWithExcludes(paths, nil, filepath.Dir(specPath))
 	if err != nil {
 		return err
 	}
@@ -771,7 +772,7 @@ func runMigrate(specPath string, paths []string, quiet bool) error {
 	}
 
 	// Now scan all files to populate site hashes
-	files, err = WalkPaths(paths)
+	files, err = WalkPathsWithExcludes(paths, nil, filepath.Dir(specPath))
 	if err != nil {
 		return err
 	}

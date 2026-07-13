@@ -115,11 +115,16 @@ The .filament file stores three sections:
   [spec]    — current spec clause hashes
   [site]    — per-marker content hashes
   [state]   — per-marker-clause reviewed spec hashes
+  [exclude] — optional path/glob patterns to skip during file walks
 
 The spec section stores the current hash of each clause. The site section
 stores the hash of the content near each marker. The state section stores
 the spec hash that was in effect when each marker was last reviewed against
-each clause it references.
+each clause it references. The exclude section lists path or glob patterns
+relative to the state file's directory; files and directories matching an
+exclude pattern are skipped during file walks. Use it to exclude test
+fixtures or other files that contain marker-like patterns for testing
+purposes.
 
 The state file is auto-generated. Do not edit it manually.
 

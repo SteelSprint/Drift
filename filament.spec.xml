@@ -142,9 +142,9 @@
   <section id="parser_rules" label="Parser rules">
     <clause id="parser_rules.description_ignored">A description element, if present, MUST appear at most once and only at the top level. Its content is human-readable documentation and MUST NOT contribute to spec data or hashes.</clause>
     <clause id="parser_rules.path_group">The id of a clause or section that is a child of a section MUST equal the child_id of the section's id.</clause>
-    <clause id="parser_rules.no_forward_refs">A clause or term MUST cite only ids that have been defined earlier in the spec.</clause>
-    <clause id="parser_rules.no_cycles">The reference graph MUST be acyclic.</clause>
-    <clause id="parser_rules.no_self_references">A clause or term MUST NOT cite its own id.</clause>
+    <clause id="parser_rules.no_forward_refs">A ref element MUST reference only ids that have been defined earlier in the spec.</clause>
+    <clause id="parser_rules.no_cycles">The ref reference graph MUST be acyclic.</clause>
+    <clause id="parser_rules.no_self_references">A clause or term MUST NOT contain a ref to its own id.</clause>
     <clause id="parser_rules.no_text_on_sections">A section element MUST NOT contain non-whitespace text content.</clause>
     <clause id="parser_rules.no_empty_clauses">A clause element MUST contain non-whitespace text content.</clause>
     <clause id="parser_rules.no_empty_sections">A section element MUST contain at least one sub-clause or sub-section.</clause>
@@ -153,6 +153,9 @@
     <clause id="parser_rules.valid_id_format">A clause id, section id, and term text MUST match [a-z0-9_]+ per segment.</clause>
     <clause id="parser_rules.single_definitions">A spec MUST contain at most one definitions block.</clause>
     <clause id="parser_rules.terms_in_definitions">A term element MUST appear only inside a definitions block.</clause>
+    <clause id="parser_rules.ref_content">A ref element MUST contain non-empty text content. A ref element MUST NOT contain nested elements.</clause>
+    <clause id="parser_rules.ref_target_undefined">A ref element's text content MUST match a defined clause, section, or term id in the spec.</clause>
+    <clause id="parser_rules.term_refs_terms">A ref element inside a term MUST reference another term. A ref inside a term MUST NOT reference a clause or section. Terms are vocabulary; clauses are requirements. Dependencies flow downward (clauses to terms), not upward.</clause>
   </section>
 
 </spec>

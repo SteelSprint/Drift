@@ -19,7 +19,7 @@ func (v Violation) String() string {
 	return v.Rule + ": " + v.Detail
 }
 
-// #F id:0lsoy7u2 parser_rules.description_ignored parser_rules.path_group parser_rules.no_forward_refs parser_rules.no_cycles parser_rules.no_self_references parser_rules.no_text_on_sections parser_rules.no_empty_clauses parser_rules.no_empty_sections parser_rules.no_empty_terms parser_rules.unique_ids parser_rules.valid_id_format parser_rules.single_definitions parser_rules.terms_in_definitions
+// #F id:0lsoy7u2 parser_rules.description_ignored parser_rules.path_group parser_rules.no_forward_refs parser_rules.no_cycles parser_rules.no_self_references parser_rules.no_text_on_sections parser_rules.no_empty_clauses parser_rules.no_empty_sections parser_rules.no_empty_terms parser_rules.unique_ids parser_rules.valid_id_format parser_rules.single_definitions parser_rules.terms_in_definitions parser_rules.ref_content parser_rules.ref_target_undefined parser_rules.term_refs_terms
 
 
 

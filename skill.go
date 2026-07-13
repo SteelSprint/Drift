@@ -1,5 +1,6 @@
 package main
 
+// #F id:6uv349nx public_api.skill
 const SkillText = `WHAT IS FILAMENT?
 
 filament tracks whether files stay aligned with their spec. It works on
@@ -42,13 +43,17 @@ SPEC XML SCHEMA
 
 The spec XML has these elements:
 
-  <spec name="...">  — root element, name is required
+  <spec name="..." version="...">  — root element, name is required, version is optional
   <description>      — optional, at most one, top-level only, prose only
   <definitions>      — optional, at most one, container for <term>
   <term text="...">  — prose + optional <ref> children, text attr is the id
   <section id="..." label="..."> — container, can nest sections and clauses
   <clause id="...">  — leaf, prose + optional <ref> children
   <ref>id</ref>      — inline reference inside clauses/terms only
+
+Spec versioning: the version attribute on <spec> tracks the spec format
+version. Use 'filament doctor migrate-spec' to upgrade older specs to
+the latest version.
 
 IDs are dotted-path identifiers, segments match [a-z0-9_]+. A child
 element's id must extend its parent section's id (e.g., parent
@@ -144,7 +149,9 @@ COMMANDS
     if any finding is found, 0 otherwise.
 
   filament init [file-or-dir]...
-    Create .filament from the current spec and source markers.
+    Create .filament from the current spec and source markers. Exits 1
+    if .filament already exists — re-running init would destroy existing
+    review state. To start fresh, remove the file first.
 
   filament add <clause_id> [clause_id]...
     Print a #F marker line with a new marker id. Paste it into your file
@@ -165,6 +172,11 @@ COMMANDS
   filament migrate [file-or-dir]...
     Convert old filament:hash comments to #F markers and generate the
     state file. Run this once when upgrading from the old format.
+
+  filament doctor migrate-spec [--spec=<path>]
+    Migrate spec XML to the latest version. Detects the current version
+    and applies all pending migrations sequentially. Use when upgrading
+    filament or adopting new spec format features.
 
   filament skill
     Print this guide.
@@ -218,6 +230,14 @@ WORKFLOW: CI/CD
   - run: filament check
   - Exit 0 = pass, exit 1 = fail
   - Prose output goes to stderr; CI captures exit code
+
+
+WORKFLOW: MIGRATING A SPEC
+
+  1. filament doctor migrate-spec
+  2. filament sync — refresh spec hashes from the migrated spec
+  3. filament check — verify all markers still trace to valid clauses
+  4. Review and resolve any SPEC_DRIFT findings
 
 
 OPTIONS

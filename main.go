@@ -352,6 +352,11 @@ func runInit(specPath string, paths []string, quiet bool) error {
 		fmt.Fprint(os.Stderr, Tooltip)
 	}
 
+	lockPath := LockFilePath(specPath)
+	if _, err := os.Stat(lockPath); err == nil {
+		return fmt.Errorf("cannot initialize: %s already exists. Re-running init would destroy existing review state. To start fresh, remove the file first", lockPath)
+	}
+
 	spec, violations, err := ParseSpecFile(specPath)
 	if err != nil {
 		return err
@@ -407,7 +412,6 @@ func runInit(specPath string, paths []string, quiet bool) error {
 		}
 	}
 
-	lockPath := LockFilePath(specPath)
 	if err := WriteLockFile(lockPath, lock); err != nil {
 		return err
 	}
@@ -807,7 +811,6 @@ func runMigrate(specPath string, paths []string, quiet bool) error {
 	return nil
 }
 
-// #F id:6uv349nx public_api.skill
 func runSkill(quiet bool) error {
 	if !quiet {
 		fmt.Fprint(os.Stderr, Tooltip)

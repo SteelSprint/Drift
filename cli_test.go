@@ -128,7 +128,7 @@ func TestCLIFullFlowSpecMarkerLinkDrift(t *testing.T) {
 		Run([]string{"init"}, dir)
 
 		writeSpecFile(t, dir, "specs.pin.xml", `<specs><spec id="validate_input">input must be validated</spec></specs>`)
-		writeCodeFile(t, dir, "main.go", `// #F abc123
+		writeCodeFile(t, dir, "main.go", markerLine("abc123")+`
 func handleRequest() {
 	doSomething()
 }
@@ -148,7 +148,7 @@ func handleRequest() {
 		Run([]string{"init"}, dir)
 
 		writeSpecFile(t, dir, "specs.pin.xml", `<specs><spec id="validate_input">input must be validated</spec></specs>`)
-		writeCodeFile(t, dir, "main.go", `// #F abc123
+		writeCodeFile(t, dir, "main.go", markerLine("abc123")+`
 func handleRequest() {
 	doSomething()
 }
@@ -175,7 +175,7 @@ func handleRequest() {
 		Run([]string{"init"}, dir)
 
 		writeSpecFile(t, dir, "specs.pin.xml", `<specs><spec id="validate_input">input must be validated</spec></specs>`)
-		writeCodeFile(t, dir, "main.go", `// #F abc123
+		writeCodeFile(t, dir, "main.go", markerLine("abc123")+`
 func handleRequest() {
 	doSomething()
 }
@@ -185,7 +185,7 @@ func handleRequest() {
 		Run([]string{"link", "abc123:validate_input"}, dir)
 		Run([]string{"todo"}, dir)
 
-		writeCodeFile(t, dir, "main.go", `// #F abc123
+		writeCodeFile(t, dir, "main.go", markerLine("abc123")+`
 func handleRequest() {
 	doSomethingElse()
 }
@@ -214,7 +214,7 @@ func handleRequest() {
 		Run([]string{"init"}, dir)
 
 		writeSpecFile(t, dir, "specs.pin.xml", `<specs><spec id="validate_input">input must be validated</spec></specs>`)
-		writeCodeFile(t, dir, "main.go", `// #F abc123
+		writeCodeFile(t, dir, "main.go", markerLine("abc123")+`
 func handleRequest() {
 	doSomething()
 }
@@ -224,7 +224,7 @@ func handleRequest() {
 		Run([]string{"link", "abc123:validate_input"}, dir)
 		Run([]string{"todo"}, dir)
 
-		writeCodeFile(t, dir, "main.go", `// #F abc123
+		writeCodeFile(t, dir, "main.go", markerLine("abc123")+`
 func handleRequest() {
 	doSomethingElse()
 }
@@ -262,7 +262,7 @@ func TestCLILinkErrors(t *testing.T) {
 	t.Run("link_nonexistent_spec", func(t *testing.T) {
 		dir := t.TempDir()
 		Run([]string{"init"}, dir)
-		writeCodeFile(t, dir, "main.go", `// #F m1
+		writeCodeFile(t, dir, "main.go", markerLine("m1")+`
 func a() {}
 `)
 
@@ -276,7 +276,7 @@ func a() {}
 		dir := t.TempDir()
 		Run([]string{"init"}, dir)
 		writeSpecFile(t, dir, "specs.pin.xml", `<specs><spec id="s1">spec</spec></specs>`)
-		writeCodeFile(t, dir, "main.go", `// #F m1
+		writeCodeFile(t, dir, "main.go", markerLine("m1")+`
 func a() {}
 `)
 
@@ -341,12 +341,12 @@ func TestCLIManyToManyOneSpecManyMarkers(t *testing.T) {
 		Run([]string{"init"}, dir)
 
 		writeSpecFile(t, dir, "specs.pin.xml", `<specs><spec id="auth_token_expiry">token must expire</spec></specs>`)
-		writeCodeFile(t, dir, "middleware.go", `// #F m1
+		writeCodeFile(t, dir, "middleware.go", markerLine("m1")+`
 func authMiddleware() {
 	checkExpiry()
 }
 `)
-		writeCodeFile(t, dir, "login.go", `// #F m2
+		writeCodeFile(t, dir, "login.go", markerLine("m2")+`
 func loginHandler() {
 	checkExpiry()
 }
@@ -405,7 +405,7 @@ func TestCLIManyToManyOneMarkerManySpecs(t *testing.T) {
 			<spec id="validate_file_size">file size must be validated</spec>
 			<spec id="scan_for_malware">files must be scanned for malware</spec>
 		</specs>`)
-		writeCodeFile(t, dir, "upload.go", `// #F m1
+		writeCodeFile(t, dir, "upload.go", markerLine("m1")+`
 func uploadHandler() {
 	validateAndScan()
 }
@@ -421,7 +421,7 @@ func uploadHandler() {
 		}
 		assertTodoCountInOutput(t, output, 0)
 
-		writeCodeFile(t, dir, "upload.go", `// #F m1
+		writeCodeFile(t, dir, "upload.go", markerLine("m1")+`
 func uploadHandler() {
 	// forgot to validate!
 	upload()
@@ -469,12 +469,12 @@ func TestCLIManyToManyTwoByTwo(t *testing.T) {
 			<spec id="rate_limit_per_user">per-user rate limiting required</spec>
 			<spec id="log_rate_limit_hits">rate limit hits must be logged</spec>
 		</specs>`)
-		writeCodeFile(t, dir, "middleware.go", `// #F m1
+		writeCodeFile(t, dir, "middleware.go", markerLine("m1")+`
 func rateLimitMiddleware() {
 	limit()
 }
 `)
-		writeCodeFile(t, dir, "handler.go", `// #F m2
+		writeCodeFile(t, dir, "handler.go", markerLine("m2")+`
 func requestHandler() {
 	handle()
 }
@@ -496,12 +496,12 @@ func requestHandler() {
 			<spec id="rate_limit_per_user">per-user rate limiting required with 100 req/min</spec>
 			<spec id="log_rate_limit_hits">rate limit hits must be logged to syslog</spec>
 		</specs>`)
-		writeCodeFile(t, dir, "middleware.go", `// #F m1
+		writeCodeFile(t, dir, "middleware.go", markerLine("m1")+`
 func rateLimitMiddleware() {
 	limitV2()
 }
 `)
-		writeCodeFile(t, dir, "handler.go", `// #F m2
+		writeCodeFile(t, dir, "handler.go", markerLine("m2")+`
 func requestHandler() {
 	handleV2()
 }
@@ -561,17 +561,17 @@ func TestCLIManyToManyThreeByThree(t *testing.T) {
 			<spec id="check_fraud_rules">fraud rules must be checked</spec>
 			<spec id="log_transaction">transactions must be logged</spec>
 		</specs>`)
-		writeCodeFile(t, dir, "card.go", `// #F m1
+		writeCodeFile(t, dir, "card.go", markerLine("m1")+`
 func cardHandler() {
 	processCard()
 }
 `)
-		writeCodeFile(t, dir, "bank.go", `// #F m2
+		writeCodeFile(t, dir, "bank.go", markerLine("m2")+`
 func bankTransferHandler() {
 	processBank()
 }
 `)
-		writeCodeFile(t, dir, "wallet.go", `// #F m3
+		writeCodeFile(t, dir, "wallet.go", markerLine("m3")+`
 func walletHandler() {
 	processWallet()
 }
@@ -602,17 +602,17 @@ func walletHandler() {
 			<spec id="check_fraud_rules">fraud rules must be checked with ML model</spec>
 			<spec id="log_transaction">transactions must be logged with audit trail</spec>
 		</specs>`)
-		writeCodeFile(t, dir, "card.go", `// #F m1
+		writeCodeFile(t, dir, "card.go", markerLine("m1")+`
 func cardHandler() {
 	processCardV2()
 }
 `)
-		writeCodeFile(t, dir, "bank.go", `// #F m2
+		writeCodeFile(t, dir, "bank.go", markerLine("m2")+`
 func bankTransferHandler() {
 	processBankV2()
 }
 `)
-		writeCodeFile(t, dir, "wallet.go", `// #F m3
+		writeCodeFile(t, dir, "wallet.go", markerLine("m3")+`
 func walletHandler() {
 	processWalletV2()
 }

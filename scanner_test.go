@@ -180,7 +180,7 @@ func TestScannerMarkerDiscovery(t *testing.T) {
 		dir := t.TempDir()
 		writeCodeFile(t, dir, "main.go", `package main
 
-// #F abc123
+`+markerLine("abc123")+`
 func handleRequest() {
 	doSomething()
 }
@@ -209,12 +209,12 @@ func handleRequest() {
 		dir := t.TempDir()
 		writeCodeFile(t, dir, "main.go", `package main
 
-// #F m1
+`+markerLine("m1")+`
 func handlerA() {
 	a()
 }
 
-// #F m2
+`+markerLine("m2")+`
 func handlerB() {
 	b()
 }
@@ -236,10 +236,10 @@ func handlerB() {
 
 	t.Run("many_code_files", func(t *testing.T) {
 		dir := t.TempDir()
-		writeCodeFile(t, dir, "a.go", `// #F ma
+		writeCodeFile(t, dir, "a.go", markerLine("ma")+`
 func a() { x() }
 `)
-		writeCodeFile(t, dir, "b.go", `// #F mb
+		writeCodeFile(t, dir, "b.go", markerLine("mb")+`
 func b() { y() }
 `)
 
@@ -259,10 +259,10 @@ func b() { y() }
 
 	t.Run("duplicate_marker_shortcodes_error", func(t *testing.T) {
 		dir := t.TempDir()
-		writeCodeFile(t, dir, "a.go", `// #F dup
+		writeCodeFile(t, dir, "a.go", markerLine("dup")+`
 func a() { }
 `)
-		writeCodeFile(t, dir, "b.go", `// #F dup
+		writeCodeFile(t, dir, "b.go", markerLine("dup")+`
 func b() { }
 `)
 
@@ -275,7 +275,7 @@ func b() { }
 
 	t.Run("marker_hash_is_sha1_deterministic", func(t *testing.T) {
 		dir := t.TempDir()
-		writeCodeFile(t, dir, "main.go", `// #F abc
+		writeCodeFile(t, dir, "main.go", markerLine("abc")+`
 func handler() {
 	doSomething()
 }
@@ -300,7 +300,7 @@ func handler() {
 func TestScannerMarkerHashingWindow(t *testing.T) {
 	t.Run("hashes_exactly_10_lines_from_marker", func(t *testing.T) {
 		dir := t.TempDir()
-		code := `// #F abc
+		code := markerLine("abc")+`
 line2
 line3
 line4
@@ -340,7 +340,7 @@ line11
 
 	t.Run("fewer_than_10_lines_hashes_all_remaining", func(t *testing.T) {
 		dir := t.TempDir()
-		code := `// #F abc
+		code := markerLine("abc")+`
 line2
 line3
 `
@@ -369,10 +369,10 @@ func TestScannerMixedSpecsAndMarkers(t *testing.T) {
 			<spec id="validate_input">input must be validated</spec>
 			<spec id="auth_check">auth must be checked</spec>
 		</specs>`)
-		writeCodeFile(t, dir, "auth.go", `// #F m1
+		writeCodeFile(t, dir, "auth.go", markerLine("m1")+`
 func auth() { check() }
 `)
-		writeCodeFile(t, dir, "input.go", `// #F m2
+		writeCodeFile(t, dir, "input.go", markerLine("m2")+`
 func validate() { check() }
 `)
 
@@ -400,10 +400,10 @@ func writeIgnoreFile(t *testing.T, dir, content string) {
 func TestScannerDriftIgnore(t *testing.T) {
 	t.Run("no_drift_ignore_scans_all", func(t *testing.T) {
 		dir := t.TempDir()
-		writeCodeFile(t, dir, "main.go", `// #F keep
+		writeCodeFile(t, dir, "main.go", markerLine("keep")+`
 func a() {}
 `)
-		writeCodeFile(t, dir, "main_test.go", `// #F drop
+		writeCodeFile(t, dir, "main_test.go", markerLine("drop")+`
 func b() {}
 `)
 
@@ -419,10 +419,10 @@ func b() {}
 	t.Run("star_test_go_excludes_test_files", func(t *testing.T) {
 		dir := t.TempDir()
 		writeIgnoreFile(t, dir, "*_test.go\n")
-		writeCodeFile(t, dir, "main.go", `// #F keep
+		writeCodeFile(t, dir, "main.go", markerLine("keep")+`
 func a() {}
 `)
-		writeCodeFile(t, dir, "main_test.go", `// #F drop
+		writeCodeFile(t, dir, "main_test.go", markerLine("drop")+`
 func b() {}
 `)
 
@@ -444,12 +444,12 @@ func b() {}
 	t.Run("trailing_slash_skips_directory_subtree", func(t *testing.T) {
 		dir := t.TempDir()
 		writeIgnoreFile(t, dir, ".git/\n")
-		writeCodeFile(t, dir, "main.go", `// #F keep
+		writeCodeFile(t, dir, "main.go", markerLine("keep")+`
 func a() {}
 `)
 		gitDir := filepath.Join(dir, ".git")
 		os.Mkdir(gitDir, 0755)
-		writeCodeFile(t, gitDir, "hook.go", `// #F drop
+		writeCodeFile(t, gitDir, "hook.go", markerLine("drop")+`
 func b() {}
 `)
 
@@ -471,10 +471,10 @@ func b() {}
 	t.Run("comments_and_empty_lines_ignored", func(t *testing.T) {
 		dir := t.TempDir()
 		writeIgnoreFile(t, dir, "# this is a comment\n\n*_test.go\n# another comment\n")
-		writeCodeFile(t, dir, "main.go", `// #F keep
+		writeCodeFile(t, dir, "main.go", markerLine("keep")+`
 func a() {}
 `)
-		writeCodeFile(t, dir, "main_test.go", `// #F drop
+		writeCodeFile(t, dir, "main_test.go", markerLine("drop")+`
 func b() {}
 `)
 
@@ -496,15 +496,15 @@ func b() {}
 	t.Run("path_pattern_excludes_specific_file", func(t *testing.T) {
 		dir := t.TempDir()
 		writeIgnoreFile(t, dir, "sub/skip.go\n")
-		writeCodeFile(t, dir, "main.go", `// #F keep
+		writeCodeFile(t, dir, "main.go", markerLine("keep")+`
 func a() {}
 `)
 		subDir := filepath.Join(dir, "sub")
 		os.Mkdir(subDir, 0755)
-		writeCodeFile(t, subDir, "skip.go", `// #F drop
+		writeCodeFile(t, subDir, "skip.go", markerLine("drop")+`
 func b() {}
 `)
-		writeCodeFile(t, subDir, "keep.go", `// #F also_keep
+		writeCodeFile(t, subDir, "keep.go", markerLine("also_keep")+`
 func c() {}
 `)
 
@@ -544,9 +544,9 @@ func c() {}
 func TestScannerIgnoresNonPinXmlNonCodeFiles(t *testing.T) {
 	t.Run("ignores_txt_md_json_files", func(t *testing.T) {
 		dir := t.TempDir()
-		writeCodeFile(t, dir, "notes.txt", "// #F should_not_find\n")
-		writeCodeFile(t, dir, "readme.md", "// #F should_not_find_either\n")
-		writeCodeFile(t, dir, "data.json", "// #F nope\n")
+		writeCodeFile(t, dir, "notes.txt", markerLine("should_not_find")+"\n")
+		writeCodeFile(t, dir, "readme.md", markerLine("should_not_find_either")+"\n")
+		writeCodeFile(t, dir, "data.json", markerLine("nope")+"\n")
 
 		scanner := NewFileScanner(dir)
 		result, err := scanner.Scan()

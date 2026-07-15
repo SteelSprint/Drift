@@ -1,5 +1,5 @@
-# Exclude test files (they contain #F markers in string literals)
-*_test.go
+# Exclude test fixture file (contains #F marker literals for test data)
+testfixtures_test.go
 
 # Exclude VCS
 .git/

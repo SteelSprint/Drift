@@ -1,10 +1,4 @@
-<module name="app">
-  <import path="./core.pin.xml"/>
-  <import path="./utils.pin.xml"/>
-
-  <spec id="dispatch">
-    The app MUST dispatch commands to core handlers.
-    <ref module="core" spec="validate"/>
-    Every command passes through validation before execution.
-  </spec>
-</module>
+<main>
+  <include path="./core.pin.xml" />
+  <include path="./utils.pin.xml" />
+</main>

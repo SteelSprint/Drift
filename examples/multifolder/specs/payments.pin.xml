@@ -1,0 +1,8 @@
+<module name="payments">
+  <import path="../shared/common.pin.xml"/>
+
+  <spec id="charge">
+    Charges MUST validate amount and currency before processing.
+    <ref module="common" spec="currency_format"/>
+  </spec>
+</module>

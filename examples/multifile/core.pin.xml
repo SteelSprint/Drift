@@ -1,0 +1,12 @@
+<module name="core">
+  <import path="./utils.pin.xml"/>
+
+  <spec id="validate">
+    Validation MUST reject duplicate IDs and unknown references.
+    <ref module="utils" spec="hash"/>
+    Validation hashes each spec's content for drift detection.
+  </spec>
+  <spec id="collapse">
+    Collapse runs iteratively until no node changes.
+  </spec>
+</module>

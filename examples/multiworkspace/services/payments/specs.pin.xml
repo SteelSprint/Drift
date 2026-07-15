@@ -1,0 +1,5 @@
+<module name="payments_specs">
+  <spec id="refund">
+    Refunds MUST be processed within 5 business days.
+  </spec>
+</module>

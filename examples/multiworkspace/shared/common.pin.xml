@@ -1,0 +1,8 @@
+<module name="common">
+  <spec id="token_format">
+    Tokens MUST be 32-character hex strings.
+  </spec>
+  <spec id="currency_format">
+    Amounts MUST be positive decimals with 2 decimal places.
+  </spec>
+</module>

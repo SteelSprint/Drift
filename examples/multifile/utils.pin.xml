@@ -1,0 +1,8 @@
+<module name="utils">
+  <spec id="hash">
+    All hashing MUST use SHA1 hex-encoded via crypto/sha1.
+  </spec>
+  <spec id="format">
+    Output MUST be human-readable with file locations.
+  </spec>
+</module>

@@ -1,8 +1,8 @@
-<module name="simple">
+<main>
   <spec id="validate_input">
     Input MUST be validated before processing.
   </spec>
   <spec id="log_errors">
     Errors MUST be logged to stderr.
   </spec>
-</module>
+</main>

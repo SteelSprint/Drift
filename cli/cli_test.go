@@ -146,10 +146,11 @@ func TestCLIFullFlowSpecMarkerLinkDrift(t *testing.T) {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		output, code := cli.Run([]string{"todo"}, dir)
@@ -168,10 +169,11 @@ func handleRequest() {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -197,20 +199,22 @@ func handleRequest() {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "abc123", "main.validate_input"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomethingElse()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		output, code := cli.Run([]string{"todo"}, dir)
@@ -238,20 +242,22 @@ func handleRequest() {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "abc123", "main.validate_input"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomethingElse()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -280,8 +286,9 @@ func handleRequest() {
 </module>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func validate() { check() }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -319,8 +326,9 @@ func TestCLILinkErrors(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() {}
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		output, code := cli.Run([]string{"link", "m1", "main.nonexistent"}, dir)
@@ -335,8 +343,9 @@ func a() {}
   <spec id="s1">spec</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() {}
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -404,15 +413,17 @@ func TestCLIManyToManyOneSpecManyMarkers(t *testing.T) {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "middleware.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "middleware.go", testutil.MarkerStart("m1")+`
 func authMiddleware() {
 	checkExpiry()
 }
+`+testutil.MarkerEnd("m1")+`
 `)
-		testutil.WriteCodeFile(t, dir, "login.go", testutil.MarkerLine("m2")+`
+		testutil.WriteCodeFile(t, dir, "login.go", testutil.MarkerStart("m2")+`
 func loginHandler() {
 	checkExpiry()
 }
+`+testutil.MarkerEnd("m2")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -470,10 +481,11 @@ func TestCLIManyToManyOneMarkerManySpecs(t *testing.T) {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "upload.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "upload.go", testutil.MarkerStart("m1")+`
 func uploadHandler() {
 	validateAndScan()
 }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -486,10 +498,11 @@ func uploadHandler() {
 		}
 		assertTodoCountInOutput(t, output, 0)
 
-		testutil.WriteCodeFile(t, dir, "upload.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "upload.go", testutil.MarkerStart("m1")+`
 func uploadHandler() {
 	upload()
 }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		output, code = cli.Run([]string{"todo"}, dir)
@@ -533,15 +546,17 @@ func TestCLIManyToManyTwoByTwo(t *testing.T) {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "middleware.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "middleware.go", testutil.MarkerStart("m1")+`
 func rateLimitMiddleware() {
 	limit()
 }
+`+testutil.MarkerEnd("m1")+`
 `)
-		testutil.WriteCodeFile(t, dir, "handler.go", testutil.MarkerLine("m2")+`
+		testutil.WriteCodeFile(t, dir, "handler.go", testutil.MarkerStart("m2")+`
 func requestHandler() {
 	handle()
 }
+`+testutil.MarkerEnd("m2")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -560,15 +575,17 @@ func requestHandler() {
   <spec id="rate_limit_per_user">per-user rate limiting required with 100 req/min</spec>
   <spec id="log_rate_limit_hits">rate limit hits must be logged to syslog</spec>
 </main>`)
-		testutil.WriteCodeFile(t, dir, "middleware.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "middleware.go", testutil.MarkerStart("m1")+`
 func rateLimitMiddleware() {
 	limitV2()
 }
+`+testutil.MarkerEnd("m1")+`
 `)
-		testutil.WriteCodeFile(t, dir, "handler.go", testutil.MarkerLine("m2")+`
+		testutil.WriteCodeFile(t, dir, "handler.go", testutil.MarkerStart("m2")+`
 func requestHandler() {
 	handleV2()
 }
+`+testutil.MarkerEnd("m2")+`
 `)
 
 		output, code = cli.Run([]string{"todo"}, dir)
@@ -625,20 +642,23 @@ func TestCLIManyToManyThreeByThree(t *testing.T) {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "card.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "card.go", testutil.MarkerStart("m1")+`
 func cardHandler() {
 	processCard()
 }
+`+testutil.MarkerEnd("m1")+`
 `)
-		testutil.WriteCodeFile(t, dir, "bank.go", testutil.MarkerLine("m2")+`
+		testutil.WriteCodeFile(t, dir, "bank.go", testutil.MarkerStart("m2")+`
 func bankTransferHandler() {
 	processBank()
 }
+`+testutil.MarkerEnd("m2")+`
 `)
-		testutil.WriteCodeFile(t, dir, "wallet.go", testutil.MarkerLine("m3")+`
+		testutil.WriteCodeFile(t, dir, "wallet.go", testutil.MarkerStart("m3")+`
 func walletHandler() {
 	processWallet()
 }
+`+testutil.MarkerEnd("m3")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -666,20 +686,23 @@ func walletHandler() {
   <spec id="check_fraud_rules">fraud rules must be checked with ML model</spec>
   <spec id="log_transaction">transactions must be logged with audit trail</spec>
 </main>`)
-		testutil.WriteCodeFile(t, dir, "card.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "card.go", testutil.MarkerStart("m1")+`
 func cardHandler() {
 	processCardV2()
 }
+`+testutil.MarkerEnd("m1")+`
 `)
-		testutil.WriteCodeFile(t, dir, "bank.go", testutil.MarkerLine("m2")+`
+		testutil.WriteCodeFile(t, dir, "bank.go", testutil.MarkerStart("m2")+`
 func bankTransferHandler() {
 	processBankV2()
 }
+`+testutil.MarkerEnd("m2")+`
 `)
-		testutil.WriteCodeFile(t, dir, "wallet.go", testutil.MarkerLine("m3")+`
+		testutil.WriteCodeFile(t, dir, "wallet.go", testutil.MarkerStart("m3")+`
 func walletHandler() {
 	processWalletV2()
 }
+`+testutil.MarkerEnd("m3")+`
 `)
 
 		output, code = cli.Run([]string{"todo"}, dir)
@@ -741,10 +764,11 @@ func TestCLIUnlink(t *testing.T) {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -773,8 +797,9 @@ func handleRequest() {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() {}
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -819,16 +844,18 @@ func a() {}
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomethingElse() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"reset", "m1", "main.s1"}, dir)
@@ -841,8 +868,9 @@ func a() { doSomethingElse() }
 
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { anotherChange() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"reset", "m1", "main.s1"}, dir)
@@ -896,10 +924,11 @@ func TestCLIList(t *testing.T) {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -936,16 +965,18 @@ func handleRequest() {
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomethingElse() }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		output, code := cli.Run([]string{"list"}, dir)
@@ -965,11 +996,13 @@ func a() { doSomethingElse() }
 </main>`)
 		cli.Run([]string{"init"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
-		testutil.WriteCodeFile(t, dir, "other.go", testutil.MarkerLine("m2")+`
+		testutil.WriteCodeFile(t, dir, "other.go", testutil.MarkerStart("m2")+`
 func b() { doOther() }
+`+testutil.MarkerEnd("m2")+`
 `)
 
 		cli.Run([]string{"todo"}, dir)
@@ -1025,8 +1058,9 @@ func TestCLIDeletionDrift(t *testing.T) {
   <spec id="s2">spec two</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
@@ -1055,8 +1089,9 @@ func a() { doSomething() }
   <spec id="s2">spec two</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
@@ -1100,18 +1135,21 @@ func a() { doSomething() }
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
-`+testutil.MarkerLine("m2")+`
+`+testutil.MarkerEnd("m1")+`
+`+testutil.MarkerStart("m2")+`
 func b() { doOther() }
+`+testutil.MarkerEnd("m2")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"link", "m2", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		output, code := cli.Run([]string{"todo"}, dir)
@@ -1132,8 +1170,9 @@ func TestCLIOrphanReset(t *testing.T) {
   <spec id="s2">spec two</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
@@ -1169,10 +1208,12 @@ func a() { doSomething() }
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
-`+testutil.MarkerLine("m2")+`
+`+testutil.MarkerEnd("m1")+`
+`+testutil.MarkerStart("m2")+`
 func b() { doOther() }
+`+testutil.MarkerEnd("m2")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
@@ -1180,8 +1221,9 @@ func b() { doOther() }
 		cli.Run([]string{"todo"}, dir)
 
 		// Delete m2 from code — it becomes an orphan (no links)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		// m2 is now stale (in drift.pin but not on disk, no links)
@@ -1208,8 +1250,9 @@ func a() { doSomething() }
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
@@ -1231,8 +1274,9 @@ func a() { doSomething() }
   <spec id="s2">spec two</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s2"}, dir)
@@ -1271,8 +1315,9 @@ func TestCLIListDeletedTag(t *testing.T) {
   <spec id="s2">spec two</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
 `)
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)

@@ -21,11 +21,12 @@ type Spec struct {
 }
 
 type Marker struct {
-	Filepath   string
-	LineNumber int
-	ID         string
-	Hash       string
-	Deleted    bool
+	Filepath     string
+	LineNumber   int
+	EndLineNumber int
+	ID           string
+	Hash         string
+	Deleted      bool
 }
 
 type Link struct {

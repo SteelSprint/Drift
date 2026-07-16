@@ -48,10 +48,11 @@ type specXML struct {
 }
 
 type markerXML struct {
-	ID         string `xml:"id,attr"`
-	Hash       string `xml:"hash,attr"`
-	Filepath   string `xml:"filepath,attr"`
-	LineNumber int    `xml:"line,attr"`
+	ID           string `xml:"id,attr"`
+	Hash         string `xml:"hash,attr"`
+	Filepath     string `xml:"filepath,attr"`
+	LineNumber   int    `xml:"line,attr"`
+	EndLineNumber int   `xml:"endline,attr"`
 }
 
 type linkXML struct {
@@ -94,10 +95,11 @@ func (s *FilePinStore) Load() (PinState, error) {
 	markers := make([]core.Marker, len(file.Markers))
 	for i, m := range file.Markers {
 		markers[i] = core.Marker{
-			ID:         m.ID,
-			Hash:       m.Hash,
-			Filepath:   m.Filepath,
-			LineNumber: m.LineNumber,
+			ID:            m.ID,
+			Hash:          m.Hash,
+			Filepath:      m.Filepath,
+			LineNumber:    m.LineNumber,
+			EndLineNumber: m.EndLineNumber,
 		}
 	}
 
@@ -147,10 +149,11 @@ func (s *FilePinStore) Save(state PinState) error {
 
 	for i, marker := range state.Markers {
 		file.Markers[i] = markerXML{
-			ID:         marker.ID,
-			Hash:       marker.Hash,
-			Filepath:   marker.Filepath,
-			LineNumber: marker.LineNumber,
+			ID:            marker.ID,
+			Hash:          marker.Hash,
+			Filepath:      marker.Filepath,
+			LineNumber:    marker.LineNumber,
+			EndLineNumber: marker.EndLineNumber,
 		}
 	}
 

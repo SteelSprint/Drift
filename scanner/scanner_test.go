@@ -54,8 +54,9 @@ func TestScannerEmptyProject(t *testing.T) {
 	t.Run("empty_main_still_discovers_markers", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() {}
+`+testutil.MarkerEnd("m1")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -438,10 +439,11 @@ func TestScannerMarkerDiscovery(t *testing.T) {
 		writeMainPin(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", `package main
 
-`+testutil.MarkerLine("abc123")+`
+`+testutil.MarkerStart("abc123")+`
 func handleRequest() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc123")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -461,6 +463,12 @@ func handleRequest() {
 		if marker.Hash == "" {
 			t.Fatalf("expected non-empty hash")
 		}
+		if marker.LineNumber != 3 {
+			t.Fatalf("LineNumber = %d, want 3", marker.LineNumber)
+		}
+		if marker.EndLineNumber != 7 {
+			t.Fatalf("EndLineNumber = %d, want 7", marker.EndLineNumber)
+		}
 	})
 
 	t.Run("one_code_file_many_markers", func(t *testing.T) {
@@ -468,15 +476,17 @@ func handleRequest() {
 		writeMainPin(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", `package main
 
-`+testutil.MarkerLine("m1")+`
+`+testutil.MarkerStart("m1")+`
 func handlerA() {
 	a()
 }
+`+testutil.MarkerEnd("m1")+`
 
-`+testutil.MarkerLine("m2")+`
+`+testutil.MarkerStart("m2")+`
 func handlerB() {
 	b()
 }
+`+testutil.MarkerEnd("m2")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -496,11 +506,13 @@ func handlerB() {
 	t.Run("many_code_files", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		testutil.WriteCodeFile(t, dir, "a.go", testutil.MarkerLine("ma")+`
+		testutil.WriteCodeFile(t, dir, "a.go", testutil.MarkerStart("ma")+`
 func a() { x() }
+`+testutil.MarkerEnd("ma")+`
 `)
-		testutil.WriteCodeFile(t, dir, "b.go", testutil.MarkerLine("mb")+`
+		testutil.WriteCodeFile(t, dir, "b.go", testutil.MarkerStart("mb")+`
 func b() { y() }
+`+testutil.MarkerEnd("mb")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -520,11 +532,13 @@ func b() { y() }
 	t.Run("duplicate_marker_shortcodes_error", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		testutil.WriteCodeFile(t, dir, "a.go", testutil.MarkerLine("dup")+`
+		testutil.WriteCodeFile(t, dir, "a.go", testutil.MarkerStart("dup")+`
 func a() { }
+`+testutil.MarkerEnd("dup")+`
 `)
-		testutil.WriteCodeFile(t, dir, "b.go", testutil.MarkerLine("dup")+`
+		testutil.WriteCodeFile(t, dir, "b.go", testutil.MarkerStart("dup")+`
 func b() { }
+`+testutil.MarkerEnd("dup")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -534,10 +548,11 @@ func b() { }
 	t.Run("marker_hash_is_sha1_deterministic", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc")+`
 func handler() {
 	doSomething()
 }
+`+testutil.MarkerEnd("abc")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -556,22 +571,16 @@ func handler() {
 	})
 }
 
-func TestScannerMarkerHashingWindow(t *testing.T) {
-	t.Run("hashes_exactly_10_lines_from_marker", func(t *testing.T) {
+func TestScannerRangeHashing(t *testing.T) {
+	t.Run("hashes_lines_between_start_and_end_exclusive", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		code := testutil.MarkerLine("abc") + `
+		code := testutil.MarkerStart("abc") + `
 line2
 line3
 line4
-line5
+` + testutil.MarkerEnd("abc") + `
 line6
-line7
-line8
-line9
-line10
-line11
-line12
 `
 		testutil.WriteCodeFile(t, dir, "main.go", code)
 
@@ -584,26 +593,18 @@ line12
 		expectedContent := `line2
 line3
 line4
-line5
-line6
-line7
-line8
-line9
-line10
-line11
 `
 		expectedHash := testutil.ExpectedSha1Hex(expectedContent)
 		if marker.Hash != expectedHash {
-			t.Fatalf("hash = %q, want %q (content hash of 10 lines after marker)", marker.Hash, expectedHash)
+			t.Fatalf("hash = %q, want %q (content hash of lines between start and end)", marker.Hash, expectedHash)
 		}
 	})
 
-	t.Run("fewer_than_10_lines_hashes_all_remaining", func(t *testing.T) {
+	t.Run("empty_range_hashes_empty_string", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		code := testutil.MarkerLine("abc") + `
-line2
-line3
+		code := testutil.MarkerStart("abc") + `
+` + testutil.MarkerEnd("abc") + `
 `
 		testutil.WriteCodeFile(t, dir, "main.go", code)
 
@@ -613,12 +614,35 @@ line3
 
 		marker, _ := testutil.FindScanResultMarker(result.Markers, "abc")
 
-		expectedContent := `line2
-line3
-`
-		expectedHash := testutil.ExpectedSha1Hex(expectedContent)
+		expectedHash := testutil.ExpectedSha1Hex("")
 		if marker.Hash != expectedHash {
-			t.Fatalf("hash = %q, want %q", marker.Hash, expectedHash)
+			t.Fatalf("hash = %q, want %q (empty range)", marker.Hash, expectedHash)
+		}
+	})
+
+	t.Run("stores_start_and_end_line_numbers", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		code := `package main
+
+` + testutil.MarkerStart("abc") + `
+func handler() {
+	doSomething()
+}
+` + testutil.MarkerEnd("abc") + `
+`
+		testutil.WriteCodeFile(t, dir, "main.go", code)
+
+		scanner := scanner.NewFileScanner(dir)
+		result, err := scanner.Scan()
+		testutil.AssertNoError(t, err)
+
+		marker, _ := testutil.FindScanResultMarker(result.Markers, "abc")
+		if marker.LineNumber != 3 {
+			t.Fatalf("LineNumber = %d, want 3", marker.LineNumber)
+		}
+		if marker.EndLineNumber != 7 {
+			t.Fatalf("EndLineNumber = %d, want 7", marker.EndLineNumber)
 		}
 	})
 }
@@ -633,11 +657,13 @@ func TestScannerMixedSpecsAndMarkers(t *testing.T) {
   <spec id="validate_input">input must be validated</spec>
   <spec id="auth_check">auth must be checked</spec>
 </module>`)
-		testutil.WriteCodeFile(t, dir, "auth.go", testutil.MarkerLine("m1")+`
+		testutil.WriteCodeFile(t, dir, "auth.go", testutil.MarkerStart("m1")+`
 func auth() { check() }
+`+testutil.MarkerEnd("m1")+`
 `)
-		testutil.WriteCodeFile(t, dir, "input.go", testutil.MarkerLine("m2")+`
+		testutil.WriteCodeFile(t, dir, "input.go", testutil.MarkerStart("m2")+`
 func validate() { check() }
+`+testutil.MarkerEnd("m2")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -657,11 +683,13 @@ func TestScannerDriftIgnore(t *testing.T) {
 	t.Run("no_drift_ignore_scans_all", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("keep")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
+`+testutil.MarkerEnd("keep")+`
 `)
-		testutil.WriteCodeFile(t, dir, "main_test.go", testutil.MarkerLine("drop")+`
+		testutil.WriteCodeFile(t, dir, "main_test.go", testutil.MarkerStart("drop")+`
 func b() {}
+`+testutil.MarkerEnd("drop")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -677,11 +705,13 @@ func b() {}
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, "*_test.go\n")
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("keep")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
+`+testutil.MarkerEnd("keep")+`
 `)
-		testutil.WriteCodeFile(t, dir, "main_test.go", testutil.MarkerLine("drop")+`
+		testutil.WriteCodeFile(t, dir, "main_test.go", testutil.MarkerStart("drop")+`
 func b() {}
+`+testutil.MarkerEnd("drop")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -703,13 +733,15 @@ func b() {}
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, ".git/\n")
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("keep")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
+`+testutil.MarkerEnd("keep")+`
 `)
 		gitDir := filepath.Join(dir, ".git")
 		os.Mkdir(gitDir, 0755)
-		testutil.WriteCodeFile(t, gitDir, "hook.go", testutil.MarkerLine("drop")+`
+		testutil.WriteCodeFile(t, gitDir, "hook.go", testutil.MarkerStart("drop")+`
 func b() {}
+`+testutil.MarkerEnd("drop")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -731,11 +763,13 @@ func b() {}
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, "# this is a comment\n\n*_test.go\n# another comment\n")
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("keep")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
+`+testutil.MarkerEnd("keep")+`
 `)
-		testutil.WriteCodeFile(t, dir, "main_test.go", testutil.MarkerLine("drop")+`
+		testutil.WriteCodeFile(t, dir, "main_test.go", testutil.MarkerStart("drop")+`
 func b() {}
+`+testutil.MarkerEnd("drop")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -757,16 +791,19 @@ func b() {}
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, "sub/skip.go\n")
-		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("keep")+`
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
+`+testutil.MarkerEnd("keep")+`
 `)
 		subDir := filepath.Join(dir, "sub")
 		os.Mkdir(subDir, 0755)
-		testutil.WriteCodeFile(t, subDir, "skip.go", testutil.MarkerLine("drop")+`
+		testutil.WriteCodeFile(t, subDir, "skip.go", testutil.MarkerStart("drop")+`
 func b() {}
+`+testutil.MarkerEnd("drop")+`
 `)
-		testutil.WriteCodeFile(t, subDir, "keep.go", testutil.MarkerLine("also_keep")+`
+		testutil.WriteCodeFile(t, subDir, "keep.go", testutil.MarkerStart("also_keep")+`
 func c() {}
+`+testutil.MarkerEnd("also_keep")+`
 `)
 
 		scanner := scanner.NewFileScanner(dir)
@@ -792,9 +829,9 @@ func TestScannerIgnoresNonPinXmlNonCodeFiles(t *testing.T) {
 	t.Run("ignores_txt_md_json_files", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		testutil.WriteCodeFile(t, dir, "notes.txt", testutil.MarkerLine("should_not_find")+"\n")
-		testutil.WriteCodeFile(t, dir, "readme.md", testutil.MarkerLine("should_not_find_either")+"\n")
-		testutil.WriteCodeFile(t, dir, "data.json", testutil.MarkerLine("nope")+"\n")
+		testutil.WriteCodeFile(t, dir, "notes.txt", testutil.MarkerStart("should_not_find")+"\n")
+		testutil.WriteCodeFile(t, dir, "readme.md", testutil.MarkerStart("should_not_find_either")+"\n")
+		testutil.WriteCodeFile(t, dir, "data.json", testutil.MarkerStart("nope")+"\n")
 
 		scanner := scanner.NewFileScanner(dir)
 		result, err := scanner.Scan()
@@ -824,7 +861,7 @@ func TestScannerIDFormatValidation(t *testing.T) {
 		writeMainPin(t, dir, `<main>
   <spec id="s1">spec</spec>
 </main>`)
-		badMarker := "// D! id=bad" + ".marker\nfunc a() {}\n"
+		badMarker := "// D! id=bad" + ".marker range-start\nfunc a() {}\n// D! id=bad" + ".marker range-end\n"
 		testutil.WriteCodeFile(t, dir, "main.go", badMarker)
 		sc := scanner.NewFileScanner(dir)
 		assertScanError(t, sc, "must not contain a dot")
@@ -849,7 +886,10 @@ func TestScannerIDFormatValidation(t *testing.T) {
 	t.Run("marker_id_without_dot_ok", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainPin(t, dir, `<main></main>`)
-		testutil.WriteCodeFile(t, dir, "main.go", "// D! id=good_marker\nfunc a() {}\n")
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("good_marker")+`
+func a() {}
+`+testutil.MarkerEnd("good_marker")+`
+`)
 		sc := scanner.NewFileScanner(dir)
 		result, err := sc.Scan()
 		testutil.AssertNoError(t, err)
@@ -858,6 +898,194 @@ func TestScannerIDFormatValidation(t *testing.T) {
 		}
 		if result.Markers[0].ID != "good_marker" {
 			t.Fatalf("expected good_marker, got %q", result.Markers[0].ID)
+		}
+	})
+}
+
+func TestScannerRangeMarkers(t *testing.T) {
+	t.Run("old_style_marker_without_suffix_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", "// D! id=foo\nfunc a() {}\n")
+
+		scanner := scanner.NewFileScanner(dir)
+		assertScanError(t, scanner, "range-start")
+	})
+
+	t.Run("range_start_without_range_end_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("foo")+`
+func a() {}
+`)
+
+		scanner := scanner.NewFileScanner(dir)
+		assertScanError(t, scanner, "range-start")
+		assertScanError(t, scanner, "foo")
+	})
+
+	t.Run("range_end_without_range_start_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+`+testutil.MarkerEnd("foo")+`
+`)
+
+		scanner := scanner.NewFileScanner(dir)
+		assertScanError(t, scanner, "range-end")
+		assertScanError(t, scanner, "foo")
+	})
+
+	t.Run("all_unpaired_markers_reported_at_once", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("foo")+`
+func a() {}
+`+testutil.MarkerEnd("bar")+`
+`)
+
+		scanner := scanner.NewFileScanner(dir)
+		_, err := scanner.Scan()
+		if err == nil {
+			t.Fatalf("expected error for unpaired markers, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "foo") {
+			t.Fatalf("error should mention 'foo', got: %s", errStr)
+		}
+		if !strings.Contains(errStr, "bar") {
+			t.Fatalf("error should mention 'bar', got: %s", errStr)
+		}
+	})
+
+	t.Run("range_end_before_range_start_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+`+testutil.MarkerEnd("foo")+`
+func a() {}
+`+testutil.MarkerStart("foo")+`
+`)
+
+		scanner := scanner.NewFileScanner(dir)
+		assertScanError(t, scanner, "foo")
+	})
+
+	t.Run("nested_ranges_allowed", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("outer")+`
+func a() {
+`+testutil.MarkerStart("inner")+`
+	b()
+`+testutil.MarkerEnd("inner")+`
+}
+`+testutil.MarkerEnd("outer")+`
+`)
+
+		scanner := scanner.NewFileScanner(dir)
+		result, err := scanner.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.Markers) != 2 {
+			t.Fatalf("expected 2 markers, got %d", len(result.Markers))
+		}
+	})
+
+	t.Run("overlapping_ranges_allowed", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("a")+`
+line1
+`+testutil.MarkerStart("b")+`
+line2
+`+testutil.MarkerEnd("a")+`
+line3
+`+testutil.MarkerEnd("b")+`
+`)
+
+		scanner := scanner.NewFileScanner(dir)
+		result, err := scanner.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.Markers) != 2 {
+			t.Fatalf("expected 2 markers, got %d", len(result.Markers))
+		}
+	})
+}
+
+func TestScannerMarkerBlanking(t *testing.T) {
+	t.Run("other_marker_declarations_blanked_from_hash", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		code := testutil.MarkerStart("outer") + `
+func a() {
+` + testutil.MarkerStart("inner") + `
+	b()
+` + testutil.MarkerEnd("inner") + `
+}
+` + testutil.MarkerEnd("outer") + `
+`
+		testutil.WriteCodeFile(t, dir, "main.go", code)
+
+		scanner := scanner.NewFileScanner(dir)
+		result, err := scanner.Scan()
+		testutil.AssertNoError(t, err)
+
+		outer, _ := testutil.FindScanResultMarker(result.Markers, "outer")
+
+		expectedContent := `func a() {
+// 
+	b()
+// 
+}
+`
+		expectedHash := testutil.ExpectedSha1Hex(expectedContent)
+		if outer.Hash != expectedHash {
+			t.Fatalf("outer hash = %q, want %q (marker declarations blanked)\nexpected content:\n%q", outer.Hash, expectedHash, expectedContent)
+		}
+	})
+
+	t.Run("changing_inner_marker_id_does_not_change_outer_hash", func(t *testing.T) {
+		dir1 := t.TempDir()
+		writeMainPin(t, dir1, `<main></main>`)
+		code1 := testutil.MarkerStart("outer") + `
+func a() {
+` + testutil.MarkerStart("inner_a") + `
+	b()
+` + testutil.MarkerEnd("inner_a") + `
+}
+` + testutil.MarkerEnd("outer") + `
+`
+		testutil.WriteCodeFile(t, dir1, "main.go", code1)
+
+		dir2 := t.TempDir()
+		writeMainPin(t, dir2, `<main></main>`)
+		code2 := testutil.MarkerStart("outer") + `
+func a() {
+` + testutil.MarkerStart("inner_b") + `
+	b()
+` + testutil.MarkerEnd("inner_b") + `
+}
+` + testutil.MarkerEnd("outer") + `
+`
+		testutil.WriteCodeFile(t, dir2, "main.go", code2)
+
+		sc1 := scanner.NewFileScanner(dir1)
+		r1, err := sc1.Scan()
+		testutil.AssertNoError(t, err)
+
+		sc2 := scanner.NewFileScanner(dir2)
+		r2, err := sc2.Scan()
+		testutil.AssertNoError(t, err)
+
+		m1, _ := testutil.FindScanResultMarker(r1.Markers, "outer")
+		m2, _ := testutil.FindScanResultMarker(r2.Markers, "outer")
+
+		if m1.Hash != m2.Hash {
+			t.Fatalf("outer hash should be the same regardless of inner marker ID\ninner_a: %q\ninner_b: %q", m1.Hash, m2.Hash)
 		}
 	})
 }

@@ -21,11 +21,11 @@ func NewSpecWithLocation(id string, hash string, filepath string, lineNumber int
 }
 
 func NewMarker(id string, hash string) core.Marker {
-	return core.Marker{ID: id, Hash: hash, Filepath: id + ".go", LineNumber: 20}
+	return core.Marker{ID: id, Hash: hash, Filepath: id + ".go", LineNumber: 20, EndLineNumber: 30}
 }
 
 func NewMarkerWithLocation(id string, hash string, filepath string, lineNumber int) core.Marker {
-	return core.Marker{ID: id, Hash: hash, Filepath: filepath, LineNumber: lineNumber}
+	return core.Marker{ID: id, Hash: hash, Filepath: filepath, LineNumber: lineNumber, EndLineNumber: lineNumber + 10}
 }
 
 func NewLink(specID string, markerID string) core.Link {

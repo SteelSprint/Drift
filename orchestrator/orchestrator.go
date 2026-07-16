@@ -397,10 +397,11 @@ func reconcileMarkers(pinned []core.Marker, scanned []core.Marker) ([]core.Marke
 	for _, m := range scanned {
 		if pinned, ok := pinnedByID[m.ID]; ok {
 			result = append(result, core.Marker{
-				ID:         m.ID,
-				Hash:       pinned.Hash,
-				Filepath:   m.Filepath,
-				LineNumber: m.LineNumber,
+				ID:            m.ID,
+				Hash:          pinned.Hash,
+				Filepath:      m.Filepath,
+				LineNumber:    m.LineNumber,
+				EndLineNumber: m.EndLineNumber,
 			})
 		} else {
 			result = append(result, m)
@@ -409,11 +410,12 @@ func reconcileMarkers(pinned []core.Marker, scanned []core.Marker) ([]core.Marke
 	for id, p := range pinnedByID {
 		if !scannedByID[id] {
 			result = append(result, core.Marker{
-				ID:         p.ID,
-				Hash:       p.Hash,
-				Filepath:   p.Filepath,
-				LineNumber: p.LineNumber,
-				Deleted:    true,
+				ID:            p.ID,
+				Hash:          p.Hash,
+				Filepath:      p.Filepath,
+				LineNumber:    p.LineNumber,
+				EndLineNumber: p.EndLineNumber,
+				Deleted:       true,
 			})
 		}
 	}

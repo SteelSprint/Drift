@@ -13,8 +13,6 @@ import (
 	"driftpin/core"
 )
 
-const markerLineWindow = 10
-
 // D! id=scode
 var codeExtensions = map[string]bool{
 	".go": true, ".py": true, ".js": true, ".ts": true,
@@ -25,7 +23,7 @@ var codeExtensions = map[string]bool{
 	".lua": true, ".dart": true, ".vue": true, ".svelte": true,
 }
 
-var markerPattern = regexp.MustCompile(`D!\s+id=(\S+)`)
+var markerPattern = regexp.MustCompile(`D!\s+id=(\S+)(?:\s+(range-start|range-end))?`)
 
 type ScanResult struct {
 	Specs   []core.Spec
@@ -248,7 +246,6 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 		for _, marker := range fileMarkers {
-			// D! id=sdupm
 			if seenIDs[marker.ID] {
 				return fmt.Errorf("duplicate marker shortcode %q", marker.ID)
 			}
@@ -263,6 +260,13 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
 	return markers, nil
 }
 
+type rawMarkerDecl struct {
+	id     string
+	suffix string // "range-start" or "range-end"
+	line   int // 1-indexed
+	index  int // 0-indexed line position in file
+}
+
 func parseMarkerFile(path string) ([]core.Marker, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -273,24 +277,89 @@ func parseMarkerFile(path string) ([]core.Marker, error) {
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	var markers []core.Marker
 
+	// Pass 1: Find all marker declarations
+	var decls []rawMarkerDecl
 	for i, line := range lines {
 		match := markerPattern.FindStringSubmatch(line)
 		if match == nil {
 			continue
 		}
 		shortcode := match[1]
+		suffix := match[2]
 		lineNumber := i + 1
 
-		// D! id=midfmt
 		if strings.Contains(shortcode, ".") {
 			return nil, fmt.Errorf("%s:%d: marker id %q must not contain a dot (dots are reserved for spec ID qualification)", path, lineNumber, shortcode)
 		}
 
+		if suffix != "range-start" && suffix != "range-end" {
+			return nil, fmt.Errorf("%s:%d: marker %q must declare range-start or range-end", path, lineNumber, shortcode)
+		}
+
+		decls = append(decls, rawMarkerDecl{
+			id:     shortcode,
+			suffix: suffix,
+			line:   lineNumber,
+			index:  i,
+		})
+	}
+
+	// Validate pairs (all-at-once)
+	starts := make(map[string]rawMarkerDecl)
+	ends := make(map[string]rawMarkerDecl)
+	for _, d := range decls {
+		if d.suffix == "range-start" {
+			if existing, ok := starts[d.id]; ok {
+				return nil, fmt.Errorf("%s:%d: duplicate range-start for marker %q (first at line %d)", path, d.line, d.id, existing.line)
+			}
+			starts[d.id] = d
+		} else {
+			if existing, ok := ends[d.id]; ok {
+				return nil, fmt.Errorf("%s:%d: duplicate range-end for marker %q (first at line %d)", path, d.line, d.id, existing.line)
+			}
+			ends[d.id] = d
+		}
+	}
+
+	var unpaired []string
+	for id, s := range starts {
+		e, ok := ends[id]
+		if !ok {
+			unpaired = append(unpaired, fmt.Sprintf("%s:%d: marker %q has range-start but no matching range-end in the same file", path, s.line, id))
+			continue
+		}
+		if e.line <= s.line {
+			unpaired = append(unpaired, fmt.Sprintf("%s:%d: marker %q has range-end at line %d before range-start at line %d", path, e.line, id, e.line, s.line))
+		}
+	}
+	for id, e := range ends {
+		if _, ok := starts[id]; !ok {
+			unpaired = append(unpaired, fmt.Sprintf("%s:%d: marker %q has range-end but no matching range-start in the same file", path, e.line, id))
+		}
+	}
+	if len(unpaired) > 0 {
+		return nil, fmt.Errorf("%s", strings.Join(unpaired, "\n"))
+	}
+
+	// Pass 2: Compute hashes with blanking
+	// Build a set of all marker declaration line indices for blanking
+	markerLines := make(map[int]bool)
+	for _, d := range decls {
+		markerLines[d.index] = true
+	}
+
+	var markers []core.Marker
+	for id, s := range starts {
+		e := ends[id]
+
 		var contentLines []string
-		for j := i + 1; j < len(lines) && j <= i+markerLineWindow; j++ {
-			contentLines = append(contentLines, lines[j])
+		for j := s.index + 1; j < e.index; j++ {
+			line := lines[j]
+			if markerLines[j] {
+				line = blankMarkerDecl(line)
+			}
+			contentLines = append(contentLines, line)
 		}
 		content := strings.Join(contentLines, "\n")
 		if len(contentLines) > 0 {
@@ -299,13 +368,24 @@ func parseMarkerFile(path string) ([]core.Marker, error) {
 		hash := sha1Hex(content)
 
 		markers = append(markers, core.Marker{
-			ID:         shortcode,
-			Hash:       hash,
-			Filepath:   path,
-			LineNumber: lineNumber,
+			ID:            id,
+			Hash:          hash,
+			Filepath:      path,
+			LineNumber:    s.line,
+			EndLineNumber: e.line,
 		})
 	}
 	return markers, nil
+}
+
+// blankMarkerDecl strips the D! declaration from a line, leaving only the comment prefix.
+// e.g. "// D! id=foo range-start" becomes "// "
+func blankMarkerDecl(line string) string {
+	idx := strings.Index(line, "D!")
+	if idx < 0 {
+		return line
+	}
+	return line[:idx]
 }
 
 // D! id=shash

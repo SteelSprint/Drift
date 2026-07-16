@@ -67,7 +67,7 @@ func (p *Pipeline) Run(prompt string, dryRun bool) error {
 
 func (p *Pipeline) stage() error {
 	p.runDir = filepath.Join(p.repoRoot, "eval", "runs", p.runLabel)
-	p.workspaceDir = filepath.Join(p.runDir, "workspace")
+	p.workspaceDir = filepath.Join("/tmp/opencode/eval-runs", p.runLabel, "workspace")
 
 	for _, dir := range []string{p.runDir, p.workspaceDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -77,6 +77,17 @@ func (p *Pipeline) stage() error {
 
 	if err := p.buildBinary(); err != nil {
 		return err
+	}
+
+	subjectAgentsDir := filepath.Join(p.workspaceDir, ".opencode", "agents")
+	if err := os.MkdirAll(subjectAgentsDir, 0755); err != nil {
+		return err
+	}
+	if err := copyFile(
+		filepath.Join(p.repoRoot, "eval", "agents", "eval-subject.md"),
+		filepath.Join(subjectAgentsDir, "eval-subject.md"),
+	); err != nil {
+		return fmt.Errorf("stage subject agent: %w", err)
 	}
 
 	judgeAgentsDir := filepath.Join(p.runDir, ".opencode", "agents")
@@ -115,6 +126,7 @@ func (p *Pipeline) runSubject(prompt string) error {
 	fullPrompt := buildSubjectPrompt(prompt)
 
 	return p.runOpencode(&opencodeArgs{
+		agent:   "eval-subject",
 		model:   p.subjectModel,
 		dir:     p.workspaceDir,
 		title:   "subject",
@@ -311,6 +323,17 @@ func synthesize(repoRoot, batchLabel string, runDirs []string, judgeModel string
 	synthesisRunDir := filepath.Join(repoRoot, "eval", "runs", batchLabel+"-synthesis")
 	if err := os.MkdirAll(synthesisRunDir, 0755); err != nil {
 		return err
+	}
+
+	synthesisAgentsDir := filepath.Join(synthesisRunDir, ".opencode", "agents")
+	if err := os.MkdirAll(synthesisAgentsDir, 0755); err != nil {
+		return err
+	}
+	if err := copyFile(
+		filepath.Join(repoRoot, "eval", "agents", "eval-judge.md"),
+		filepath.Join(synthesisAgentsDir, "eval-judge.md"),
+	); err != nil {
+		return fmt.Errorf("stage synthesis judge agent: %w", err)
 	}
 
 	synthesisOut, err := os.Create(filepath.Join(synthesisRunDir, "synthesis.jsonl"))

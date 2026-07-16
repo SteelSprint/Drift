@@ -218,8 +218,8 @@ func handleRequest() {
 `)
 
 		output, code := cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		if !strings.Contains(output, "1 marker has unchecked changes") {
 			t.Fatalf("output should mention 1 marker with unchecked changes, got: %s", output)
@@ -441,8 +441,8 @@ func loginHandler() {
 </main>`)
 
 		output, code = cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		assertTodoCountInOutput(t, output, 2)
 
@@ -453,8 +453,8 @@ func loginHandler() {
 		assertPinResolutionCount(t, dir, 1)
 
 		output, code = cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		assertTodoCountInOutput(t, output, 1)
 
@@ -506,8 +506,8 @@ func uploadHandler() {
 `)
 
 		output, code = cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		assertTodoCountInOutput(t, output, 2)
 
@@ -518,8 +518,8 @@ func uploadHandler() {
 		assertPinResolutionCount(t, dir, 1)
 
 		output, code = cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		assertTodoCountInOutput(t, output, 1)
 
@@ -589,8 +589,8 @@ func requestHandler() {
 `)
 
 		output, code = cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		assertTodoCountInOutput(t, output, 4)
 
@@ -706,8 +706,8 @@ func walletHandler() {
 `)
 
 		output, code = cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		assertTodoCountInOutput(t, output, 9)
 
@@ -1126,8 +1126,8 @@ func a() { doSomething() }
 </main>`)
 
 		output, code := cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		if !strings.Contains(output, "deleted from disk") {
 			t.Fatalf("output should mention deletion, got: %s", output)
@@ -1208,8 +1208,8 @@ func a() { doSomething() }
 `)
 
 		output, code := cli.Run([]string{"todo"}, dir)
-		if code != 0 {
-			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
 		}
 		if !strings.Contains(output, "deleted from disk") {
 			t.Fatalf("output should mention deletion, got: %s", output)
@@ -1533,6 +1533,102 @@ func handleRequest() {
 		}
 		if strings.Contains(output, "=== Spec:") {
 			t.Fatalf("output should not contain spec section for unlinked marker, got: %s", output)
+		}
+	})
+}
+
+func TestCLITodoExitCodes(t *testing.T) {
+	t.Run("clean_todo_exits_0", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() {}
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+
+		_, code := cli.Run([]string{"todo"}, dir)
+		if code != 0 {
+			t.Fatalf("clean todo should exit 0, got %d", code)
+		}
+	})
+
+	t.Run("drift_todo_exits_1", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomethingElse() }
+`+testutil.MarkerEnd("m1")+`
+`)
+
+		_, code := cli.Run([]string{"todo"}, dir)
+		if code != 1 {
+			t.Fatalf("drift todo should exit 1, got %d", code)
+		}
+	})
+
+	t.Run("error_todo_exits_2", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+
+		_, code := cli.Run([]string{"todo"}, dir)
+		if code != 2 {
+			t.Fatalf("error todo should exit 2, got %d", code)
+		}
+	})
+}
+
+func TestCLIResetConfirmation(t *testing.T) {
+	t.Run("reset_prints_confirmation", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomethingElse() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+
+		output, code := cli.Run([]string{"reset", "m1", "main.s1"}, dir)
+		if code != 0 {
+			t.Fatalf("reset should exit 0, got %d", code)
+		}
+		if !strings.Contains(output, "Resolved:") {
+			t.Fatalf("output should contain 'Resolved:', got: %s", output)
+		}
+		if !strings.Contains(output, "m1") {
+			t.Fatalf("output should contain marker id, got: %s", output)
+		}
+		if !strings.Contains(output, "main.s1") {
+			t.Fatalf("output should contain spec id, got: %s", output)
+		}
+		if !strings.Contains(output, "Baseline updated.") {
+			t.Fatalf("output should contain 'Baseline updated.', got: %s", output)
 		}
 	})
 }

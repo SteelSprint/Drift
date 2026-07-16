@@ -49,7 +49,10 @@ func Run(args []string, dir string) (string, int) {
 	case "todo":
 		state, err := orch.Todo()
 		if err != nil {
-			return err.Error(), 1
+			return err.Error(), 2
+		}
+		if len(state.Todos) > 0 {
+			return formatTodo(state), 1
 		}
 		return formatTodo(state), 0
 
@@ -75,7 +78,7 @@ func Run(args []string, dir string) (string, int) {
 		if err != nil {
 			return err.Error(), 1
 		}
-		return "", 0
+		return fmt.Sprintf("Resolved: %s → %s. Baseline updated.", args[1], args[2]), 0
 
 	// D! id=crfmt range-end
 	// D! id=clfmt range-start

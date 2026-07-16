@@ -540,3 +540,141 @@ func TestOrchestratorLink(t *testing.T) {
 		}
 	})
 }
+
+func TestOrchestratorUnlink(t *testing.T) {
+	t.Run("unlink_removes_link", func(t *testing.T) {
+		specs := []core.Spec{testutil.NewSpec("s1", "h1")}
+		markers := []core.Marker{testutil.NewMarker("m1", "h2")}
+		links := []core.Link{testutil.NewLink("s1", "m1")}
+		pinState := pinstore.PinState{
+			Specs:   specs,
+			Markers: markers,
+			Links:   links,
+		}
+		pin := &fakePinStore{state: pinState}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(pin, scanner)
+
+		err := orch.Unlink("m1", "s1")
+		testutil.AssertNoError(t, err)
+
+		if len(pin.saved) != 1 {
+			t.Fatalf("expected 1 save, got %d", len(pin.saved))
+		}
+		saved := pin.saved[0]
+		if len(saved.Links) != 0 {
+			t.Fatalf("expected 0 links after unlink, got %d", len(saved.Links))
+		}
+		if len(saved.Specs) != 1 {
+			t.Fatalf("specs should be preserved, got %d", len(saved.Specs))
+		}
+		if len(saved.Markers) != 1 {
+			t.Fatalf("markers should be preserved, got %d", len(saved.Markers))
+		}
+	})
+
+	t.Run("unlink_nonexistent_link_errors", func(t *testing.T) {
+		specs := []core.Spec{testutil.NewSpec("s1", "h1")}
+		markers := []core.Marker{testutil.NewMarker("m1", "h2")}
+		pinState := pinstore.PinState{
+			Specs:   specs,
+			Markers: markers,
+		}
+		pin := &fakePinStore{state: pinState}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(pin, scanner)
+
+		err := orch.Unlink("m1", "s1")
+		if err == nil {
+			t.Fatalf("expected error for nonexistent link")
+		}
+		testutil.AssertErrorWraps(t, err, orchestrator.ErrUnlinkNotFound)
+	})
+
+	t.Run("unlink_removes_resolution_state", func(t *testing.T) {
+		specs := []core.Spec{testutil.NewSpec("s1", "h1")}
+		markers := []core.Marker{testutil.NewMarker("m1", "h2")}
+		links := []core.Link{testutil.NewLink("s1", "m1")}
+		resolutions := []core.ResolutionState{
+			{SpecID: "s1", MarkerID: "m1", CurrentSpecHash: "h1", CurrentMarkerHash: "h2"},
+		}
+		pinState := pinstore.PinState{
+			Specs:           specs,
+			Markers:         markers,
+			Links:           links,
+			ResolutionState: resolutions,
+		}
+		pin := &fakePinStore{state: pinState}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(pin, scanner)
+
+		err := orch.Unlink("m1", "s1")
+		testutil.AssertNoError(t, err)
+
+		saved := pin.saved[0]
+		if len(saved.ResolutionState) != 0 {
+			t.Fatalf("expected 0 resolutions after unlink, got %d", len(saved.ResolutionState))
+		}
+	})
+
+	t.Run("unlink_preserves_other_links_and_resolutions", func(t *testing.T) {
+		specs := []core.Spec{testutil.NewSpec("s1", "h1"), testutil.NewSpec("s2", "h3")}
+		markers := []core.Marker{testutil.NewMarker("m1", "h2"), testutil.NewMarker("m2", "h4")}
+		links := []core.Link{
+			testutil.NewLink("s1", "m1"),
+			testutil.NewLink("s2", "m2"),
+		}
+		resolutions := []core.ResolutionState{
+			{SpecID: "s1", MarkerID: "m1", CurrentSpecHash: "h1", CurrentMarkerHash: "h2"},
+			{SpecID: "s2", MarkerID: "m2", CurrentSpecHash: "h3", CurrentMarkerHash: "h4"},
+		}
+		pinState := pinstore.PinState{
+			Specs:           specs,
+			Markers:         markers,
+			Links:           links,
+			ResolutionState: resolutions,
+		}
+		pin := &fakePinStore{state: pinState}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(pin, scanner)
+
+		err := orch.Unlink("m1", "s1")
+		testutil.AssertNoError(t, err)
+
+		saved := pin.saved[0]
+		if len(saved.Links) != 1 {
+			t.Fatalf("expected 1 link after unlink, got %d", len(saved.Links))
+		}
+		if saved.Links[0].SpecID != "s2" || saved.Links[0].MarkerID != "m2" {
+			t.Fatalf("remaining link should be s2/m2, got %+v", saved.Links[0])
+		}
+		if len(saved.ResolutionState) != 1 {
+			t.Fatalf("expected 1 resolution after unlink, got %d", len(saved.ResolutionState))
+		}
+		if saved.ResolutionState[0].SpecID != "s2" || saved.ResolutionState[0].MarkerID != "m2" {
+			t.Fatalf("remaining resolution should be for s2/m2, got %+v", saved.ResolutionState[0])
+		}
+	})
+
+	t.Run("unlink_pin_load_error", func(t *testing.T) {
+		pin := &fakePinStore{loadErr: pinstore.ErrPinNotFound}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(pin, scanner)
+		err := orch.Unlink("m1", "s1")
+		testutil.AssertErrorWraps(t, err, pinstore.ErrPinNotFound)
+	})
+
+	t.Run("unlink_save_error", func(t *testing.T) {
+		links := []core.Link{testutil.NewLink("s1", "m1")}
+		pinState := pinstore.PinState{
+			Links: links,
+		}
+		pin := &fakePinStore{state: pinState, saveErr: errors.New("save failed")}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(pin, scanner)
+		err := orch.Unlink("m1", "s1")
+		if err == nil {
+			t.Fatalf("expected error from save failure")
+		}
+	})
+}

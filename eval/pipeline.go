@@ -249,7 +249,7 @@ A subject LLM was given a task and asked to use driftpin (a spec-drift tool) end
 
 2. **The subject's workspace** (its completed project): `+"`%s`"+`
    - Check `+"`main.pin.xml`"+` — is it present? Well-structured? Does it use the module/import system?
-   - Run `+"`drift todo`"+` from inside the workspace — does it report "No changes detected."? (Clean = good)
+   - Run `+"`drift todo`"+` from inside the workspace — does it report "No changes detected." (all specs, markers, and links in sync)? (Clean = good)
    - Check `+"`*.pin.xml`"+` files — are specs meaningful or boilerplate?
    - Check markers (`+"`D! id=...`"+`) in code — are they placed at meaningful locations?
    - Check links — are markers linked to specs?

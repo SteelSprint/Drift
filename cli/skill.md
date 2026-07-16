@@ -65,7 +65,9 @@ The marker pattern is a regex: `D!\s+id=(\S+)`. It can appear in any comment sty
 |---|---|
 | `drift init` | Create `drift.pin` and `main.pin.xml` template. |
 | `drift todo` | Scan specs and markers, report drift. Does not modify `drift.pin`. |
+| `drift list` | Show all specs, markers, links, and sync state. Read-only. |
 | `drift link <marker> <module.spec>` | Connect a marker to a spec. Both must exist on disk. |
+| `drift unlink <marker> <module.spec>` | Remove a link between a marker and a spec. Also clears resolution state for that edge. |
 | `drift reset <marker> <module.spec>` | Mark a drifted edge as resolved. Collapses baselines when all edges for a node are resolved. |
 | `drift help` | Show command reference with examples. |
 | `drift skill` | Print this guide (for LLM agents learning the tool). |
@@ -74,7 +76,7 @@ The marker pattern is a regex: `D!\s+id=(\S+)`. It can appear in any comment sty
 
 `drift` SHA1-hashes spec content (the text inside `<spec>` elements) and marker content (the 10 lines following the marker line). These hashes are stored as baselines in `drift.pin`. On each `drift todo`, current hashes are compared against baselines:
 
-- **No drift**: All hashes match → "No drift: N specs, M markers, K links in sync."
+- **No drift**: All hashes match → "No changes detected. N specs, M markers, K links in sync."
 - **Marker changed**: The code near a marker was modified. Check if it still matches the spec.
 - **Spec changed**: The spec text was modified. Check if the code still implements it.
 - **Both changed**: Both sides changed. Verify alignment on both sides.

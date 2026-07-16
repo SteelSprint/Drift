@@ -72,6 +72,8 @@ This validates that both the marker and spec exist, then persists the link. Link
 | `drift init` | Creates `drift.pin` and a starter `main.pin.xml` template. Required before other commands. |
 | `drift todo` | Scans the filesystem, reconciles with `drift.pin`, and surfaces any drift as a todo list. Does not modify `drift.pin`. |
 | `drift link <marker> <module.spec>` | Declares a link between a marker and a spec term. Validates both exist and the link isn't a duplicate. Saves specs, markers, and the new link to `drift.pin`. |
+| `drift unlink <marker> <module.spec>` | Removes a link between a marker and a spec term. Also clears any resolution state for that edge. |
+| `drift list` | Shows all specs, markers, links, and sync state. Read-only. |
 | `drift reset <marker> <module.spec>` | Marks a specific edge as resolved. Saves updated state to `drift.pin`. If all edges for a node are resolved, baselines collapse automatically. |
 | `drift help` | Prints command reference with marker syntax, spec file format, and examples. |
 | `drift skill` | Prints a comprehensive guide for LLM agents covering the full workflow, module/import system, and drift detection model. |
@@ -103,7 +105,7 @@ Edit main.pin.xml to add your specs, then place D! id=<markerid> markers in your
 Run `drift skill` for a comprehensive guide.
 
 $ drift todo
-No drift: 1 specs, 1 markers, 0 links in sync.
+No changes detected. 1 specs, 1 markers, 0 links in sync.
 ```
 
 The scanner discovers the spec and marker. Since they're new, baselines are set to current hashes — no drift. Link the marker to the spec:
@@ -131,14 +133,14 @@ Then you mark the edge as resolved:
 $ drift reset 4hy7fh3h core.validate_input
 ```
 
-Since the marker has no more unchecked specs, and the spec has no more unchecked markers, the baselines collapse — `drift.pin` is updated with the new hashes. The next `drift todo` will report "No drift: ..."
+Since the marker has no more unchecked specs, and the spec has no more unchecked markers, the baselines collapse — `drift.pin` is updated with the new hashes. The next `drift todo` will report "No changes detected: ..."
 
 ## Drift detection output
 
 When there is no drift, `drift todo` distinguishes between empty and synced:
 
 - **Empty** (no specs or markers registered): `Nothing to check: no specs or markers registered.`
-- **Synced**: `No drift: N specs, M markers, K links in sync.`
+- **Synced**: `No changes detected. N specs, M markers, K links in sync.`
 
 When there is drift, it prints the count of changed markers and specs, then lists each todo item with:
 - The edge (marker ↔ spec)
@@ -230,7 +232,7 @@ Since the marker has no more unchecked specs, and the spec has no more unchecked
 </drift>
 ```
 
-Back to clean state — baselines match current content, no resolution entries. The next `drift todo` will report "No drift: 1 specs, 1 markers, 1 links in sync."
+Back to clean state — baselines match current content, no resolution entries. The next `drift todo` will report "No changes detected. 1 specs, 1 markers, 1 links in sync."
 
 ## drift.ignore
 

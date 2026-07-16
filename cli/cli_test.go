@@ -43,8 +43,8 @@ func TestCLIInit(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
 		}
-		if !strings.HasPrefix(output, "No drift:") {
-			t.Fatalf("output = %q, want \"No drift:\" prefix", output)
+		if !strings.HasPrefix(output, "No changes detected.") {
+			t.Fatalf("output = %q, want \"No changes detected.\" prefix", output)
 		}
 	})
 
@@ -156,8 +156,8 @@ func handleRequest() {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
 		}
-		if !strings.HasPrefix(output, "No drift:") {
-			t.Fatalf("output = %q, want \"No drift:\" prefix", output)
+		if !strings.HasPrefix(output, "No changes detected.") {
+			t.Fatalf("output = %q, want \"No changes detected.\" prefix", output)
 		}
 	})
 
@@ -185,8 +185,8 @@ func handleRequest() {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
 		}
-		if !strings.HasPrefix(output, "No drift:") {
-			t.Fatalf("output = %q, want \"No drift:\" prefix", output)
+		if !strings.HasPrefix(output, "No changes detected.") {
+			t.Fatalf("output = %q, want \"No changes detected.\" prefix", output)
 		}
 	})
 
@@ -265,8 +265,8 @@ func handleRequest() {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
 		}
-		if !strings.HasPrefix(output, "No drift:") {
-			t.Fatalf("output = %q, want \"No drift:\" prefix", output)
+		if !strings.HasPrefix(output, "No changes detected.") {
+			t.Fatalf("output = %q, want \"No changes detected.\" prefix", output)
 		}
 	})
 
@@ -295,8 +295,8 @@ func validate() { check() }
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
 		}
-		if !strings.HasPrefix(output, "No drift:") {
-			t.Fatalf("output = %q, want \"No drift:\" prefix", output)
+		if !strings.HasPrefix(output, "No changes detected.") {
+			t.Fatalf("output = %q, want \"No changes detected.\" prefix", output)
 		}
 	})
 }
@@ -372,8 +372,8 @@ func a() {}
 func assertTodoCountInOutput(t *testing.T, output string, want int) {
 	t.Helper()
 	if want == 0 {
-		if !strings.HasPrefix(output, "No drift:") && !strings.HasPrefix(output, "Nothing to check:") {
-			t.Fatalf("output = %q, want \"No drift:\" or \"Nothing to check:\" prefix", output)
+		if !strings.HasPrefix(output, "No changes detected.") && !strings.HasPrefix(output, "Nothing to check:") {
+			t.Fatalf("output = %q, want \"No changes detected.\" or \"Nothing to check:\" prefix", output)
 		}
 		return
 	}
@@ -731,4 +731,288 @@ func walletHandler() {
 			t.Fatalf("expected 0 resolutions after full collapse, got %d", len(state.ResolutionState))
 		}
 	})
+}
+
+func TestCLIUnlink(t *testing.T) {
+	t.Run("unlink_removes_link", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="validate_input">input must be validated</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+func handleRequest() {
+	doSomething()
+}
+`)
+
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "abc123", "main.validate_input"}, dir)
+
+		output, code := cli.Run([]string{"unlink", "abc123", "main.validate_input"}, dir)
+		if code != 0 {
+			t.Fatalf("unlink failed, exit code = %d, output: %s", code, output)
+		}
+		if !strings.Contains(output, "Unlinked") {
+			t.Fatalf("output should contain 'Unlinked', got: %s", output)
+		}
+
+		store := pinstore.NewFilePinStore(dir)
+		state, err := store.Load()
+		testutil.AssertNoError(t, err)
+		if len(state.Links) != 0 {
+			t.Fatalf("expected 0 links after unlink, got %d", len(state.Links))
+		}
+	})
+
+	t.Run("unlink_nonexistent_link_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+func a() {}
+`)
+
+		cli.Run([]string{"todo"}, dir)
+
+		output, code := cli.Run([]string{"unlink", "m1", "main.s1"}, dir)
+		if code == 0 {
+			t.Fatalf("expected non-zero exit code for unlinking nonexistent link, got 0, output: %s", output)
+		}
+		if !strings.Contains(strings.ToLower(output), "no link") {
+			t.Fatalf("error should mention 'no link', got: %s", output)
+		}
+	})
+
+	t.Run("unlink_missing_args_returns_usage", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		cli.Run([]string{"init"}, dir)
+
+		output, code := cli.Run([]string{"unlink"}, dir)
+		if code != 1 {
+			t.Fatalf("expected exit code 1, got %d", code)
+		}
+		if !strings.Contains(output, "usage: drift unlink") {
+			t.Fatalf("output should contain usage, got: %s", output)
+		}
+	})
+
+	t.Run("unlink_without_init_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+
+		output, code := cli.Run([]string{"unlink", "m1", "main.s1"}, dir)
+		if code == 0 {
+			t.Fatalf("expected non-zero exit code, got 0, output: %s", output)
+		}
+	})
+
+	t.Run("unlink_removes_resolution_state", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+func a() { doSomething() }
+`)
+
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+func a() { doSomethingElse() }
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"reset", "m1", "main.s1"}, dir)
+
+		store := pinstore.NewFilePinStore(dir)
+		state, _ := store.Load()
+		if len(state.ResolutionState) != 0 {
+			t.Fatalf("expected 0 resolutions after reset-collapse, got %d", len(state.ResolutionState))
+		}
+
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+func a() { anotherChange() }
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"reset", "m1", "main.s1"}, dir)
+
+		store = pinstore.NewFilePinStore(dir)
+		state, _ = store.Load()
+		assertPinResolutionCount(t, dir, 0)
+
+		cli.Run([]string{"unlink", "m1", "main.s1"}, dir)
+
+		store = pinstore.NewFilePinStore(dir)
+		state, _ = store.Load()
+		if len(state.Links) != 0 {
+			t.Fatalf("expected 0 links after unlink, got %d", len(state.Links))
+		}
+		if len(state.ResolutionState) != 0 {
+			t.Fatalf("expected 0 resolutions after unlink, got %d", len(state.ResolutionState))
+		}
+	})
+}
+
+func TestCLIList(t *testing.T) {
+	t.Run("list_no_init_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+
+		output, code := cli.Run([]string{"list"}, dir)
+		if code == 0 {
+			t.Fatalf("expected non-zero exit code, got 0, output: %s", output)
+		}
+	})
+
+	t.Run("list_empty_shows_no_specs", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		cli.Run([]string{"init"}, dir)
+
+		output, code := cli.Run([]string{"list"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "No specs or markers registered") {
+			t.Fatalf("output should mention no specs, got: %s", output)
+		}
+	})
+
+	t.Run("list_shows_specs_markers_links", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="validate_input">input must be validated</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("abc123")+`
+func handleRequest() {
+	doSomething()
+}
+`)
+
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "abc123", "main.validate_input"}, dir)
+
+		output, code := cli.Run([]string{"list"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "Specs (1):") {
+			t.Fatalf("output should show 1 spec, got: %s", output)
+		}
+		if !strings.Contains(output, "Markers (1):") {
+			t.Fatalf("output should show 1 marker, got: %s", output)
+		}
+		if !strings.Contains(output, "Links (1):") {
+			t.Fatalf("output should show 1 link, got: %s", output)
+		}
+		if !strings.Contains(output, "main.validate_input") {
+			t.Fatalf("output should contain spec ID, got: %s", output)
+		}
+		if !strings.Contains(output, "abc123") {
+			t.Fatalf("output should contain marker ID, got: %s", output)
+		}
+		if !strings.Contains(output, "[synced]") {
+			t.Fatalf("output should show synced status, got: %s", output)
+		}
+	})
+
+	t.Run("list_shows_drifted_status", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+func a() { doSomething() }
+`)
+
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+func a() { doSomethingElse() }
+`)
+
+		output, code := cli.Run([]string{"list"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "[DRIFTED]") {
+			t.Fatalf("output should show drifted status, got: %s", output)
+		}
+	})
+
+	t.Run("list_shows_unlinked", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+  <spec id="s2">spec two</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerLine("m1")+`
+func a() { doSomething() }
+`)
+		testutil.WriteCodeFile(t, dir, "other.go", testutil.MarkerLine("m2")+`
+func b() { doOther() }
+`)
+
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+
+		output, code := cli.Run([]string{"list"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "[unlinked]") {
+			t.Fatalf("output should show unlinked items, got: %s", output)
+		}
+	})
+}
+
+func TestCLIPerSubcommandHelp(t *testing.T) {
+	dir := t.TempDir()
+	writeMainPin(t, dir, `<main></main>`)
+	cli.Run([]string{"init"}, dir)
+
+	tests := []struct {
+		cmd   []string
+		usage string
+	}{
+		{[]string{"link", "--help"}, "Usage: drift link"},
+		{[]string{"link", "-h"}, "Usage: drift link"},
+		{[]string{"reset", "--help"}, "Usage: drift reset"},
+		{[]string{"reset", "-h"}, "Usage: drift reset"},
+		{[]string{"unlink", "--help"}, "Usage: drift unlink"},
+		{[]string{"unlink", "-h"}, "Usage: drift unlink"},
+		{[]string{"list", "--help"}, "Usage: drift list"},
+		{[]string{"list", "-h"}, "Usage: drift list"},
+	}
+
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.cmd, " "), func(t *testing.T) {
+			output, code := cli.Run(tt.cmd, dir)
+			if code != 0 {
+				t.Fatalf("expected exit code 0 for %s, got %d, output: %s", strings.Join(tt.cmd, " "), code, output)
+			}
+			if !strings.Contains(output, tt.usage) {
+				t.Fatalf("output should contain %q, got: %s", tt.usage, output)
+			}
+		})
+	}
 }

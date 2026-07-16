@@ -53,6 +53,9 @@ func Run(args []string, dir string) (string, int) {
 
 	// D! id=crfmt
 	case "reset":
+		if len(args) >= 2 && (args[1] == "--help" || args[1] == "-h") {
+			return "Usage: drift reset <marker> <module.spec>\n\nMark a drifted edge as resolved. Collapses baselines when all edges for a node are resolved.\n\nExample: drift reset validate_input core.validate_input", 0
+		}
 		if len(args) < 3 {
 			return "usage: drift reset <marker> <module.spec>\n\nExample: drift reset validate_input core.validate_input", 1
 		}
@@ -64,6 +67,9 @@ func Run(args []string, dir string) (string, int) {
 
 	// D! id=clfmt
 	case "link":
+		if len(args) >= 2 && (args[1] == "--help" || args[1] == "-h") {
+			return "Usage: drift link <marker> <module.spec>\n\nConnect a marker to a spec. Both must exist on disk.\n\nExample: drift link validate_input core.validate_input", 0
+		}
 		if len(args) < 3 {
 			return "usage: drift link <marker> <module.spec>\n\nExample: drift link validate_input core.validate_input", 1
 		}
@@ -72,6 +78,31 @@ func Run(args []string, dir string) (string, int) {
 			return err.Error(), 1
 		}
 		return fmt.Sprintf("Linked marker %q to spec %q", args[1], args[2]), 0
+
+	// D! id=cunlnk
+	case "unlink":
+		if len(args) >= 2 && (args[1] == "--help" || args[1] == "-h") {
+			return "Usage: drift unlink <marker> <module.spec>\n\nRemove a link between a marker and a spec. Also clears any resolution state for that edge.\n\nExample: drift unlink validate_input core.validate_input", 0
+		}
+		if len(args) < 3 {
+			return "usage: drift unlink <marker> <module.spec>\n\nExample: drift unlink validate_input core.validate_input", 1
+		}
+		err := orch.Unlink(args[1], args[2])
+		if err != nil {
+			return err.Error(), 1
+		}
+		return fmt.Sprintf("Unlinked marker %q from spec %q", args[1], args[2]), 0
+
+	// D! id=clst
+	case "list":
+		if len(args) >= 2 && (args[1] == "--help" || args[1] == "-h") {
+			return "Usage: drift list\n\nShow all specs, markers, links, and sync state.", 0
+		}
+		state, err := orch.Todo()
+		if err != nil {
+			return err.Error(), 1
+		}
+		return formatList(state), 0
 
 	// D! id=cskill
 	case "skill":
@@ -116,7 +147,7 @@ func formatTodo(state core.EvaluatedState) string {
 		if nSpecs == 0 && nMarkers == 0 {
 			return "Nothing to check: no specs or markers registered.\nCreate spec files (*.pin.xml) and place " + markerSyntax + " markers in your code,\nthen run `drift link <marker> <module.spec>` to connect them."
 		}
-		return fmt.Sprintf("No drift: %d specs, %d markers, %d links in sync.", nSpecs, nMarkers, nLinks)
+		return fmt.Sprintf("No changes detected. %d specs, %d markers, %d links in sync.", nSpecs, nMarkers, nLinks)
 	}
 
 	var sb strings.Builder
@@ -175,4 +206,80 @@ func formatTodo(state core.EvaluatedState) string {
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// D! id=ofmtl
+func formatList(state core.EvaluatedState) string {
+	if len(state.Specs) == 0 && len(state.Markers) == 0 {
+		return "No specs or markers registered.\nRun `drift init` to get started, then create spec files (*.pin.xml) and place " + markerSyntax + " markers in your code."
+	}
+
+	driftedEdges := make(map[string]bool)
+	for _, todo := range state.Todos {
+		driftedEdges[todo.MarkerID+"\x00"+todo.SpecID] = true
+	}
+
+	linkedSpecs := make(map[string]bool)
+	linkedMarkers := make(map[string]bool)
+	for _, link := range state.Links {
+		linkedSpecs[link.SpecID] = true
+		linkedMarkers[link.MarkerID] = true
+	}
+
+	var sb strings.Builder
+
+	sortedSpecs := make([]core.Spec, len(state.Specs))
+	copy(sortedSpecs, state.Specs)
+	sortSpecsByID(sortedSpecs)
+
+	sb.WriteString(fmt.Sprintf("Specs (%d):\n", len(sortedSpecs)))
+	for _, spec := range sortedSpecs {
+		linkFlag := ""
+		if !linkedSpecs[spec.ID] {
+			linkFlag = " [unlinked]"
+		}
+		sb.WriteString(fmt.Sprintf("  %-30s %s:%d%s\n", spec.ID, spec.Filepath, spec.LineNumber, linkFlag))
+	}
+
+	sortedMarkers := make([]core.Marker, len(state.Markers))
+	copy(sortedMarkers, state.Markers)
+	sortMarkersByID(sortedMarkers)
+
+	sb.WriteString(fmt.Sprintf("\nMarkers (%d):\n", len(sortedMarkers)))
+	for _, marker := range sortedMarkers {
+		linkFlag := ""
+		if !linkedMarkers[marker.ID] {
+			linkFlag = " [unlinked]"
+		}
+		sb.WriteString(fmt.Sprintf("  %-30s %s:%d%s\n", marker.ID, marker.Filepath, marker.LineNumber, linkFlag))
+	}
+
+	if len(state.Links) > 0 {
+		sb.WriteString(fmt.Sprintf("\nLinks (%d):\n", len(state.Links)))
+		for _, link := range state.Links {
+			status := "[synced]"
+			if driftedEdges[link.MarkerID+"\x00"+link.SpecID] {
+				status = "[DRIFTED]"
+			}
+			sb.WriteString(fmt.Sprintf("  %-15s → %-30s %s\n", link.MarkerID, link.SpecID, status))
+		}
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func sortSpecsByID(specs []core.Spec) {
+	for i := 1; i < len(specs); i++ {
+		for j := i; j > 0 && specs[j-1].ID > specs[j].ID; j-- {
+			specs[j], specs[j-1] = specs[j-1], specs[j]
+		}
+	}
+}
+
+func sortMarkersByID(markers []core.Marker) {
+	for i := 1; i < len(markers); i++ {
+		for j := i; j > 0 && markers[j-1].ID > markers[j].ID; j-- {
+			markers[j], markers[j-1] = markers[j-1], markers[j]
+		}
+	}
 }

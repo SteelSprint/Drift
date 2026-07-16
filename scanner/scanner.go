@@ -15,7 +15,7 @@ import (
 
 const markerLineWindow = 10
 
-// #F scode
+// D! id=scode
 var codeExtensions = map[string]bool{
 	".go": true, ".py": true, ".js": true, ".ts": true,
 	".jsx": true, ".tsx": true, ".java": true, ".c": true,
@@ -25,7 +25,7 @@ var codeExtensions = map[string]bool{
 	".lua": true, ".dart": true, ".vue": true, ".svelte": true,
 }
 
-var markerPattern = regexp.MustCompile(`#F\s+(\S+)`)
+var markerPattern = regexp.MustCompile(`D!\s+id=(\S+)`)
 
 type ScanResult struct {
 	Specs   []core.Spec
@@ -78,7 +78,7 @@ type specElem struct {
 	Content string     `xml:",innerxml"`
 }
 
-// #F sspec
+// D! id=sspec
 func (s *FileScanner) scanSpecs() ([]core.Spec, error) {
 	mainPath := filepath.Join(s.dir, "main.pin.xml")
 	if _, err := os.Stat(mainPath); os.IsNotExist(err) {
@@ -151,7 +151,7 @@ func (l *importLoader) load(absPath string) ([]core.Spec, error) {
 		moduleName = "main"
 	} else {
 		moduleName = file.Name
-		// #F smname
+		// D! id=smname
 		if moduleName == "" {
 			return nil, fmt.Errorf("%s: module element missing name attribute", absPath)
 		}
@@ -174,12 +174,12 @@ func (l *importLoader) load(absPath string) ([]core.Spec, error) {
 				break
 			}
 		}
-		// #F smiss
+		// D! id=smiss
 		if id == "" {
 			return nil, fmt.Errorf("%s: spec element missing id attribute", absPath)
 		}
 		qualifiedID := moduleName + "." + id
-		// #F sdups
+		// D! id=sdups
 		if l.seenIDs[qualifiedID] {
 			return nil, fmt.Errorf("duplicate spec id %q", qualifiedID)
 		}
@@ -210,7 +210,7 @@ func (l *importLoader) load(absPath string) ([]core.Spec, error) {
 	return specs, nil
 }
 
-// #F smark
+// D! id=smark
 func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
 	var markers []core.Marker
 	seenIDs := make(map[string]bool)
@@ -238,7 +238,7 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 		for _, marker := range fileMarkers {
-			// #F sdupm
+			// D! id=sdupm
 			if seenIDs[marker.ID] {
 				return fmt.Errorf("duplicate marker shortcode %q", marker.ID)
 			}
@@ -293,7 +293,7 @@ func parseMarkerFile(path string) ([]core.Marker, error) {
 	return markers, nil
 }
 
-// #F shash
+// D! id=shash
 func sha1Hex(content string) string {
 	h := sha1.Sum([]byte(content))
 	return fmt.Sprintf("%x", h)

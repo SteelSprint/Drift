@@ -114,7 +114,7 @@ Running `drift todo` in `services/auth/` uses `services/auth/main.pin.xml` and `
 | Spec struct | `Spec.ID` = full qualified string. `Spec.Module` = module name. |
 | drift.pin storage | Module not stored separately — derived from qualified ID. |
 | Refs | `<ref spec="module.specid">text</ref>` — inline in prose, hashed as content. Not parsed for drift yet. |
-| Markers | `#F <shortcode>` comment lines in code files. Shortcodes are bare (not module-qualified). |
+| Markers | `D! id=<shortcode>` comment lines in code files. Shortcodes are bare (not module-qualified). |
 | Marker-to-spec links | `drift link <marker> <module.spec>` — space-separated. |
 | drift.ignore | Applies to marker discovery only (code files). Spec discovery is via imports. |
 | Marker hashing | Next 10 lines from marker line |
@@ -203,7 +203,7 @@ type Scanner interface {
 
 1. Walk working directory tree for code files (`.go`, `.py`, `.js`, etc.).
 2. Apply `drift.ignore` patterns.
-3. Find lines matching `#F <shortcode>` pattern.
+3. Find lines matching `D! id=<shortcode>` pattern.
 4. SHA1 hash the next 10 lines from the marker line.
 5. Record: shortcode (bare ID), filepath, line number, hash.
 
@@ -244,69 +244,14 @@ Project's own spec files migrate from `<specs>` to `<module>` format:
 
 `main.pin.xml` (new): entry point importing all 5 modules.
 
-`#F` markers in `.go` files: no change (shortcodes stay bare).
+`D!` markers in `.go` files: no change (shortcodes stay bare).
 `drift.pin`: rebuilt via `drift init` + re-link all markers with qualified spec IDs.
 
 ## Steel cable iterations
 
-### Steel cables 1-6: ✓ DONE
+### Steel cables 1-7: ✓ DONE
 
-Core algorithm, pin store, scanner (dir-walk), orchestrator, CLI, many-to-many topologies. All 190+ tests pass, vet clean.
-
-### Steel cable 7: Module/import system ← CURRENT
-
-**Test plan (red first, then green):**
-
-`scanner_test.go` — rewrite:
-- `main.pin.xml` with direct specs (implicit "main" module) → specs have `main.specid`
-- `main.pin.xml` importing one module → specs from module with `module.specid`
-- `main.pin.xml` importing multiple modules → all specs discovered
-- Transitive imports: main → A → B → all loaded, specs from all three
-- Explicit visibility: module refs spec from unimported module → error
-- Diamond imports: A and B both import C, main imports A and B → C loaded once
-- Duplicate module names → error
-- Cycle: main → A → B → A → error with trace
-- Missing `main.pin.xml` → error
-- Import path not found → error
-- Spec missing `id` attribute → error
-- Duplicate spec IDs within same module → error
-- Same spec ID in different modules → OK (per-file scoping)
-- Marker discovery tests: unchanged (dir walk)
-- `drift.ignore` applies to markers only (not specs)
-
-`scanner_test.go` — marker tests stay:
-- 1 code file with 1 marker → correct shortcode/filepath/line/hash
-- Hash is SHA1 (deterministic)
-- 10-line marker hashing window
-- `drift.ignore` excludes files from marker scan
-
-`cli_test.go` — update:
-- All spec files use `<module>`/`<main>` format
-- `drift link m1 core.validate` (new syntax)
-- `drift reset m1 core.validate` (new syntax)
-- E2E: init → create main.pin.xml with module → create code with marker → todo → link → drift → reset
-
-`orchestrator_test.go` — update:
-- Qualified spec IDs in all test fixtures
-- Reconciliation with module-qualified IDs
-
-`pin_file_test.go` — update:
-- Qualified spec IDs in round-trip tests
-
-**Execution order:**
-1. Red: `scanner_test.go` (import graph tests)
-2. Red: `cli_test.go` (new syntax)
-3. Red: `orchestrator_test.go` (qualified IDs)
-4. Red: `pin_file_test.go` (qualified IDs)
-5. Green: `scanner.go` (import graph parser + cycle detection)
-6. Green: `cli.go` (new link/reset syntax)
-7. Green: `orchestrator.go` (find main.pin.xml)
-8. Green: `pin_file.go` (Spec.Module field)
-9. Migrate project specs (5 .pin.xml files + new main.pin.xml)
-10. Rebuild drift.pin (drift init + re-link)
-11. Run all tests → verify green
-12. `go vet` clean
-13. `drift todo` passes
+Core algorithm, pin store, scanner (import graph), orchestrator, CLI, many-to-many topologies, module/import system. All tests pass, vet clean.
 
 ### Steel cable 8: Ref-based drift (future)
 

@@ -6,7 +6,7 @@ When specs and their implementations change, `drift` informs your LLM. This give
 
 ## How it works
 
-`drift` asks you to save your specs in `*.pin.xml` files. Each file contains `<spec id="...">` elements that describe individual spec terms. `drift` then scans your code files for `#F <shortcode>` markers — short unique IDs placed in comments above the code that implements each spec term. Specs and markers form a many-to-many graph — a single spec term can be enforced by several markers, and a single marker can refer to several spec terms. Each link between a spec term and a marker is called an **edge**. When a change occurs on either side of an edge, `drift todo` surfaces one todo item per affected edge, with filepaths and line numbers where your LLM should check for drifts in specification.
+`drift` asks you to save your specs in `*.pin.xml` files. Each file contains `<spec id="...">` elements that describe individual spec terms. `drift` then scans your code files for `D! id=<shortcode>` markers — short unique IDs placed in comments above the code that implements each spec term. Specs and markers form a many-to-many graph — a single spec term can be enforced by several markers, and a single marker can refer to several spec terms. Each link between a spec term and a marker is called an **edge**. When a change occurs on either side of an edge, `drift todo` surfaces one todo item per affected edge, with filepaths and line numbers where your LLM should check for drifts in specification.
 
 `drift` hashes spec terms as well as markers (SHA1 of content), and saves those hashes inside `drift.pin`, which should be committed to git. This is an XML file that contains the hashes of specs and markers, the links between them, and a temporary resolution state area for partial todo-list resolutions. The algorithm manages this file itself — the user should refrain from touching `drift.pin` manually.
 
@@ -24,10 +24,10 @@ The scanner walks the project directory, parses each `*.pin.xml` file, extracts 
 
 ### Markers
 
-Markers are `#F <shortcode>` comment lines in code files (`.go`, `.py`, `.js`, `.ts`, `.java`, `.c`, `.rs`, etc.):
+Markers are `D! id=<shortcode>` comment lines in code files (`.go`, `.py`, `.js`, `.ts`, `.java`, `.c`, `.rs`, etc.):
 
 ```go
-// #F 4hy7fh3h
+// D! id=4hy7fh3h
 func handleRequest() {
     validateInput()
 }

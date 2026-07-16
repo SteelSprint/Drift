@@ -106,7 +106,7 @@ var (
 	ErrResetEdgeNotLinked      = errors.New("reset target edge not in links")
 )
 
-// #F cval
+// D! id=cval
 func (ctx CoreAlgorithmContext) Validate() error {
 	seenSpecIDs := make(map[string]bool, len(ctx.Specs))
 	for _, spec := range ctx.Specs {
@@ -157,7 +157,7 @@ func (ctx CoreAlgorithmContext) Validate() error {
 	return nil
 }
 
-// #F cscn
+// D! id=cscn
 func validateScanCoversAllNodes(scan Scan, specs []Spec, markers []Marker) error {
 	for _, spec := range specs {
 		if _, ok := scan.SpecHashes[spec.ID]; !ok {
@@ -210,7 +210,7 @@ func (algorithm *CoreAlgorithm) EvaluateState(ctx CoreAlgorithmContext) (Evaluat
 	}
 }
 
-// #F ctodo
+// D! id=ctodo
 func (algorithm *CoreAlgorithm) evaluateTodoAction(ctx CoreAlgorithmContext, action TodoAction) (EvaluatedState, error) {
 	if err := validateScanCoversAllNodes(action.Scan, ctx.Specs, ctx.Markers); err != nil {
 		return EvaluatedState{}, err
@@ -231,7 +231,7 @@ func (algorithm *CoreAlgorithm) evaluateTodoAction(ctx CoreAlgorithmContext, act
 	}, nil
 }
 
-// #F crst
+// D! id=crst
 func (algorithm *CoreAlgorithm) evaluateResetAction(ctx CoreAlgorithmContext, action ResetAction) (EvaluatedState, error) {
 	if err := validateScanCoversAllNodes(action.Scan, ctx.Specs, ctx.Markers); err != nil {
 		return EvaluatedState{}, err
@@ -270,7 +270,7 @@ func (algorithm *CoreAlgorithm) evaluateResetAction(ctx CoreAlgorithmContext, ac
 	}, nil
 }
 
-// #F ccol
+// D! id=ccol
 func collapseResolvedNodes(
 	links []Link,
 	specsByID map[string]*Spec,
@@ -348,7 +348,7 @@ func specHasAllEdgesChecked(
 	return true
 }
 
-// #F cedg
+// D! id=cedg
 func edgeIsUnchecked(
 	link Link,
 	specsByID map[string]*Spec,

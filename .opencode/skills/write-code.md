@@ -21,7 +21,7 @@ Do not implement by layer (e.g., all parser changes, then all validator changes,
 
 1. Pick a small set of related clauses (e.g., one new parser rule, its validation, its test case)
 2. For each clause in the set, run the inner loop (spec → test → code)
-3. Place `#F` markers in the code tracing back to the spec clauses you implemented
+3. Place `D!` markers in the code tracing back to the spec clauses you implemented
 4. Verify the skeleton works end-to-end: `filament check` passes, `go test ./...` passes
 5. Commit
 
@@ -65,7 +65,7 @@ When writing code that produces output (error messages, findings, status reports
 
 The LLM reading the output should never need external context to understand what went wrong, why it matters, or what to do next.
 
-After implementing, place a `#F` marker above the code that implements each clause. Use `filament add <clause_id>` to generate the marker line. Then resolve drift and verify: `filament check` passes, `go test ./...` passes.
+After implementing, place a `D!` marker above the code that implements each clause. Use `filament add <clause_id>` to generate the marker line. Then resolve drift and verify: `filament check` passes, `go test ./...` passes.
 
 ## Rules
 

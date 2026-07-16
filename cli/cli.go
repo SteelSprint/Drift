@@ -11,7 +11,7 @@ import (
 	"driftpin/scanner"
 )
 
-// #F cdisp
+// D! id=cdisp
 func Run(args []string, dir string) (string, int) {
 	if len(args) == 0 {
 		return "usage: drift <init|todo|reset <marker> <module.spec>|link <marker> <module.spec>>", 1
@@ -35,7 +35,7 @@ func Run(args []string, dir string) (string, int) {
 		}
 		return formatTodo(state), 0
 
-	// #F crfmt
+	// D! id=crfmt
 	case "reset":
 		if len(args) < 3 {
 			return "usage: drift reset <marker> <module.spec>", 1
@@ -46,7 +46,7 @@ func Run(args []string, dir string) (string, int) {
 		}
 		return "", 0
 
-	// #F clfmt
+	// D! id=clfmt
 	case "link":
 		if len(args) < 3 {
 			return "usage: drift link <marker> <module.spec>", 1
@@ -62,7 +62,7 @@ func Run(args []string, dir string) (string, int) {
 	}
 }
 
-// #F cfmt
+// D! id=cfmt
 func formatTodo(state core.EvaluatedState) string {
 	if len(state.Todos) == 0 {
 		return "No changes detected."

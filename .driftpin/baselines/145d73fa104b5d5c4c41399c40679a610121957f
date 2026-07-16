@@ -1,0 +1,9 @@
+var codeExtensions = map[string]bool{
+	".go": true, ".py": true, ".js": true, ".ts": true,
+	".jsx": true, ".tsx": true, ".java": true, ".c": true,
+	".cpp": true, ".h": true, ".hpp": true, ".rs": true,
+	".rb": true, ".php": true, ".swift": true, ".kt": true,
+	".cs": true, ".scala": true, ".sh": true, ".bash": true,
+	".lua": true, ".dart": true, ".vue": true, ".svelte": true,
+}
+

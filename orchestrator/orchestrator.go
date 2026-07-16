@@ -14,7 +14,7 @@ var (
 	ErrLinkSpecNotFound   = fmt.Errorf("link references unknown spec")
 	ErrLinkAlreadyExists  = fmt.Errorf("link already exists")
 	ErrUnlinkNotFound     = fmt.Errorf("no link found between marker and spec")
-	ErrOrphanNotFound     = fmt.Errorf("no spec or marker found in drift.pin")
+	ErrOrphanNotFound     = fmt.Errorf("no spec or marker found in state.xml")
 	ErrOrphanStillOnDisk  = fmt.Errorf("spec or marker is still on disk")
 	ErrOrphanHasLinks     = fmt.Errorf("spec or marker still has links")
 	ErrDiffEntityNotFound = fmt.Errorf("no spec or marker found for diff")

@@ -1,0 +1,30 @@
+func edgeIsUnchecked(
+	link Link,
+	specsByID map[string]*Spec,
+	markersByID map[string]*Marker,
+	resolutionStateByEdge map[string]ResolutionState,
+	scan Scan,
+) bool {
+	currentMarkerHash := scan.MarkerHashes[link.MarkerID]
+	currentSpecHash := scan.SpecHashes[link.SpecID]
+	marker := markersByID[link.MarkerID]
+	spec := specsByID[link.SpecID]
+	var markerBaseline, specBaseline string
+	if marker != nil {
+		markerBaseline = marker.Hash
+	}
+	if spec != nil {
+		specBaseline = spec.Hash
+	}
+	edgeIsConsistent := markerBaseline == currentMarkerHash && specBaseline == currentSpecHash
+	if edgeIsConsistent {
+		return false
+	}
+	if res, ok := resolutionStateByEdge[resolutionEdgeKey(link.MarkerID, link.SpecID)]; ok {
+		if res.CurrentMarkerHash == currentMarkerHash && res.CurrentSpecHash == currentSpecHash {
+			return false
+		}
+	}
+	return true
+}
+

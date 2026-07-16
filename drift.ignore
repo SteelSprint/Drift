@@ -12,3 +12,6 @@ eval/
 
 # Exclude VCS
 .git/
+
+# Exclude driftpin state directory
+.driftpin/

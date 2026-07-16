@@ -1,0 +1,4 @@
+func isPalindrome(s string) bool {
+	s = strings.ToLower(s)
+	return s == reverse(s)
+}

@@ -1,0 +1,40 @@
+func reconcileSpecs(pinned []core.Spec, scanned []core.Spec) ([]core.Spec, error) {
+	pinnedByID := make(map[string]core.Spec, len(pinned))
+	for _, s := range pinned {
+		pinnedByID[s.ID] = s
+	}
+
+	scannedByID := make(map[string]bool, len(scanned))
+	for _, s := range scanned {
+		scannedByID[s.ID] = true
+	}
+
+	result := make([]core.Spec, 0, len(scanned)+len(pinned))
+	for _, s := range scanned {
+		if pinned, ok := pinnedByID[s.ID]; ok {
+			result = append(result, core.Spec{
+				ID:         s.ID,
+				Hash:       pinned.Hash,
+				Filepath:   s.Filepath,
+				LineNumber: s.LineNumber,
+				Module:     s.Module,
+			})
+		} else {
+			result = append(result, s)
+		}
+	}
+	for id, p := range pinnedByID {
+		if !scannedByID[id] {
+			result = append(result, core.Spec{
+				ID:         p.ID,
+				Hash:       p.Hash,
+				Filepath:   p.Filepath,
+				LineNumber: p.LineNumber,
+				Module:     p.Module,
+				Deleted:    true,
+			})
+		}
+	}
+	return result, nil
+}
+

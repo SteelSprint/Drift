@@ -1,0 +1,1 @@
+All hashing uses SHA1 hex-encoded via crypto/sha1 and fmt percent-x formatting. The hash is deterministic across runs for identical content.

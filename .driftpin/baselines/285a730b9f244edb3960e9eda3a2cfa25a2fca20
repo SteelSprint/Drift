@@ -1,0 +1,5 @@
+func sha1Hex(content string) string {
+	h := sha1.Sum([]byte(content))
+	return fmt.Sprintf("%x", h)
+}
+

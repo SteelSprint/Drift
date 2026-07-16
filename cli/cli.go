@@ -43,7 +43,7 @@ func Run(args []string, dir string) (string, int) {
 			return err.Error(), 1
 		}
 		if err := writeInitFiles(dir); err != nil {
-			return fmt.Sprintf("Initialized drift.pin but failed to write template: %s", err.Error()), 0
+			return fmt.Sprintf("Initialized .driftpin/ but failed to write template: %s", err.Error()), 0
 		}
 		return "Initialized .driftpin/ and main.pin.xml\nEdit main.pin.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.", 0
 
@@ -60,7 +60,7 @@ func Run(args []string, dir string) (string, int) {
 	// D! id=crfmt range-start
 	case "reset":
 		if len(args) >= 2 && (args[1] == "--help" || args[1] == "-h") {
-			return "Usage:\n  drift reset <marker> <module.spec>  Resolve a drifted edge\n  drift reset <id>                Remove an orphaned (deleted, no links) spec/marker\n\nMark a drifted edge as resolved. Collapses baselines when all edges for a node are resolved.\nWhen a spec or marker has been deleted and has no links, use a single ID to remove it from drift.pin.\n\nExamples:\n  drift reset validate_input core.validate_input\n  drift reset main.deleted_spec", 0
+			return "Usage:\n  drift reset <marker> <module.spec>  Resolve a drifted edge\n  drift reset <id>                Remove an orphaned (deleted, no links) spec/marker\n\nMark a drifted edge as resolved. Collapses baselines when all edges for a node are resolved.\nWhen a spec or marker has been deleted and has no links, use a single ID to remove it from state.xml.\n\nExamples:\n  drift reset validate_input core.validate_input\n  drift reset main.deleted_spec", 0
 		}
 		if len(args) < 2 {
 			return "usage:\n  drift reset <marker> <module.spec>\n  drift reset <id>\n\nExample: drift reset validate_input core.validate_input", 1
@@ -71,9 +71,9 @@ func Run(args []string, dir string) (string, int) {
 				return err.Error(), 1
 			}
 			if strings.Contains(args[1], ".") {
-				return fmt.Sprintf("Removed deleted spec %q from drift.pin", args[1]), 0
+				return fmt.Sprintf("Removed deleted spec %q from state.xml", args[1]), 0
 			}
-			return fmt.Sprintf("Removed deleted marker %q from drift.pin", args[1]), 0
+			return fmt.Sprintf("Removed deleted marker %q from state.xml", args[1]), 0
 		}
 		_, err := orch.Reset(args[1], args[2])
 		if err != nil {

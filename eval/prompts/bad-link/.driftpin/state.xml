@@ -1,8 +1,8 @@
 <drift>
   <specs>
-    <spec id="main.reverse" hash="56d0fe42fd00172f3aee684add3b7d02e6892850" filepath="/tmp/tmp.9q8Qw7MGb5/main.pin.xml" line="0"></spec>
-    <spec id="main.palindrome" hash="ff80d65b087483aa4461d34cec025b1c19ac477f" filepath="/tmp/tmp.9q8Qw7MGb5/main.pin.xml" line="0"></spec>
-    <spec id="main.wordcount" hash="db003b7372b660cee9d0d2a338dd352e073805ca" filepath="/tmp/tmp.9q8Qw7MGb5/main.pin.xml" line="0"></spec>
+    <spec id="main.reverse" hash="56d0fe42fd00172f3aee684add3b7d02e6892850" filepath="/workspaces/filament/eval/prompts/bad-link/main.pin.xml" line="0"></spec>
+    <spec id="main.palindrome" hash="ff80d65b087483aa4461d34cec025b1c19ac477f" filepath="/workspaces/filament/eval/prompts/bad-link/main.pin.xml" line="0"></spec>
+    <spec id="main.wordcount" hash="db003b7372b660cee9d0d2a338dd352e073805ca" filepath="/workspaces/filament/eval/prompts/bad-link/main.pin.xml" line="0"></spec>
   </specs>
   <markers>
     <marker id="reverse_func" hash="e8e482126f6b491b02df764be199d403f650b804" filepath="main.go" line="8" endline="16"></marker>

@@ -1,0 +1,1 @@
+Marker shortcodes must not contain a dot. The scanner rejects any marker ID containing a dot with an error. Dots are reserved for spec ID qualification, enabling unambiguous disambiguation in CLI commands.

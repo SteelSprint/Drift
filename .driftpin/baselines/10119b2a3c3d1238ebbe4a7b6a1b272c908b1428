@@ -1,0 +1,1 @@
+FilePinStore.Load reads .driftpin/state.xml from disk, unmarshals XML into Specs, Markers, Links, and ResolutionState, and returns the PinState. If the file does not exist, it returns ErrPinNotFound.

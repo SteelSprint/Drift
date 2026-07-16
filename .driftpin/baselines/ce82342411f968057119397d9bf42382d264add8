@@ -1,0 +1,20 @@
+	case "diff":
+		if len(args) >= 2 && (args[1] == "--help" || args[1] == "-h") {
+			return "Usage:\n  drift diff <marker|spec>          Show what changed for an entity and all linked counterparts\n  drift diff <marker> <module.spec>  Show what changed for a specific edge\n\nDisplays unified diffs of spec and marker content against their baselines.\nIf the ID has a dot, it is treated as a spec ID; otherwise as a marker ID.\n\nExamples:\n  drift diff cval\n  drift diff core.validate\n  drift diff cval core.validate", 0
+		}
+		if len(args) < 2 {
+			return "usage:\n  drift diff <marker|spec>\n  drift diff <marker> <module.spec>\n\nExample: drift diff cval\n         drift diff cval core.validate", 1
+		}
+		if len(args) >= 3 {
+			result, err := orch.Diff(args[1], args[2])
+			if err != nil {
+				return err.Error(), 1
+			}
+			return formatDiffEdge(result)
+		}
+		state, err := orch.Todo()
+		if err != nil {
+			return err.Error(), 1
+		}
+		return formatDiffExpanded(orch, state, args[1])
+

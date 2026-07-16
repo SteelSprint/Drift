@@ -1,0 +1,38 @@
+func validateScanCoversAllNodes(scan Scan, specs []Spec, markers []Marker) error {
+	for _, spec := range specs {
+		if _, ok := scan.SpecHashes[spec.ID]; !ok {
+			return fmt.Errorf("%w: %q", ErrScanMissingSpecHash, spec.ID)
+		}
+	}
+	for _, marker := range markers {
+		if _, ok := scan.MarkerHashes[marker.ID]; !ok {
+			return fmt.Errorf("%w: %q", ErrScanMissingMarkerHash, marker.ID)
+		}
+	}
+	for specID := range scan.SpecHashes {
+		found := false
+		for _, spec := range specs {
+			if spec.ID == specID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("%w: %q", ErrScanUnknownSpecHash, specID)
+		}
+	}
+	for markerID := range scan.MarkerHashes {
+		found := false
+		for _, marker := range markers {
+			if marker.ID == markerID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("%w: %q", ErrScanUnknownMarkerHash, markerID)
+		}
+	}
+	return nil
+}
+

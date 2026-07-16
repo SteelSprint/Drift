@@ -1,0 +1,20 @@
+func (algorithm *CoreAlgorithm) evaluateTodoAction(ctx CoreAlgorithmContext, action TodoAction) (EvaluatedState, error) {
+	if err := validateScanCoversAllNodes(action.Scan, ctx.Specs, ctx.Markers); err != nil {
+		return EvaluatedState{}, err
+	}
+	todos := computeTodoList(
+		ctx.Links,
+		indexSpecsByID(ctx.Specs),
+		indexMarkersByID(ctx.Markers),
+		indexResolutionStateByEdge(ctx.ResolutionState),
+		action.Scan,
+	)
+	return EvaluatedState{
+		Specs:           ctx.Specs,
+		Markers:         ctx.Markers,
+		Links:           ctx.Links,
+		ResolutionState: ctx.ResolutionState,
+		Todos:           todos,
+	}, nil
+}
+

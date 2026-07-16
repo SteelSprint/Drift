@@ -11,6 +11,7 @@ import (
 
 // D! id=pnope range-start
 var ErrPinNotFound = errors.New(".driftpin/state.xml not found, run 'drift init' first")
+
 // D! id=pnope range-end
 
 type PinState struct {

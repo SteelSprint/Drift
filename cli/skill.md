@@ -3,14 +3,14 @@ Driftpin is a spec-drift detection tool designed for LLM coding agents. It track
 # Quick Start
 
 ```
-drift init            # Initialize: creates drift.pin + a starter main.pin.xml + example.go
+drift init            # Initialize: creates .driftpin/ + a starter main.pin.xml
 drift help            # Show command reference
 drift skill           # Print this guide (pipe to a file or read into context)
 ```
 
 # Workflow
 
-1. **Initialize**: `drift init` — creates `drift.pin` (state file) and `main.pin.xml` (spec entry point template). Edit `main.pin.xml` to add your specs.
+1. **Initialize**: `drift init` — creates `.driftpin/` (state directory with `state.xml` and `baselines/`) and `main.pin.xml` (spec entry point template). Edit `main.pin.xml` to add your specs.
 
 2. **Write specs**: Edit `*.pin.xml` files. Each file has a root `<module name="...">` (or `<main>` for the entry point). Specs are `<spec id="...">description</spec>` elements — they must be **direct children** of the root element, not nested inside a `<specs>` wrapper.
 
@@ -18,9 +18,11 @@ drift skill           # Print this guide (pipe to a file or read into context)
 
 4. **Link markers to specs**: `drift link <marker> <module.spec>` — connects a marker to a spec. Spec IDs are module-qualified (e.g. `core.validate`).
 
-5. **Check for drift**: `drift todo` — scans specs and markers, compares hashes against baselines, and reports any drift as a todo list.
+5. **Check for drift**: `drift todo` — scans specs and markers, compares hashes against baselines, and reports any drift as a todo list. Each item includes a hint: `→ Run 'drift diff <marker> <spec>' to see what changed.`
 
-6. **Resolve drift**: After verifying that code and specs are still aligned, run `drift reset <marker> <module.spec>` to mark the edge as resolved and collapse baselines.
+6. **See what changed**: `drift diff <marker> <module.spec>` — shows a unified diff of both the spec and marker content against their baselines. This is the verify step before resolving.
+
+7. **Resolve drift**: After verifying that code and specs are still aligned, run `drift reset <marker> <module.spec>` to mark the edge as resolved and collapse baselines.
 
 # Spec Files
 
@@ -73,20 +75,22 @@ The marker pattern is a regex: `D!\s+id=(\S+)(?:\s+(range-start|range-end))?`. I
 
 | Command | Description |
 |---|---|
-| `drift init` | Create `drift.pin` and `main.pin.xml` template. |
-| `drift todo` | Scan specs and markers, report drift. Exit 0 if clean, 1 if drift, 2 on error. |
+| `drift init` | Create `.driftpin/` directory (state.xml + baselines/) and `main.pin.xml` template. |
+| `drift todo` | Scan specs and markers, report drift. Exit 0 if clean, 1 if drift, 2 on error. Each item includes a hint to run `drift diff`. |
 | `drift list [--verbose]` | Show all specs, markers, links, and sync state. `--verbose` adds spec text and marker content preview. Read-only. |
 | `drift show <marker\|spec>` | Show current content of a spec or marker with filepath and line ranges. Linked specs/markers are also displayed. Read-only. |
-| `drift link <marker> <module.spec>` | Connect a marker to a spec. Both must exist on disk. |
+| `drift diff <marker\|spec>` | Show unified diffs of spec and marker content vs baselines for all linked edges. Read-only. |
+| `drift diff <marker> <module.spec>` | Show unified diff for a specific edge (spec side + marker side). Read-only. |
+| `drift link <marker> <module.spec>` | Connect a marker to a spec. Both must exist on disk. Writes baseline snapshots. |
 | `drift unlink <marker> <module.spec>` | Remove a link between a marker and a spec. Also clears resolution state for that edge. |
 | `drift reset <marker> <module.spec>` | Mark a drifted edge as resolved. Prints confirmation. Collapses baselines when all edges for a node are resolved. |
-| `drift reset <id>` | Remove an orphaned (deleted, no links) spec/marker from drift.pin. |
+| `drift reset <id>` | Remove an orphaned (deleted, no links) spec/marker from state.xml. |
 | `drift help` | Show command reference with examples. |
 | `drift skill` | Print this guide (for LLM agents learning the tool). |
 
 # How Drift Detection Works
 
-`drift` SHA1-hashes spec content (the text inside `<spec>` elements) and marker content (the lines between `range-start` and `range-end`, with other marker declarations blanked). These hashes are stored as baselines in `drift.pin`. On each `drift todo`, current hashes are compared against baselines:
+`drift` SHA1-hashes spec content (the text inside `<spec>` elements) and marker content (the lines between `range-start` and `range-end`, with other marker declarations blanked). These hashes are stored as baselines in `.driftpin/state.xml`. On each `drift todo`, current hashes are compared against baselines:
 
 - **No drift**: All hashes match → "No changes detected. N specs, M markers, K links in sync."
 - **Marker changed**: The code near a marker was modified. Check if it still matches the spec.
@@ -95,9 +99,26 @@ The marker pattern is a regex: `D!\s+id=(\S+)(?:\s+(range-start|range-end))?`. I
 
 Drift is per-edge (one marker ↔ one spec). If 1 spec is linked to 3 markers and the spec changes, that's 3 todo items. `drift reset <marker> <module.spec>` resolves one edge. When all edges for a node are resolved, the baseline collapses to the current hash.
 
-# drift.pin
+# Diffs
 
-`drift.pin` is an XML state file at the project root. It stores baseline hashes, links, and resolution state. It is tool-managed — do not edit it by hand. Commit it to git.
+`drift diff` shows what changed between the baseline and current content. This is the verify step: instead of re-reading whole files and guessing against a hash, you see a unified diff.
+
+- `drift diff <marker> <module.spec>` — shows both the spec and marker diffs for one edge.
+- `drift diff <marker|spec>` — auto-expands to all linked edges.
+
+Each side shows:
+- Entity ID, filepath, and line range (markers only)
+- Status: `in sync`, `no baseline snapshot`, or `deleted from disk`
+- If changed: a unified diff with `--- baseline` / `+++ current` headers
+
+When there's no baseline snapshot (e.g. pre-migration or content-addressed miss), the diff shows "Status: no baseline snapshot (hash X)" — informational, not an error.
+
+# .driftpin/ directory
+
+`.driftpin/` is the state directory at the project root. It contains:
+
+- `state.xml` — XML state file storing baseline hashes, links, and resolution state. Tool-managed — do not edit by hand. Commit to git.
+- `baselines/` — content-addressed baseline files. Each file is named by its SHA1 hash (`sha1(content) == filename`). Written on `link` and `reset`. Dedup'd automatically. Orphaned files (from collapsed baselines) are harmless. Commit to git.
 
 # drift.ignore
 
@@ -110,7 +131,7 @@ A `.gitignore`-style file at the project root. Patterns exclude files/directorie
 - **Nested ranges:** An outer range can contain inner ranges. Inner marker declarations are blanked from the outer range's hash, so changing an inner marker's ID does not affect the outer marker's hash.
 - **Overlapping ranges:** Ranges that partially overlap (neither fully contains the other) are allowed.
 - **Empty ranges:** A `range-start` immediately followed by `range-end` (no content between them) hashes an empty string. This is allowed but not useful.
-- **Deleted specs:** When a spec is removed from a `.pin.xml` file but still in `drift.pin`, it is treated as drift (not an error). `drift todo` shows a deletion-specific message. Resolve with `drift reset <marker> <spec>`. After resolution, the deleted spec and its links are pruned from `drift.pin`.
+- **Deleted specs:** When a spec is removed from a `.pin.xml` file but still in `state.xml`, it is treated as drift (not an error). `drift todo` shows a deletion-specific message. Resolve with `drift reset <marker> <spec>`. After resolution, the deleted spec and its links are pruned from `state.xml`.
 - **Deleted markers:** Same deletion-as-drift model as specs. The marker's hash becomes empty, triggering drift on all linked edges.
 - **Orphaned entries (deleted, no links):** Shown with `[deleted]` tag in `drift list`. Cleaned via `drift reset <id>` (single-arg: dot = spec, no dot = marker).
 - **`drift reset` semantics:** Rewrites the baseline hash to the current hash and clears the resolution entry. Prints "Resolved: MARKER → SPEC. Baseline updated." on success.

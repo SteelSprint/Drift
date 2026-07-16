@@ -1,0 +1,1 @@
+main parses command-line arguments, dispatches to the correct operation, and exits with error on invalid input

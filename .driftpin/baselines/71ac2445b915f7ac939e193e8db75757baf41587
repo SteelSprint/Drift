@@ -1,0 +1,3 @@
+		if strings.Contains(shortcode, ".") {
+			return nil, fmt.Errorf("%s:%d: marker id %q must not contain a dot (dots are reserved for spec ID qualification)", path, lineNumber, shortcode)
+		}

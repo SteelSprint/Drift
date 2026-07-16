@@ -1,0 +1,23 @@
+func Convert(temp float64, from string, to string) float64 {
+	celsius := temp
+	switch from {
+	case "F":
+		celsius = (temp - 32) * 5 / 9
+	case "K":
+		celsius = temp - 273.15
+	case "C":
+		celsius = temp
+	}
+
+	result := celsius
+	switch to {
+	case "F":
+		result = celsius*9/5 + 32
+	case "K":
+		result = celsius + 273.15
+	case "C":
+		result = celsius
+	}
+
+	return result
+}

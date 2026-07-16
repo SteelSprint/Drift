@@ -1,0 +1,1 @@
+The link command requires a marker and a module.spec argument, space-separated. Missing arguments return a usage error with an example. On success it returns "Linked marker X to spec Y" with exit code 0. On error it returns a prescriptive error message with exit code 1.

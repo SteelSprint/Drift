@@ -642,6 +642,138 @@ func TestMixedChangedAndUnchangedEdgesCollapseImmediately(t *testing.T) {
 	})
 }
 
+func TestCoreDeletionDrift(t *testing.T) {
+	specs := []core.Spec{testutil.NewSpec("spec1", "abc")}
+	markers := []core.Marker{testutil.NewMarker("marker1", "def")}
+	links := []core.Link{testutil.NewLink("spec1", "marker1")}
+
+	t.Run("spec_deleted_marks_spec_deleted", func(t *testing.T) {
+		scan := newScanFromBaselines(specs, markers,
+			map[string]string{"spec1": ""},
+			nil)
+		evaluatedState := evaluateTodoActionExpectingSuccess(t, core.CoreAlgorithmContext{
+			Specs:   specs,
+			Markers: markers,
+			Links:   links,
+			Action:  core.TodoAction{Scan: scan},
+		})
+		testutil.AssertTodoCount(t, evaluatedState, 1)
+		todo, ok := findTodoByEdge(evaluatedState, "marker1", "spec1")
+		if !ok {
+			t.Fatalf("expected todo for marker1:spec1")
+		}
+		if !todo.SpecDeleted {
+			t.Fatalf("expected SpecDeleted=true, got false")
+		}
+		if todo.MarkerDeleted {
+			t.Fatalf("expected MarkerDeleted=false, got true")
+		}
+	})
+
+	t.Run("marker_deleted_marks_marker_deleted", func(t *testing.T) {
+		scan := newScanFromBaselines(specs, markers,
+			nil,
+			map[string]string{"marker1": ""})
+		evaluatedState := evaluateTodoActionExpectingSuccess(t, core.CoreAlgorithmContext{
+			Specs:   specs,
+			Markers: markers,
+			Links:   links,
+			Action:  core.TodoAction{Scan: scan},
+		})
+		testutil.AssertTodoCount(t, evaluatedState, 1)
+		todo, ok := findTodoByEdge(evaluatedState, "marker1", "spec1")
+		if !ok {
+			t.Fatalf("expected todo for marker1:spec1")
+		}
+		if todo.SpecDeleted {
+			t.Fatalf("expected SpecDeleted=false, got true")
+		}
+		if !todo.MarkerDeleted {
+			t.Fatalf("expected MarkerDeleted=true, got false")
+		}
+	})
+
+	t.Run("both_deleted_marks_both", func(t *testing.T) {
+		scan := newScanFromBaselines(specs, markers,
+			map[string]string{"spec1": ""},
+			map[string]string{"marker1": ""})
+		evaluatedState := evaluateTodoActionExpectingSuccess(t, core.CoreAlgorithmContext{
+			Specs:   specs,
+			Markers: markers,
+			Links:   links,
+			Action:  core.TodoAction{Scan: scan},
+		})
+		testutil.AssertTodoCount(t, evaluatedState, 1)
+		todo, ok := findTodoByEdge(evaluatedState, "marker1", "spec1")
+		if !ok {
+			t.Fatalf("expected todo for marker1:spec1")
+		}
+		if !todo.SpecDeleted {
+			t.Fatalf("expected SpecDeleted=true, got false")
+		}
+		if !todo.MarkerDeleted {
+			t.Fatalf("expected MarkerDeleted=true, got false")
+		}
+	})
+
+	t.Run("collapse_prunes_deleted_marker", func(t *testing.T) {
+		scan := newScanFromBaselines(specs, markers,
+			map[string]string{"spec1": "cs"},
+			map[string]string{"marker1": ""})
+		evaluatedState := evaluateResetActionExpectingSuccess(t, core.CoreAlgorithmContext{
+			Specs:   specs,
+			Markers: markers,
+			Links:   links,
+			Action:  core.ResetAction{SpecID: "spec1", MarkerID: "marker1", Scan: scan},
+		})
+		if len(evaluatedState.Markers) != 0 {
+			t.Fatalf("expected markers pruned, got %d", len(evaluatedState.Markers))
+		}
+		if len(evaluatedState.Links) != 0 {
+			t.Fatalf("expected links pruned, got %d", len(evaluatedState.Links))
+		}
+	})
+
+	t.Run("collapse_prunes_deleted_spec", func(t *testing.T) {
+		scan := newScanFromBaselines(specs, markers,
+			map[string]string{"spec1": ""},
+			map[string]string{"marker1": "cm"})
+		evaluatedState := evaluateResetActionExpectingSuccess(t, core.CoreAlgorithmContext{
+			Specs:   specs,
+			Markers: markers,
+			Links:   links,
+			Action:  core.ResetAction{SpecID: "spec1", MarkerID: "marker1", Scan: scan},
+		})
+		if len(evaluatedState.Specs) != 0 {
+			t.Fatalf("expected specs pruned, got %d", len(evaluatedState.Specs))
+		}
+		if len(evaluatedState.Links) != 0 {
+			t.Fatalf("expected links pruned, got %d", len(evaluatedState.Links))
+		}
+	})
+
+	t.Run("collapse_both_deleted", func(t *testing.T) {
+		scan := newScanFromBaselines(specs, markers,
+			map[string]string{"spec1": ""},
+			map[string]string{"marker1": ""})
+		evaluatedState := evaluateResetActionExpectingSuccess(t, core.CoreAlgorithmContext{
+			Specs:   specs,
+			Markers: markers,
+			Links:   links,
+			Action:  core.ResetAction{SpecID: "spec1", MarkerID: "marker1", Scan: scan},
+		})
+		if len(evaluatedState.Specs) != 0 {
+			t.Fatalf("expected specs pruned, got %d", len(evaluatedState.Specs))
+		}
+		if len(evaluatedState.Markers) != 0 {
+			t.Fatalf("expected markers pruned, got %d", len(evaluatedState.Markers))
+		}
+		if len(evaluatedState.Links) != 0 {
+			t.Fatalf("expected links pruned, got %d", len(evaluatedState.Links))
+		}
+	})
+}
+
 func TestValidate(t *testing.T) {
 	baseSpecs := []core.Spec{testutil.NewSpec("s1", "b1"), testutil.NewSpec("s2", "b2")}
 	baseMarkers := []core.Marker{testutil.NewMarker("m1", "b1"), testutil.NewMarker("m2", "b2")}

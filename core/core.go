@@ -423,7 +423,7 @@ func pruneResolutionEntriesForCollapsedMarker(
 		if _, ok := resolutionStateByEdge[edgeKey]; !ok {
 			continue
 		}
-		if spec := specsByID[link.SpecID]; spec.Hash == scan.SpecHashes[link.SpecID] {
+		if spec := specsByID[link.SpecID]; spec != nil && spec.Hash == scan.SpecHashes[link.SpecID] {
 			delete(resolutionStateByEdge, edgeKey)
 		}
 	}
@@ -444,7 +444,7 @@ func pruneResolutionEntriesForCollapsedSpec(
 		if _, ok := resolutionStateByEdge[edgeKey]; !ok {
 			continue
 		}
-		if marker := markersByID[link.MarkerID]; marker.Hash == scan.MarkerHashes[link.MarkerID] {
+		if marker := markersByID[link.MarkerID]; marker != nil && marker.Hash == scan.MarkerHashes[link.MarkerID] {
 			delete(resolutionStateByEdge, edgeKey)
 		}
 	}

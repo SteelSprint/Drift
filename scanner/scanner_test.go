@@ -645,6 +645,27 @@ func handler() {
 			t.Fatalf("EndLineNumber = %d, want 7", marker.EndLineNumber)
 		}
 	})
+
+	t.Run("single_line_range_hashes_single_content_line", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		code := testutil.MarkerStart("abc") + `
+only_line
+` + testutil.MarkerEnd("abc") + `
+`
+		testutil.WriteCodeFile(t, dir, "main.go", code)
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		marker, _ := testutil.FindScanResultMarker(result.Markers, "abc")
+
+		expectedHash := testutil.ExpectedSha1Hex("only_line\n")
+		if marker.Hash != expectedHash {
+			t.Fatalf("hash = %q, want %q (single content line)", marker.Hash, expectedHash)
+		}
+	})
 }
 
 func TestScannerMixedSpecsAndMarkers(t *testing.T) {
@@ -1014,6 +1035,57 @@ line3
 			t.Fatalf("expected 2 markers, got %d", len(result.Markers))
 		}
 	})
+
+	t.Run("duplicate_range_start_for_same_id_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("x")+`
+content1
+`+testutil.MarkerStart("x")+`
+content2
+`+testutil.MarkerEnd("x")+`
+`)
+
+		sc := scanner.NewFileScanner(dir)
+		assertScanError(t, sc, "duplicate range-start")
+	})
+
+	t.Run("duplicate_range_end_for_same_id_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("x")+`
+content1
+`+testutil.MarkerEnd("x")+`
+content2
+`+testutil.MarkerEnd("x")+`
+`)
+
+		sc := scanner.NewFileScanner(dir)
+		assertScanError(t, sc, "duplicate range-end")
+	})
+
+	t.Run("multiple_unpaired_starts_reported_at_once", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("aaa")+`
+content_a
+`+testutil.MarkerStart("bbb")+`
+content_b
+`)
+
+		sc := scanner.NewFileScanner(dir)
+		_, err := sc.Scan()
+		if err == nil {
+			t.Fatalf("expected error for unpaired markers, got nil")
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "aaa") {
+			t.Fatalf("error should mention 'aaa', got: %s", errStr)
+		}
+		if !strings.Contains(errStr, "bbb") {
+			t.Fatalf("error should mention 'bbb', got: %s", errStr)
+		}
+	})
 }
 
 func TestScannerMarkerBlanking(t *testing.T) {
@@ -1087,5 +1159,119 @@ func a() {
 		if m1.Hash != m2.Hash {
 			t.Fatalf("outer hash should be the same regardless of inner marker ID\ninner_a: %q\ninner_b: %q", m1.Hash, m2.Hash)
 		}
+	})
+
+	t.Run("overlapping_ranges_blank_inner_marker_declarations", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		// A: lines 1-10, B: lines 5-15 (overlapping, not nested)
+		code := testutil.MarkerStart("A") + `
+line2
+line3
+line4
+` + testutil.MarkerStart("B") + `
+line6
+line7
+line8
+line9
+` + testutil.MarkerEnd("A") + `
+line11
+line12
+line13
+line14
+` + testutil.MarkerEnd("B") + `
+`
+		testutil.WriteCodeFile(t, dir, "main.go", code)
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.Markers) != 2 {
+			t.Fatalf("expected 2 markers, got %d", len(result.Markers))
+		}
+
+		markerA, ok := testutil.FindScanResultMarker(result.Markers, "A")
+		if !ok {
+			t.Fatalf("marker A not found")
+		}
+		markerB, ok := testutil.FindScanResultMarker(result.Markers, "B")
+		if !ok {
+			t.Fatalf("marker B not found")
+		}
+
+		// A's hash: content between A's start and end, with B's declaration blanked
+		expectedAContent := "line2\nline3\nline4\n// \nline6\nline7\nline8\nline9\n"
+		expectedAHash := testutil.ExpectedSha1Hex(expectedAContent)
+		if markerA.Hash != expectedAHash {
+			t.Fatalf("A hash = %q, want %q", markerA.Hash, expectedAHash)
+		}
+
+		// B's hash: content between B's start and end, with A's end blanked
+		expectedBContent := "line6\nline7\nline8\nline9\n// \nline11\nline12\nline13\nline14\n"
+		expectedBHash := testutil.ExpectedSha1Hex(expectedBContent)
+		if markerB.Hash != expectedBHash {
+			t.Fatalf("B hash = %q, want %q", markerB.Hash, expectedBHash)
+		}
+	})
+}
+
+func TestScannerNonGoExtensions(t *testing.T) {
+	t.Run("py_file_markers_discovered", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "script.py", "# D! id=py1 range-start\ndef hello():\n    pass\n# D! id=py1 range-end\n")
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.Markers) != 1 {
+			t.Fatalf("expected 1 marker from .py file, got %d", len(result.Markers))
+		}
+		if _, ok := testutil.FindScanResultMarker(result.Markers, "py1"); !ok {
+			t.Fatalf("expected marker py1, not found")
+		}
+	})
+
+	t.Run("js_file_markers_discovered", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "app.js", "// D! id=js1 range-start\nfunction hello() {\n  return 1;\n}\n// D! id=js1 range-end\n")
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.Markers) != 1 {
+			t.Fatalf("expected 1 marker from .js file, got %d", len(result.Markers))
+		}
+		if _, ok := testutil.FindScanResultMarker(result.Markers, "js1"); !ok {
+			t.Fatalf("expected marker js1, not found")
+		}
+	})
+}
+
+func TestScannerSpecErrors(t *testing.T) {
+	t.Run("malformed_xml_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		testutil.WriteSpecFile(t, dir, "main.pin.xml", `<<invalid>>`)
+
+		sc := scanner.NewFileScanner(dir)
+		_, err := sc.Scan()
+		if err == nil {
+			t.Fatalf("expected error for malformed XML, got nil")
+		}
+		if !strings.Contains(err.Error(), "xml") {
+			t.Fatalf("error should mention xml, got: %s", err.Error())
+		}
+	})
+
+	t.Run("wrong_root_element_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		testutil.WriteSpecFile(t, dir, "main.pin.xml", `<foo><spec id="a">text</spec></foo>`)
+
+		sc := scanner.NewFileScanner(dir)
+		assertScanError(t, sc, "expected <main> or <module>")
 	})
 }

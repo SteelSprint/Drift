@@ -306,6 +306,38 @@ func validate() { check() }
 			t.Fatalf("output = %q, want \"No changes detected.\" prefix", output)
 		}
 	})
+
+	t.Run("todo_both_changed_shows_both_message", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">original spec</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { original() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">changed spec</spec>
+</main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { changed() }
+`+testutil.MarkerEnd("m1")+`
+`)
+
+		output, code := cli.Run([]string{"todo"}, dir)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1, output: %s", code, output)
+		}
+		if !strings.Contains(output, "Both the marker and the spec term have changed") {
+			t.Fatalf("output should mention both changed, got: %s", output)
+		}
+	})
 }
 
 func TestCLILinkErrors(t *testing.T) {
@@ -1071,6 +1103,147 @@ func a() { doSomething() }
 			t.Fatalf("output should show spec filepath, got: %s", output)
 		}
 	})
+
+	t.Run("list_verbose_truncates_long_spec_text", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">This is a very long spec text that exceeds eighty characters significantly and should be truncated with an ellipsis marker</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() {}
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+
+		output, code := cli.Run([]string{"list", "--verbose"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "...") {
+			t.Fatalf("verbose output should contain truncation '...', got: %s", output)
+		}
+	})
+
+	t.Run("list_verbose_truncates_long_marker_content", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		longLine := "func a() { " + strings.Repeat("x", 80) + " }"
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+`+longLine+`
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+
+		output, code := cli.Run([]string{"list", "--verbose"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "...") {
+			t.Fatalf("verbose output should contain truncation '...', got: %s", output)
+		}
+	})
+
+	t.Run("list_shows_marker_range_format", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+
+		output, code := cli.Run([]string{"list"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "main.go:") {
+			t.Fatalf("output should contain marker filepath with line range, got: %s", output)
+		}
+		if !strings.Contains(output, "-") {
+			t.Fatalf("output should contain range separator '-', got: %s", output)
+		}
+	})
+
+	t.Run("list_verbose_skips_deleted_spec_preview", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+  <spec id="s2">spec two</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+
+		output, code := cli.Run([]string{"list", "--verbose"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "main.s2") {
+			t.Fatalf("output should still list deleted spec, got: %s", output)
+		}
+		if strings.Contains(output, "spec two") {
+			t.Fatalf("verbose output should not show preview for deleted spec, got: %s", output)
+		}
+	})
+
+	t.Run("list_verbose_skips_deleted_marker_preview", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`+testutil.MarkerStart("m2")+`
+func b() { doOther() }
+`+testutil.MarkerEnd("m2")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"link", "m2", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+
+		output, code := cli.Run([]string{"list", "--verbose"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if !strings.Contains(output, "m2") {
+			t.Fatalf("output should still list deleted marker, got: %s", output)
+		}
+		if strings.Contains(output, "doOther") {
+			t.Fatalf("verbose output should not show preview for deleted marker, got: %s", output)
+		}
+	})
 }
 
 func TestCLIPerSubcommandHelp(t *testing.T) {
@@ -1090,6 +1263,8 @@ func TestCLIPerSubcommandHelp(t *testing.T) {
 		{[]string{"unlink", "-h"}, "Usage: drift unlink"},
 		{[]string{"list", "--help"}, "Usage: drift list"},
 		{[]string{"list", "-h"}, "Usage: drift list"},
+		{[]string{"show", "--help"}, "Usage: drift show"},
+		{[]string{"show", "-h"}, "Usage: drift show"},
 	}
 
 	for _, tt := range tests {
@@ -1103,6 +1278,27 @@ func TestCLIPerSubcommandHelp(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCLISkill(t *testing.T) {
+	t.Run("skill_returns_content", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main></main>`)
+		cli.Run([]string{"init"}, dir)
+
+		output, code := cli.Run([]string{"skill"}, dir)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
+		}
+		if len(output) < 500 {
+			t.Fatalf("skill output too short: %d chars, want >500", len(output))
+		}
+		for _, want := range []string{"Quick Start", "Workflow", "Markers", "CLI Commands", "Edge Cases", "range-start", "range-end"} {
+			if !strings.Contains(output, want) {
+				t.Fatalf("skill output missing %q", want)
+			}
+		}
+	})
 }
 
 func TestCLIDeletionDrift(t *testing.T) {
@@ -1535,6 +1731,58 @@ func handleRequest() {
 			t.Fatalf("output should not contain spec section for unlinked marker, got: %s", output)
 		}
 	})
+
+	t.Run("show_marker_with_unreadable_content_file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		os.Remove(filepath.Join(dir, "main.go"))
+
+		output, code := cli.Run([]string{"show", "m1"}, dir)
+		if code == 0 {
+			t.Fatalf("expected non-zero exit code, got 0, output: %s", output)
+		}
+		if !strings.Contains(strings.ToLower(output), "not found") && !strings.Contains(strings.ToLower(output), "error") {
+			t.Fatalf("output should mention error or not found, got: %s", output)
+		}
+	})
+
+	t.Run("show_spec_with_unreadable_content_file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		os.Remove(filepath.Join(dir, "main.pin.xml"))
+
+		output, code := cli.Run([]string{"show", "main.s1"}, dir)
+		if code == 0 {
+			t.Fatalf("expected non-zero exit code, got 0, output: %s", output)
+		}
+		if !strings.Contains(strings.ToLower(output), "not found") && !strings.Contains(strings.ToLower(output), "error") {
+			t.Fatalf("output should mention error or not found, got: %s", output)
+		}
+	})
 }
 
 func TestCLITodoExitCodes(t *testing.T) {
@@ -1629,6 +1877,36 @@ func a() { doSomethingElse() }
 		}
 		if !strings.Contains(output, "Baseline updated.") {
 			t.Fatalf("output should contain 'Baseline updated.', got: %s", output)
+		}
+	})
+
+	t.Run("reset_exact_confirmation_format", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainPin(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomething() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+		cli.Run([]string{"todo"}, dir)
+
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() { doSomethingElse() }
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+
+		output, code := cli.Run([]string{"reset", "m1", "main.s1"}, dir)
+		if code != 0 {
+			t.Fatalf("reset should exit 0, got %d", code)
+		}
+		expected := "Resolved: m1 → main.s1. Baseline updated."
+		if !strings.Contains(output, expected) {
+			t.Fatalf("output should contain exact string %q, got: %s", expected, output)
 		}
 	})
 }

@@ -374,6 +374,7 @@ func reconcileSpecs(pinned []core.Spec, scanned []core.Spec) ([]core.Spec, error
 				Hash:       pinned.Hash,
 				Filepath:   s.Filepath,
 				LineNumber: s.LineNumber,
+				Module:     s.Module,
 			})
 		} else {
 			result = append(result, s)

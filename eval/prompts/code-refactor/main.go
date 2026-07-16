@@ -2,7 +2,7 @@ package main
 
 import "fmt"
 
-// D! id=convert_func
+// D! id=convert_func range-start
 func Convert(temp float64, from string, to string) float64 {
 	celsius := temp
 	switch from {
@@ -26,6 +26,7 @@ func Convert(temp float64, from string, to string) float64 {
 
 	return result
 }
+// D! id=convert_func range-end
 
 func main() {
 	fmt.Println("32F to C:", Convert(32, "F", "C"))

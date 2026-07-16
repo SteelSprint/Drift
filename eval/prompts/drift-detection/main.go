@@ -6,24 +6,28 @@ import (
 	"strconv"
 )
 
-// D! id=add_func
+// D! id=add_func range-start
 func add(a, b float64) float64 { return a + b }
+// D! id=add_func range-end
 
-// D! id=sub_func
+// D! id=sub_func range-start
 func sub(a, b float64) float64 { return a - b }
+// D! id=sub_func range-end
 
-// D! id=mul_func
+// D! id=mul_func range-start
 func mul(a, b float64) float64 { return a * b }
+// D! id=mul_func range-end
 
-// D! id=div_func
+// D! id=div_func range-start
 func div(a, b float64) (float64, error) {
 	if b == 0 {
 		return 0, fmt.Errorf("division by zero")
 	}
 	return a / b, nil
 }
+// D! id=div_func range-end
 
-// D! id=main_func
+// D! id=main_func range-start
 func main() {
 	if len(os.Args) < 4 {
 		fmt.Println("usage: calc <a> <op> <b>")
@@ -59,3 +63,4 @@ func main() {
 		os.Exit(1)
 	}
 }
+// D! id=main_func range-end

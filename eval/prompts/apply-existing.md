@@ -1,7 +1,7 @@
 Below is a small Go program that implements a basic calculator. Your task is to add driftpin spec coverage to this EXISTING codebase — do not rewrite the logic. You should:
 
 1. Create spec files (`*.pin.xml`) that describe what each function does.
-2. Place `D! id=<markerid>` markers in the code at the locations that implement each spec.
+2. Place `D! id=<markerid> range-start` and `D! id=<markerid> range-end` markers in the code, wrapping the region that implements each spec.
 3. Link markers to specs.
 4. Run `drift todo` and resolve any drift.
 

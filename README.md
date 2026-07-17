@@ -34,8 +34,8 @@ Installs to `~/.local/bin/drift` (macOS/Linux) or `%USERPROFILE%\.local\bin\drif
 
 ## Quickstart
 
-1. `make build`
-2. Give the binary to your LLM agent and tell it to run `./drift skill` — it will learn everything it needs to use the tool.
+1. Install drift (see [Install](#install) above).
+2. Give the binary to your LLM agent and tell it to run `drift skill` — it will learn everything it needs to use the tool.
 
 That's it. The tool is self-documenting. `drift skill` prints a complete guide that teaches the agent how to write specs, place markers, link them, check for drift, see what changed, and resolve it. You don't need to read docs — your agent will.
 

@@ -11,13 +11,38 @@
 # Prints a PATH hint if the install location is not on $PATH.
 set -euo pipefail
 
+umask 022
+
 REPO="SteelSprint/Drift"
-DESTDIR="${DESTDIR:-${HOME}/.local/bin}"
+
+# --- guards: never rm -rf an unset/empty/inherited path ---
+WORKDIR=""
+cleanup() {
+	if [ -n "$WORKDIR" ] && [ -d "$WORKDIR" ]; then
+		rm -rf "$WORKDIR"
+	fi
+}
+trap cleanup EXIT INT TERM HUP
 
 err() {
 	echo "install: error: $*" >&2
 	exit 1
 }
+
+# --- validate HOME and DESTDIR before any mkdir/mv ---
+if [ -z "${HOME:-}" ] || [ ! -d "${HOME:-}" ]; then
+	err "HOME is unset or not a directory; refusing to install. Set \$HOME or \$DESTDIR explicitly."
+fi
+DESTDIR="${DESTDIR:-${HOME}/.local/bin}"
+if [ -z "$DESTDIR" ]; then
+	err "DESTDIR is empty; refusing to install."
+fi
+# reject obviously dangerous install targets
+case "$DESTDIR" in
+	/|/etc|/etc/*|/usr|/usr/*|/bin|/bin/*|/sbin|/sbin/*|/lib|/lib/*|/boot|/boot/*|/dev|/dev/*|/proc|/proc/*|/sys|/sys/*)
+		err "DESTDIR='$DESTDIR' looks like a system path; refusing to install there. Use ~/.local/bin or a user-writable dir."
+		;;
+esac
 
 # --- detect GOOS ---
 case "$(uname -s)" in
@@ -57,6 +82,12 @@ else
 	fi
 fi
 
+# --- validate TAG: must be vMAJOR.MINOR.PATCH with optional pre-release/build suffix ---
+# this prevents a corrupted/malicious API response from injecting garbage into the URL/filename.
+if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([+-][A-Za-z0-9._-]+)?$'; then
+	err "invalid version tag '$TAG'; expected format like v1.0.0"
+fi
+
 # strip leading 'v' for the archive version string
 VER="${TAG#v}"
 ARCHIVE="drift_${VER}_${GOOS}_${GOARCH}"
@@ -65,11 +96,14 @@ URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}.tar.gz"
 echo "Version: ${TAG}"
 echo "Downloading: ${URL}"
 
-# --- download to temp dir ---
-TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
+# --- create work dir (renamed from TMPDIR to avoid shadowing the standard env var) ---
+WORKDIR="$(mktemp -d 2>/dev/null)" || err "could not create temp directory"
+# belt-and-suspenders: confirm WORKDIR is a real directory we just created
+if [ ! -d "$WORKDIR" ] || [ "$(cd "$WORKDIR" && pwd)" = "/" ]; then
+	err "temp directory creation returned an unsafe path: '$WORKDIR'"
+fi
 
-if ! curl -fsSL "$URL" -o "${TMPDIR}/${ARCHIVE}.tar.gz"; then
+if ! curl -fsSL --retry 3 "$URL" -o "${WORKDIR}/${ARCHIVE}.tar.gz"; then
 	err "download failed for ${URL}
 
 If your platform (${GOOS}/${GOARCH}) is not in the release assets, open an issue:
@@ -77,41 +111,53 @@ If your platform (${GOOS}/${GOARCH}) is not in the release assets, open an issue
 Available platforms are listed in each release: https://github.com/${REPO}/releases"
 fi
 
-# --- verify checksum if checksums.txt is available ---
+# --- verify checksum (strict: checksums.txt must be present AND list our archive) ---
 CHECKSUM_URL="https://github.com/${REPO}/releases/download/${TAG}/checksums.txt"
-if curl -fsSL "$CHECKSUM_URL" -o "${TMPDIR}/checksums.txt" 2>/dev/null; then
-	EXPECTED="$(grep -E "$(basename "${URL}")" "${TMPDIR}/checksums.txt" | awk '{print $1}')"
-	if [ -n "$EXPECTED" ]; then
-		ACTUAL="$(sha256sum "${TMPDIR}/${ARCHIVE}.tar.gz" | awk '{print $1}')"
-		if [ "$ACTUAL" != "$EXPECTED" ]; then
-			err "checksum mismatch
+CHECKSUM_VERIFIED=false
+if curl -fsSL --retry 3 "$CHECKSUM_URL" -o "${WORKDIR}/checksums.txt" 2>/dev/null; then
+	# use grep -F (fixed string) so '.' in the filename isn't treated as a regex wildcard
+	EXPECTED="$(grep -F "$(basename "${URL}")" "${WORKDIR}/checksums.txt" | awk '{print $1}')"
+	if [ -z "$EXPECTED" ]; then
+		err "checksums.txt is available but does not list '${ARCHIVE}.tar.gz'.
+This is either a release packaging error or a tampering attempt — refusing to install."
+	fi
+	ACTUAL="$(sha256sum "${WORKDIR}/${ARCHIVE}.tar.gz" | awk '{print $1}')"
+	if [ "$ACTUAL" != "$EXPECTED" ]; then
+		err "checksum mismatch — the downloaded archive was tampered with or corrupted.
 expected: ${EXPECTED}
 actual:   ${ACTUAL}"
-		fi
-		echo "Checksum verified."
-	else
-		echo "Warning: archive not found in checksums.txt, skipping verification."
 	fi
+	CHECKSUM_VERIFIED=true
+	echo "Checksum verified."
 else
-	echo "Warning: checksums.txt not available, skipping verification."
+	err "could not download checksums.txt from ${CHECKSUM_URL}
+Refusing to install without checksum verification."
 fi
 
-# --- extract ---
-tar -xzf "${TMPDIR}/${ARCHIVE}.tar.gz" -C "$TMPDIR"
-if [ ! -f "${TMPDIR}/drift" ]; then
-	err "archive did not contain a 'drift' binary"
+# --- extract ONLY the 'drift' binary (not the whole archive) ---
+# this refuses path-traversal entries and unexpected files.
+if ! tar -xzf "${WORKDIR}/${ARCHIVE}.tar.gz" -C "$WORKDIR" drift 2>/dev/null; then
+	err "archive did not contain a 'drift' binary at its root"
+fi
+if [ ! -f "${WORKDIR}/drift" ]; then
+	err "extraction succeeded but drift binary is missing"
 fi
 
 # --- install ---
 mkdir -p "$DESTDIR"
 INSTALL_PATH="${DESTDIR}/drift"
 
-# don't overwrite a running binary
-if [ -f "$INSTALL_PATH" ] && [ -w "$INSTALL_PATH" ]; then
-	mv "$INSTALL_PATH" "${INSTALL_PATH}.old" 2>/dev/null || true
+# if INSTALL_PATH is a directory, refuse (don't silently install inside it)
+if [ -d "$INSTALL_PATH" ]; then
+	err "${INSTALL_PATH} is a directory, not a file; refusing to overwrite. Remove it first."
 fi
 
-mv "${TMPDIR}/drift" "$INSTALL_PATH"
+# move aside an existing file so we don't overwrite a running binary
+if [ -e "$INSTALL_PATH" ]; then
+	mv "$INSTALL_PATH" "${INSTALL_PATH}.old" 2>/dev/null || err "could not move existing ${INSTALL_PATH} aside (is it in use?)"
+fi
+
+mv "${WORKDIR}/drift" "$INSTALL_PATH"
 chmod +x "$INSTALL_PATH"
 
 echo
@@ -129,11 +175,16 @@ case ":${PATH}:" in
 		;;
 esac
 
-# --- verify ---
-if "$INSTALL_PATH" version 2>/dev/null; then
-	echo
-	echo "Run 'drift help' to get started."
+# --- verify (only if checksum was verified — never run an unverified binary) ---
+if $CHECKSUM_VERIFIED; then
+	if "$INSTALL_PATH" version 2>/dev/null; then
+		echo
+		echo "Run 'drift help' to get started."
+	else
+		echo
+		echo "Installed, but 'drift version' failed. Run '${INSTALL_PATH} help' to check."
+	fi
 else
 	echo
-	echo "Installed. Run '${INSTALL_PATH} help' to get started."
+	echo "Run '${INSTALL_PATH} help' to get started."
 fi

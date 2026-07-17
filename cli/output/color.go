@@ -1,0 +1,361 @@
+package output
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"drift/core"
+	"drift/internal/diff"
+	"drift/orchestrator"
+)
+
+// ColorPresenter formats Result data with ANSI color codes. It implements
+// every Presenter method independently from PlainPresenter — not by wrapping
+// Plain's output. Shared prose lives in the same constants/helpers (e.g.,
+// markerSyntax). The guardrail property (stripANSI(Color.X(r)) ==
+// Plain.X(r) for all r, X) is enforced by color_test.go.
+type ColorPresenter struct{}
+
+var _ Presenter = ColorPresenter{}
+
+// colorizePatch applies ANSI colors to unified diff lines:
+// `+` lines → green, `-` lines → red, `@@` hunk headers → cyan.
+// The `---`/`+++` file headers are NOT colored (they are structural).
+func colorizePatch(patch string) string {
+	lines := strings.Split(patch, "\n")
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "@@"):
+			lines[i] = cyan(line)
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			lines[i] = green(line)
+		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
+			lines[i] = red(line)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// --- Todo ---
+
+func (p ColorPresenter) Todo(r TodoResult) string {
+	state := r.State
+	if len(state.Specs) == 0 && len(state.Markers) == 0 {
+		return "Nothing to check: no specs or markers registered.\nCreate spec files (*.drift.xml) and place " + markerSyntax + " markers in your code,\nthen run `drift link <marker> <module.spec>` to connect them."
+	}
+
+	var sb strings.Builder
+
+	if len(state.Todos) == 0 {
+		sb.WriteString(green(fmt.Sprintf("No changes detected. %d specs, %d markers, %d links in sync.", len(state.Specs), len(state.Markers), len(state.Links))))
+	} else {
+		changedMarkers := make(map[string]bool)
+		changedSpecs := make(map[string]bool)
+		for _, todo := range state.Todos {
+			if todo.MarkerChanged {
+				changedMarkers[todo.MarkerID] = true
+			}
+			if todo.SpecChanged {
+				changedSpecs[todo.SpecID] = true
+			}
+		}
+
+		if n := len(changedMarkers); n > 0 {
+			if n == 1 {
+				sb.WriteString(yellow("1 marker has unchecked changes.") + "\n")
+			} else {
+				sb.WriteString(yellow(fmt.Sprintf("%d markers have unchecked changes.", n)) + "\n")
+			}
+		}
+		if n := len(changedSpecs); n > 0 {
+			if n == 1 {
+				sb.WriteString(yellow("1 spec item has unchecked changes.") + "\n")
+			} else {
+				sb.WriteString(yellow(fmt.Sprintf("%d spec items have unchecked changes.", n)) + "\n")
+			}
+		}
+
+		sb.WriteString("\n")
+
+		for i, todo := range state.Todos {
+			var driftDescription string
+			switch {
+			case todo.SpecDeleted:
+				driftDescription = "The spec term has been deleted from disk. If this was intentional, run the reset command below to acknowledge the removal."
+			case todo.MarkerDeleted:
+				driftDescription = "The marker has been deleted from disk. If this was intentional, run the reset command below to acknowledge the removal."
+			case todo.MarkerChanged && todo.SpecChanged:
+				driftDescription = "Both the marker and the spec term have changed. Please check whether the changed code still complies with the new version of the spec term and make any modifications necessary on either side."
+			case todo.MarkerChanged:
+				driftDescription = "The marker has changed but not the spec term. Please check whether the changed code still complies with the spec term and make any modifications necessary."
+			default:
+				driftDescription = "The spec term has changed but not the marker. Please check whether the new version of the spec term is still reflected in the code and make any modifications necessary."
+			}
+
+			markerLocation := todo.MarkerFilepath + ":" + strconv.Itoa(todo.MarkerLineNumber)
+			specLocation := todo.SpecFilepath + ":" + strconv.Itoa(todo.SpecLineNumber)
+
+			sb.WriteString(fmt.Sprintf("%d. %s Edge between marker %q in %q and spec term %q in %q. %s Once you are satisfied, run `drift reset %s %s` to mark this todo item as complete.\n",
+				i+1,
+				yellow("[TODO]"),
+				todo.MarkerID,
+				markerLocation,
+				todo.SpecID,
+				specLocation,
+				driftDescription,
+				todo.MarkerID,
+				todo.SpecID,
+			))
+			sb.WriteString(fmt.Sprintf("  %s\n", cyan("→ Run 'drift diff "+todo.MarkerID+" "+todo.SpecID+"' to see what changed.")))
+		}
+	}
+
+	if warning := unlinkedMarkerWarning(state); warning != "" {
+		sb.WriteString("\n")
+		sb.WriteString(yellow(warning))
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// --- List ---
+
+func (p ColorPresenter) List(r ListResult) string {
+	state := r.State
+	if len(state.Specs) == 0 && len(state.Markers) == 0 {
+		return "No specs or markers registered.\nRun `drift init` to get started, then create spec files (*.drift.xml) and place " + markerSyntax + " markers in your code."
+	}
+
+	driftedEdges := make(map[string]bool)
+	for _, todo := range state.Todos {
+		driftedEdges[todo.MarkerID+"\x00"+todo.SpecID] = true
+	}
+
+	linkedSpecs := make(map[string]bool)
+	linkedMarkers := make(map[string]bool)
+	for _, link := range state.Links {
+		linkedSpecs[link.SpecID] = true
+		linkedMarkers[link.MarkerID] = true
+	}
+
+	var sb strings.Builder
+
+	sortedSpecs := make([]core.Spec, len(state.Specs))
+	copy(sortedSpecs, state.Specs)
+	sortSpecsByID(sortedSpecs)
+
+	sb.WriteString(bold(fmt.Sprintf("Specs (%d):", len(sortedSpecs))) + "\n")
+	for _, spec := range sortedSpecs {
+		linkFlag := ""
+		if spec.Deleted {
+			linkFlag = " " + red("[deleted]")
+		} else if !linkedSpecs[spec.ID] {
+			linkFlag = " " + yellow("[unlinked]")
+		}
+		sb.WriteString(fmt.Sprintf("  %-30s %s%s\n", spec.ID, spec.Filepath, linkFlag))
+		if r.Verbose && !spec.Deleted {
+			if content, ok := r.SpecContents[spec.ID]; ok && len(content) > 0 {
+				preview := content
+				if len(preview) > 80 {
+					preview = preview[:80] + "..."
+				}
+				sb.WriteString(fmt.Sprintf("    %s\n", preview))
+			}
+		}
+	}
+
+	sortedMarkers := make([]core.Marker, len(state.Markers))
+	copy(sortedMarkers, state.Markers)
+	sortMarkersByID(sortedMarkers)
+
+	sb.WriteString("\n" + bold(fmt.Sprintf("Markers (%d):", len(sortedMarkers))) + "\n")
+	for _, marker := range sortedMarkers {
+		linkFlag := ""
+		if marker.Deleted {
+			linkFlag = " " + red("[deleted]")
+		} else if !linkedMarkers[marker.ID] {
+			linkFlag = " " + yellow("[unlinked]")
+		}
+		sb.WriteString(fmt.Sprintf("  %-30s %s:%d-%d%s\n", marker.ID, marker.Filepath, marker.LineNumber, marker.EndLineNumber, linkFlag))
+		if r.Verbose && !marker.Deleted {
+			if content, ok := r.MarkerContents[marker.ID]; ok && len(content) > 0 {
+				firstLine := strings.Split(content, "\n")[0]
+				if len(firstLine) > 80 {
+					firstLine = firstLine[:80] + "..."
+				}
+				if firstLine != "" {
+					sb.WriteString(fmt.Sprintf("    %s\n", firstLine))
+				}
+			}
+		}
+	}
+
+	if len(state.Links) > 0 {
+		sb.WriteString("\n" + bold(fmt.Sprintf("Links (%d):", len(state.Links))) + "\n")
+		for _, link := range state.Links {
+			var status string
+			if driftedEdges[link.MarkerID+"\x00"+link.SpecID] {
+				status = red("[DRIFTED]")
+			} else {
+				status = green("[synced]")
+			}
+			sb.WriteString(fmt.Sprintf("  %-15s → %-30s %s\n", link.MarkerID, link.SpecID, status))
+		}
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// --- Show ---
+
+func (p ColorPresenter) Show(r ShowResult) string {
+	if r.IsSpec {
+		if r.Spec == nil {
+			return red(fmt.Sprintf("spec %q not found", r.ID))
+		}
+		return p.showSpec(r)
+	}
+	if r.Marker == nil {
+		return red(fmt.Sprintf("marker %q not found", r.ID))
+	}
+	return p.showMarker(r)
+}
+
+func (p ColorPresenter) showSpec(r ShowResult) string {
+	var sb strings.Builder
+
+	sb.WriteString(bold(fmt.Sprintf("=== Spec: %s ===", r.ID)) + "\n")
+	sb.WriteString(fmt.Sprintf("File: %s\n", r.Spec.Filepath))
+	sb.WriteString(fmt.Sprintf("Hash: %s\n\n", r.Spec.Hash))
+	sb.WriteString(r.Content)
+	sb.WriteString("\n")
+
+	for _, m := range r.LinkedMarkers {
+		sb.WriteString("\n" + bold(fmt.Sprintf("=== Marker: %s ===", m.Marker.ID)) + "\n")
+		sb.WriteString(fmt.Sprintf("File: %s\n", m.Marker.Filepath))
+		sb.WriteString(fmt.Sprintf("Lines: %d-%d\n", m.Marker.LineNumber, m.Marker.EndLineNumber))
+		sb.WriteString(fmt.Sprintf("Hash: %s\n\n", m.Marker.Hash))
+		sb.WriteString(m.Content)
+		sb.WriteString("\n")
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p ColorPresenter) showMarker(r ShowResult) string {
+	var sb strings.Builder
+
+	for _, s := range r.LinkedSpecs {
+		sb.WriteString(bold(fmt.Sprintf("=== Spec: %s ===", s.Spec.ID)) + "\n")
+		sb.WriteString(fmt.Sprintf("File: %s\n", s.Spec.Filepath))
+		sb.WriteString(fmt.Sprintf("Hash: %s\n\n", s.Spec.Hash))
+		sb.WriteString(s.Content)
+		sb.WriteString("\n\n")
+	}
+
+	sb.WriteString(bold(fmt.Sprintf("=== Marker: %s ===", r.ID)) + "\n")
+	sb.WriteString(fmt.Sprintf("File: %s\n", r.Marker.Filepath))
+	sb.WriteString(fmt.Sprintf("Lines: %d-%d\n", r.Marker.LineNumber, r.Marker.EndLineNumber))
+	sb.WriteString(fmt.Sprintf("Hash: %s\n\n", r.Marker.Hash))
+	sb.WriteString(r.Content)
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// --- Diff ---
+
+func (p ColorPresenter) DiffEdge(r DiffEdgeResult) string {
+	var sb strings.Builder
+	sb.WriteString(p.formatDiffSide("Spec", r.Result.Spec))
+	sb.WriteString("\n---\n")
+	sb.WriteString(p.formatDiffSide("Marker", r.Result.Marker))
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p ColorPresenter) formatDiffSide(label string, side orchestrator.DiffSide) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s: %s", label, side.ID))
+	if side.Filepath != "" {
+		sb.WriteString(fmt.Sprintf(" (%s", side.Filepath))
+		if side.Lines != "" {
+			sb.WriteString(":" + side.Lines)
+		}
+		sb.WriteString(")")
+	}
+	sb.WriteString("\n")
+
+	if side.Deleted {
+		sb.WriteString(red("Status: deleted from disk") + "\n")
+	} else if !side.HasBaseline {
+		sb.WriteString(yellow(fmt.Sprintf("Status: no baseline snapshot (hash %s)", side.BaselineHash)) + "\n")
+	} else if side.BaselineHash == side.CurrentHash && side.CurrentHash != "" {
+		sb.WriteString(green("Status: in sync") + "\n")
+	} else {
+		sb.WriteString(yellow(fmt.Sprintf("Baseline: %s   Current: %s", side.BaselineHash, side.CurrentHash)) + "\n")
+	}
+
+	if !side.HasBaseline {
+		return strings.TrimRight(sb.String(), "\n")
+	}
+	if side.Baseline == side.Current {
+		return strings.TrimRight(sb.String(), "\n")
+	}
+
+	sb.WriteString("\n--- baseline\n+++ current\n")
+	patch := diff.UnifiedDiff(side.Baseline, side.Current)
+	if patch != "" {
+		sb.WriteString(colorizePatch(patch))
+		sb.WriteString("\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p ColorPresenter) DiffExpanded(r DiffExpandedResult) string {
+	var sb strings.Builder
+	for i, edge := range r.Edges {
+		if i > 0 {
+			sb.WriteString("\n\n===\n\n")
+		}
+		out := p.DiffEdge(DiffEdgeResult{Result: edge})
+		sb.WriteString(out)
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p ColorPresenter) DiffAll(r DiffAllResult) string {
+	if len(r.Edges) == 0 {
+		return green("No drift detected.")
+	}
+
+	var sb strings.Builder
+	for i, edge := range r.Edges {
+		if i > 0 {
+			sb.WriteString("\n\n===\n\n")
+		}
+		out := p.DiffEdge(DiffEdgeResult{Result: edge})
+		sb.WriteString(out)
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// --- Ok / Error / Text / Version ---
+
+func (p ColorPresenter) Ok(r OkResult) string {
+	return r.Message
+}
+
+func (p ColorPresenter) Error(r ErrorResult) string {
+	if r.Hint != "" {
+		return red(r.Message) + "\n" + r.Hint
+	}
+	return red(r.Message)
+}
+
+func (p ColorPresenter) Text(r TextResult) string {
+	return r.Text
+}
+
+func (p ColorPresenter) Version(r VersionResult) string {
+	return "drift version " + r.Version
+}

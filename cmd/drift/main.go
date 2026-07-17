@@ -6,6 +6,7 @@ import (
 
 	"drift/cli"
 	"drift/cli/commands"
+	"drift/cli/output"
 )
 
 var version = "dev"
@@ -18,9 +19,10 @@ func main() {
 		args[0] = "version"
 	}
 
-	output, code := cli.RunAuto(args, ".")
-	if output != "" {
-		fmt.Println(output)
+	presenter := output.SelectPresenter(args, os.Stdout, os.Environ())
+	out, code := cli.RunWithRender(args, ".", presenter)
+	if out != "" {
+		fmt.Println(out)
 	}
 	os.Exit(code)
 }

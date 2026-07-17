@@ -61,6 +61,56 @@ func TestCLIInit(t *testing.T) {
 		testutil.AssertNoError(t, err)
 		testutil.AssertStateEquals(t, state, statestore.State{})
 	})
+
+	t.Run("init_fails_if_already_initialized", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+
+		_, code := cli.Run([]string{"init"}, dir)
+		if code != 0 {
+			t.Fatalf("first init failed, code = %d", code)
+		}
+
+		output, code := cli.Run([]string{"init"}, dir)
+		if code != 1 {
+			t.Fatalf("second init should exit 1, got %d, output: %s", code, output)
+		}
+		if !strings.Contains(strings.ToLower(output), "already initialized") {
+			t.Fatalf("output should mention 'already initialized', got: %s", output)
+		}
+		if !strings.Contains(output, "state.xml") {
+			t.Fatalf("output should mention state.xml path, got: %s", output)
+		}
+	})
+
+	t.Run("init_does_not_overwrite_existing_state_on_reinit", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main>
+  <spec id="s1">spec one</spec>
+</main>`)
+		cli.Run([]string{"init"}, dir)
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
+func a() {}
+`+testutil.MarkerEnd("m1")+`
+`)
+		cli.Run([]string{"todo"}, dir)
+		cli.Run([]string{"link", "m1", "main.s1"}, dir)
+
+		beforeOutput, _ := cli.Run([]string{"list"}, dir)
+		if !strings.Contains(beforeOutput, "main.s1") {
+			t.Fatalf("setup: link should exist before reinit, got: %s", beforeOutput)
+		}
+
+		reinitOutput, reinitCode := cli.Run([]string{"init"}, dir)
+		if reinitCode != 1 {
+			t.Fatalf("reinit should fail, got code %d, output: %s", reinitCode, reinitOutput)
+		}
+
+		afterOutput, _ := cli.Run([]string{"list"}, dir)
+		if !strings.Contains(afterOutput, "main.s1") {
+			t.Fatalf("existing state should be preserved after failed reinit, got: %s", afterOutput)
+		}
+	})
 }
 
 func TestCLITodoWithoutInit(t *testing.T) {

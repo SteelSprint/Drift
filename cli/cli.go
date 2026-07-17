@@ -2,6 +2,7 @@ package cli
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,6 +49,9 @@ func Run(args []string, dir string) (string, int) {
 	switch args[0] {
 	case "init":
 		if err := orch.Init(); err != nil {
+			if errors.Is(err, orchestrator.ErrAlreadyInitialized) {
+				return fmt.Sprintf("Project already initialized: %s/.drift/state.xml exists.\nTo reinitialize, delete .drift/ by hand (drift provides no command for this, by design).", dir), 1
+			}
 			return err.Error(), 1
 		}
 		if err := writeInitFiles(dir); err != nil {
@@ -191,7 +195,7 @@ func subcommandHelp(name string) (string, bool) {
 }
 
 var subcommandHelpTexts = map[string]string{
-	"init": "Usage: drift init\n\nInitialize the .drift/ directory (state.xml + baselines/) and write a starter\nmain.drift.xml template if one does not already exist.\n\nNo arguments.",
+	"init": "Usage: drift init\n\nInitialize the .drift/ directory (state.xml + baselines/) and write a starter\nmain.drift.xml template if one does not already exist.\n\nNot idempotent: fails with exit code 1 if .drift/state.xml already exists.\nTo reinitialize, delete .drift/ by hand (drift provides no command for this).\n\nNo arguments.",
 	"todo": "Usage: drift todo\n\nScan specs and markers, report drift.\nExit codes: 0 = clean, 1 = drift exists, 2 = error.\n\nNo arguments.",
 	"list": "Usage: drift list [--verbose]\n\nShow all specs, markers, links, and sync state.\n--verbose: include spec text and marker content preview.",
 	"show": "Usage: drift show <marker|spec>\n\nShow current content of a spec or marker with filepath and line ranges.\nIf the ID has a dot, it is treated as a spec ID; otherwise as a marker ID.\nLinked specs/markers are also displayed.\n\nExamples:\n  drift show cval\n  drift show core.validate",

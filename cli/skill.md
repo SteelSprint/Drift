@@ -10,7 +10,7 @@ drift skill           # Print this guide (pipe to a file or read into context)
 
 # Workflow
 
-1. **Initialize**: `drift init` — creates `.drift/` (state directory with `state.xml` and `baselines/`) and `main.drift.xml` (spec entry point template). Edit `main.drift.xml` to add your specs.
+1. **Initialize**: `drift init` — creates `.drift/` (state directory with `state.xml` and `baselines/`) and `main.drift.xml` (spec entry point template). Edit `main.drift.xml` to add your specs. Note: `drift init` is NOT idempotent — it fails if `.drift/state.xml` already exists. To reinitialize, delete `.drift/` by hand (drift provides no command for this, by design — protecting against accidental state loss).
 
 2. **Write specs**: Edit `*.drift.xml` files. Each file has a root `<module name="...">` (or `<main>` for the entry point). Specs are `<spec id="...">description</spec>` elements — they must be **direct children** of the root element, not nested inside a `<specs>` wrapper.
 

@@ -2,6 +2,7 @@ package orchestrator_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"drift/core"
@@ -12,10 +13,12 @@ import (
 )
 
 type fakeStateStore struct {
-	state   statestore.State
-	loadErr error
-	saveErr error
-	saved   []statestore.State
+	state         statestore.State
+	loadErr       error
+	saveErr       error
+	saved         []statestore.State
+	initialized   bool
+	initializedErr error
 }
 
 func (f *fakeStateStore) Load() (statestore.State, error) {
@@ -32,6 +35,13 @@ func (f *fakeStateStore) Save(state statestore.State) error {
 	f.state = state
 	f.saved = append(f.saved, state)
 	return nil
+}
+
+func (f *fakeStateStore) Initialized() (bool, error) {
+	if f.initializedErr != nil {
+		return false, f.initializedErr
+	}
+	return f.initialized, nil
 }
 
 type fakeScanner struct {
@@ -98,6 +108,40 @@ func TestOrchestratorInit(t *testing.T) {
 		err := orch.Init()
 		if err == nil {
 			t.Fatalf("expected error from save failure")
+		}
+	})
+
+	t.Run("init_fails_when_already_initialized", func(t *testing.T) {
+		stateStore := &fakeStateStore{initialized: true}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(stateStore, scanner, nil)
+
+		err := orch.Init()
+		if err == nil {
+			t.Fatalf("expected error when already initialized")
+		}
+		if !errors.Is(err, orchestrator.ErrAlreadyInitialized) {
+			t.Fatalf("expected ErrAlreadyInitialized, got %v", err)
+		}
+		if len(stateStore.saved) != 0 {
+			t.Fatalf("expected 0 saves when already initialized, got %d", len(stateStore.saved))
+		}
+	})
+
+	t.Run("init_propagates_initialized_check_error", func(t *testing.T) {
+		stateStore := &fakeStateStore{initializedErr: errors.New("corrupt state.xml")}
+		scanner := &fakeScanner{}
+		orch := orchestrator.NewOrchestrator(stateStore, scanner, nil)
+
+		err := orch.Init()
+		if err == nil {
+			t.Fatalf("expected error from initialized check failure")
+		}
+		if !strings.Contains(err.Error(), "corrupt state.xml") {
+			t.Fatalf("expected propagated error message, got %v", err)
+		}
+		if len(stateStore.saved) != 0 {
+			t.Fatalf("expected 0 saves when initialized check errors, got %d", len(stateStore.saved))
 		}
 	})
 }

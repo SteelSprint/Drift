@@ -24,6 +24,12 @@ type State struct {
 type StateStore interface {
 	Load() (State, error)
 	Save(State) error
+	// Initialized reports whether the project's state.xml already exists on
+	// disk. Returns (true, nil) when state.xml exists (regardless of content);
+	// (false, nil) when it does not exist; (false, err) when the existence
+	// check itself fails (e.g. permission error). Used by Init to make the
+	// init command non-idempotent.
+	Initialized() (bool, error)
 }
 
 type FileStateStore struct {
@@ -36,6 +42,18 @@ func NewFileStateStore(dir string) *FileStateStore {
 
 func (s *FileStateStore) Dir() string {
 	return s.dir
+}
+
+// Initialized reports whether .drift/state.xml already exists on disk.
+func (s *FileStateStore) Initialized() (bool, error) {
+	_, err := os.Stat(s.statePath())
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (s *FileStateStore) statePath() string {

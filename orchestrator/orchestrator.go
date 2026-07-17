@@ -19,6 +19,7 @@ var (
 	ErrOrphanStillOnDisk  = fmt.Errorf("spec or marker is still on disk")
 	ErrOrphanHasLinks     = fmt.Errorf("spec or marker still has links")
 	ErrDiffEntityNotFound = fmt.Errorf("no spec or marker found for diff")
+	ErrAlreadyInitialized = fmt.Errorf("project already initialized")
 	markerSyntax          = "D" + "! id=<shortcode>"
 )
 
@@ -91,6 +92,13 @@ func (o *Orchestrator) resolvePath(p string) string {
 
 // D! id=oinit range-start
 func (o *Orchestrator) Init() error {
+	initialized, err := o.stateStore.Initialized()
+	if err != nil {
+		return fmt.Errorf("check initialized state: %w", err)
+	}
+	if initialized {
+		return ErrAlreadyInitialized
+	}
 	return o.stateStore.Save(statestore.State{})
 }
 

@@ -1,0 +1,94 @@
+
+// ConfigCommand handles `drift config <key> [value]` — user-specific
+// preferences stored in .drift/user-settings.xml (not committed to git).
+type ConfigCommand struct{}
+
+func (c ConfigCommand) Run(ctx Context) (output.Result, int) {
+	if len(ctx.Args) < 2 {
+		return output.ErrorResult{
+			Command: "config",
+			Message: "usage: drift config theme <name>\n\nExample: drift config theme gruvbox",
+			Exit:    1,
+		}, 1
+	}
+
+	switch ctx.Args[1] {
+	case "theme":
+		return c.configTheme(ctx)
+	default:
+		return output.ErrorResult{
+			Command: "config",
+			Message: fmt.Sprintf("unknown config key: %s\n\nAvailable keys: theme", ctx.Args[1]),
+			Exit:    1,
+		}, 1
+	}
+}
+
+func (c ConfigCommand) configTheme(ctx Context) (output.Result, int) {
+	// No name argument: print current theme
+	if len(ctx.Args) < 3 {
+		settings, _ := output.LoadUserSettings(ctx.Dir)
+		theme := settings.Theme
+		if theme == "" {
+			theme = "default"
+		}
+		return output.OkResult{
+			Command: "config",
+			Message: fmt.Sprintf("Theme: %s", theme),
+		}, 0
+	}
+
+	name := ctx.Args[2]
+
+	// Validate theme name
+	if _, ok := output.AllThemes[name]; !ok {
+		return output.ErrorResult{
+			Command: "config",
+			Message: fmt.Sprintf("unknown theme: %s\n\nAvailable themes: %s", name, listThemeNames()),
+			Exit:    1,
+		}, 1
+	}
+
+	// Write user-settings.xml
+	if err := output.SaveUserSettings(ctx.Dir, output.UserSettings{Theme: name}); err != nil {
+		return output.ErrorResult{Command: "config", Message: err.Error(), Exit: 1}, 1
+	}
+
+	// Ensure .drift/.gitignore exists (prevents accidental commit of settings)
+	ensureGitignore(ctx.Dir)
+
+	return output.OkResult{
+		Command: "config",
+		Message: fmt.Sprintf("Theme set to: %s", name),
+	}, 0
+}
+
+func listThemeNames() string {
+	names := make([]string, 0, len(output.AllThemes))
+	for name := range output.AllThemes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
+// ensureGitignore creates .drift/.gitignore if it doesn't exist, listing
+// user-settings.xml so personal preferences are never accidentally committed.
+func ensureGitignore(dir string) {
+	path := filepath.Join(dir, ".drift", ".gitignore")
+	if _, err := os.Stat(path); err == nil {
+		return // already exists
+	}
+	content := "# User-specific settings — not committed\nuser-settings.xml\n"
+	os.MkdirAll(filepath.Join(dir, ".drift"), 0755)
+	os.WriteFile(path, []byte(content), 0644)
+}
+
+func (c ConfigCommand) Meta() Meta {
+	return Meta{
+		Name:  "config",
+		Short: "Set user preferences (theme)",
+		Usage: "Usage: drift config theme <name>\n\nSet or display user-specific preferences stored in .drift/user-settings.xml\n(not committed to git).\n\nSubcommands:\n  config theme <name>   Set theme preference (e.g. gruvbox, nord, dracula)\n  config theme          Display current theme preference\n\nAvailable themes:\n  default, minimal, monochrome, high-contrast, dark, light, protanopia,\n  solarized-dark, solarized-light, gruvbox, nord, dracula\n\nExample:\n  drift config theme gruvbox",
+	}
+}
+

@@ -27,6 +27,7 @@ var Registry = map[string]commands.Command{
 	"help":    commands.HelpCommand{Text: helpContent},
 	"skill":   commands.SkillCommand{Text: skillContent},
 	"version": commands.VersionCommand{},
+	"config":  commands.ConfigCommand{},
 }
 
 // D! id=chelp range-start

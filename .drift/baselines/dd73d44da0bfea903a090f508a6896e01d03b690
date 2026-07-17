@@ -1,12 +1,3 @@
-package output
-
-import (
-	"fmt"
-	"os"
-	"strings"
-)
-
-// D! id=otty range-start
 // IsTerminal reports whether f is a terminal (character device). Uses stdlib
 // only — no golang.org/x/term — preserving drift's zero-dependency commitment.
 func IsTerminal(f *os.File) bool {
@@ -114,4 +105,3 @@ func resolveTheme(dir string) Theme {
 	return DefaultTheme
 }
 
-// D! id=otty range-end

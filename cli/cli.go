@@ -98,7 +98,7 @@ func RunWithRender(args []string, dir string, presenter output.Presenter) (strin
 // stripGlobalFlags removes recognized global flags (--json, --no-color,
 // --color=...) from args. These flags are handled before dispatch and must
 // not appear in any command's recognized flag list or trigger
-// unknown_flag_rejection. Landing 3 handles --json; Landing 4 adds the rest.
+// unknown_flag_rejection.
 func stripGlobalFlags(args []string) []string {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
@@ -106,9 +106,6 @@ func stripGlobalFlags(args []string) []string {
 			continue
 		}
 		if strings.HasPrefix(a, "--color=") {
-			continue
-		}
-		if strings.HasPrefix(a, "--theme=") {
 			continue
 		}
 		out = append(out, a)

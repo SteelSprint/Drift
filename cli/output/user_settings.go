@@ -1,0 +1,62 @@
+package output
+
+// D! id=ousr range-start
+
+import (
+	"encoding/xml"
+	"os"
+	"path/filepath"
+)
+
+// UserSettings stores per-user preferences read from .drift/user-settings.xml.
+// This file is NOT committed to git (excluded by .drift/.gitignore created by
+// drift init). Each developer on a project can have different settings.
+type UserSettings struct {
+	Theme string
+}
+
+type settingsXML struct {
+	XMLName xml.Name `xml:"settings"`
+	Theme   string   `xml:"theme"`
+}
+
+// LoadUserSettings reads dir/.drift/user-settings.xml. Returns
+// (UserSettings{}, nil) if the file does not exist — the normal case for
+// fresh projects or users who haven't set a preference.
+func LoadUserSettings(dir string) (UserSettings, error) {
+	path := filepath.Join(dir, ".drift", "user-settings.xml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return UserSettings{}, nil
+		}
+		return UserSettings{}, err
+	}
+
+	var raw settingsXML
+	if err := xml.Unmarshal(data, &raw); err != nil {
+		return UserSettings{}, err
+	}
+
+	return UserSettings{Theme: raw.Theme}, nil
+}
+
+// SaveUserSettings writes settings to dir/.drift/user-settings.xml, creating
+// the .drift/ directory if it doesn't exist.
+func SaveUserSettings(dir string, settings UserSettings) error {
+	if err := os.MkdirAll(filepath.Join(dir, ".drift"), 0755); err != nil {
+		return err
+	}
+
+	raw := settingsXML{Theme: settings.Theme}
+	data, err := xml.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+
+	path := filepath.Join(dir, ".drift", "user-settings.xml")
+	return os.WriteFile(path, data, 0644)
+}
+
+// D! id=ousr range-end

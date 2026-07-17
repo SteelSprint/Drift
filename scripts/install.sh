@@ -29,6 +29,16 @@ err() {
 	exit 1
 }
 
+# portable sha256: macOS ships `shasum -a 256`, Linux ships `sha256sum`.
+# emits the hex digest on stdout (first field), matching the checksums.txt format.
+if command -v sha256sum >/dev/null 2>&1; then
+	sha256() { sha256sum "$1" | awk '{print $1}'; }
+elif command -v shasum >/dev/null 2>&1; then
+	sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+else
+	err "neither sha256sum nor shasum found; cannot verify checksums. Install coreutils or perl."
+fi
+
 # --- validate HOME and DESTDIR before any mkdir/mv ---
 if [ -z "${HOME:-}" ] || [ ! -d "${HOME:-}" ]; then
 	err "HOME is unset or not a directory; refusing to install. Set \$HOME or \$DESTDIR explicitly."
@@ -121,7 +131,7 @@ if curl -fsSL --retry 3 "$CHECKSUM_URL" -o "${WORKDIR}/checksums.txt" 2>/dev/nul
 		err "checksums.txt is available but does not list '${ARCHIVE}.tar.gz'.
 This is either a release packaging error or a tampering attempt — refusing to install."
 	fi
-	ACTUAL="$(sha256sum "${WORKDIR}/${ARCHIVE}.tar.gz" | awk '{print $1}')"
+	ACTUAL="$(sha256 "${WORKDIR}/${ARCHIVE}.tar.gz")"
 	if [ "$ACTUAL" != "$EXPECTED" ]; then
 		err "checksum mismatch — the downloaded archive was tampered with or corrupted.
 expected: ${EXPECTED}

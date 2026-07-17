@@ -1,0 +1,7 @@
+<module name="business_goals">
+    <spec id="premise">LLMs break long-held assumptions about how software should be developed. This creates genuine unexplored territory for the future of programming.</spec>
+    <spec id="explore_and_discover">To explore and discover new programming workflows, patterns, and best practices that LLMs enable.</spec>
+    <spec id="create_best_practices">To enshrine those discoveries in the form of best practices, guidelines, and reusable artifacts.</spec>
+    <spec id="build_open_source_tools">To build open source tools and libraries that implement those best practices and make them accessible to the broader programming community.</spec>
+    <spec id="communicate">To communicate and share the knowledge and insights gained from exploring LLMs with the broader programming community.</spec>
+</module>

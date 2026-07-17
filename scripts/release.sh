@@ -13,7 +13,12 @@
 # Designed to run locally (snapshot) and in GitHub Actions (release).
 set -euo pipefail
 
-VER="${1:-$(git describe --tags --dirty 2>/dev/null || echo dev)}"
+# Accept the tag verbatim (e.g. v1.0.0) but strip the leading 'v' for archive
+# naming, so assets are drift_1.0.0_<os>_<arch>.tar.gz (matching what the
+# install scripts expect). The ldflags version keeps the 'v' so `drift version`
+# prints "v1.0.0" matching the tag.
+TAG="${1:-$(git describe --tags --dirty 2>/dev/null || echo dev)}"
+VER="${TAG#v}"
 OUT="dist"
 
 # 17 targets — Go cross-compiles all of these natively with CGO_ENABLED=0.
@@ -31,7 +36,7 @@ echo "Building drift ${VER} for ${#TARGETS[@]} targets → ${OUT}/"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-LDFLAGS="-s -w -X main.version=${VER}"
+LDFLAGS="-s -w -X main.version=${TAG}"
 
 for t in "${TARGETS[@]}"; do
 	GOOS="${t%/*}"

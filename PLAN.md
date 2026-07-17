@@ -72,23 +72,44 @@ Three strict layers, one direction of dependency. Commands produce data, never s
 
 ## 4. Spec organization (multi-level, drift-tracked)
 
-Three sibling modules, one per level. Each lives in `cli/output/`. All imported from `main.drift.xml`. They cross-reference each other in prose using fully-qualified IDs (`module.spec`).
+Five levels, each citing the level above via `<ref spec="...">`. The top two levels (L0, L0.5) belong to the broader business/product hierarchy; the bottom three (L1, L2, L3) belong to the output-layer feature itself.
 
 ```
-main.drift.xml                       (adds 3 imports)
+main.drift.xml
+  └── business/goals/
+        goals.drift.xml                                    module: business_goals           L0   — org mission (5 goals)
+        build_open_source_tools/
+          drift/
+            open_source_tools.drift.xml                    module: open_source_tools_drift  L0.5 — Drift product definition (6 specs, stubbed)
+        explore_and_discover/                              (stubbed directory — placeholder)
+        create_best_practices/                             (stubbed directory — placeholder)
+        communicate/                                       (stubbed directory — placeholder)
   └── cli/output/
-        output_intent.drift.xml      module: output_intent      Level 1 — intent & outcomes (WHY)
-        output.drift.xml             module: output             Level 2 — behaviors (WHAT)
-        output_impl.drift.xml        module: output_impl        Level 3 — code units (WHERE/HOW)
-  └── cli/cli.drift.xml              updates in place           Levels 2 & 3 mixed (existing)
+        output_intent.drift.xml                            module: output_intent            L1   — feature intent (WHY)
+        output.drift.xml                                   module: output                   L2   — behaviors (WHAT)
+        output_impl.drift.xml                              module: output_impl              L3   — code units (WHERE/HOW)
+  └── cli/cli.drift.xml                                    updates in place                 L2 & L3 mixed (existing)
 ```
+
+**Trace chain** for any output-layer feature-intent spec, e.g. `output_intent.machine_readable`:
+
+```
+output_intent.machine_readable
+  → <ref spec="open_source_tools_drift.llm_agent_persona">
+    → <ref spec="open_source_tools_drift.purpose">
+      → <ref spec="business_goals.build_open_source_tools">
+```
+
+The directory structure encodes the goal hierarchy. `business_goals.*` is now properly imported (previously orphaned). The four goal-directories under `business/goals/` are the "four buckets" model — one per actionable goal (premise is framing, not actionable). Only `build_open_source_tools` is populated; the other three are empty stubs awaiting future content.
 
 **Level discipline:**
-- **L1 (`output_intent.*`)** — Outcomes and commitments. No code, no flags, no JSON shapes. Readable by a product stakeholder.
+- **L0 (`business_goals.*`)** — Org-wide mission. Not product-specific. The 5 goals (premise + 4 actionable).
+- **L0.5 (`open_source_tools_drift.*`)** — Drift's product definition: purpose, methodology, personas, cross-cutting constraints. Reusable parent for every drift feature's `*_intent` module.
+- **L1 (`output_intent.*`)** — Feature-level outcomes and commitments. No code, no flags, no JSON shapes. Readable by a product stakeholder.
 - **L2 (`output.*`)** — Observable behaviors. Modes, flag precedence, palettes, JSON schemas, invariants. Readable by an integration tester writing behavior tests.
 - **L3 (`output_impl.*`)** — Code-unit organization. Package layout, interface signatures, file responsibilities. Readable by a maintainer navigating the codebase.
 
-Cross-refs flow downward: L1 → L2 → L3. L2 never cites L3 for behavior; L3 cites L2 for "implementation of".
+Cross-refs flow downward: L0 → L0.5 → L1 → L2 → L3. Lower levels never cite higher levels for behavior; lower levels cite the level immediately above for "implementation of". A spec may skip a level when the commitment is broader (e.g., `output_intent.zero_dependency_preserved` cites `business_goals.build_open_source_tools` directly because zero-dep is a project-wide commitment, not drift-product-specific).
 
 ### Spec inventory
 

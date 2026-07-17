@@ -1,0 +1,212 @@
+package output
+
+import (
+	"fmt"
+	"path/filepath"
+
+	"drift/core"
+	"drift/scanner"
+)
+
+// This file contains the dispatch-side helpers that construct Results from
+// evaluated state plus file I/O. Presenters are pure (no I/O); all content
+// resolution happens here so that every Presenter implementation — Plain,
+// Color, JSON — formats from identical, fully-resolved data.
+
+// resolvePath joins dir with a relative path, or returns p unchanged if it's
+// already absolute.
+func resolvePath(dir, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(dir, p)
+}
+
+// readSpecContent reads the text inside <spec id="..."> for the given spec ID.
+func readSpecContent(dir, specFilepath, specID string) (string, error) {
+	return scanner.ReadSpecContent(resolvePath(dir, specFilepath), specID)
+}
+
+// readMarkerContent reads the lines between range-start and range-end for the
+// given marker.
+func readMarkerContent(dir, markerFilepath string, startLine, endLine int) (string, error) {
+	return scanner.ReadMarkerContent(resolvePath(dir, markerFilepath), startLine, endLine)
+}
+
+// BuildListResult constructs a ListResult, pre-resolving verbose content
+// previews when verbose is true. When verbose is false, the content maps are
+// nil and the presenter skips previews.
+func BuildListResult(state core.EvaluatedState, dir string, verbose bool) ListResult {
+	result := ListResult{State: state, Verbose: verbose}
+	if !verbose {
+		return result
+	}
+	result.SpecContents = make(map[string]string)
+	result.MarkerContents = make(map[string]string)
+	for _, spec := range state.Specs {
+		if spec.Deleted {
+			continue
+		}
+		content, err := readSpecContent(dir, spec.Filepath, spec.ID)
+		if err == nil {
+			result.SpecContents[spec.ID] = content
+		}
+	}
+	for _, marker := range state.Markers {
+		if marker.Deleted {
+			continue
+		}
+		content, err := readMarkerContent(dir, marker.Filepath, marker.LineNumber, marker.EndLineNumber)
+		if err == nil {
+			result.MarkerContents[marker.ID] = content
+		}
+	}
+	return result
+}
+
+// BuildShowResult constructs a ShowResult by resolving the entity lookup and
+// reading all file content. Returns a non-nil error when content reading fails
+// for the primary entity. When the entity is not found, returns a ShowResult
+// with nil Spec and Marker (and the caller sets exit code 1).
+func BuildShowResult(state core.EvaluatedState, dir, id string) (ShowResult, error) {
+	isSpec := isSpecID(id)
+	if isSpec {
+		return buildShowSpecResult(state, dir, id)
+	}
+	return buildShowMarkerResult(state, dir, id)
+}
+
+func isSpecID(id string) bool {
+	return containsDot(id)
+}
+
+func containsDot(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '.' {
+			return true
+		}
+	}
+	return false
+}
+
+func buildShowSpecResult(state core.EvaluatedState, dir, specID string) (ShowResult, error) {
+	var spec *core.Spec
+	for i := range state.Specs {
+		if state.Specs[i].ID == specID {
+			spec = &state.Specs[i]
+			break
+		}
+	}
+	if spec == nil {
+		return ShowResult{IsSpec: true, ID: specID}, nil
+	}
+	content, err := readSpecContent(dir, spec.Filepath, spec.ID)
+	if err != nil {
+		return ShowResult{}, fmt.Errorf("error reading spec content: %s", err)
+	}
+	var linkedMarkers []LinkedMarker
+	for _, link := range state.Links {
+		if link.SpecID != specID {
+			continue
+		}
+		for i := range state.Markers {
+			if state.Markers[i].ID == link.MarkerID {
+				m := state.Markers[i]
+				markerContent, err := readMarkerContent(dir, m.Filepath, m.LineNumber, m.EndLineNumber)
+				if err != nil {
+					continue
+				}
+				linkedMarkers = append(linkedMarkers, LinkedMarker{Marker: m, Content: markerContent})
+				break
+			}
+		}
+	}
+	return ShowResult{
+		IsSpec:        true,
+		ID:            specID,
+		Spec:          spec,
+		Content:       content,
+		LinkedMarkers: linkedMarkers,
+	}, nil
+}
+
+func buildShowMarkerResult(state core.EvaluatedState, dir, markerID string) (ShowResult, error) {
+	var marker *core.Marker
+	for i := range state.Markers {
+		if state.Markers[i].ID == markerID {
+			marker = &state.Markers[i]
+			break
+		}
+	}
+	if marker == nil {
+		return ShowResult{IsSpec: false, ID: markerID}, nil
+	}
+	var linkedSpecs []LinkedSpec
+	for _, link := range state.Links {
+		if link.MarkerID != markerID {
+			continue
+		}
+		for i := range state.Specs {
+			if state.Specs[i].ID == link.SpecID {
+				s := state.Specs[i]
+				content, err := readSpecContent(dir, s.Filepath, s.ID)
+				if err != nil {
+					continue
+				}
+				linkedSpecs = append(linkedSpecs, LinkedSpec{Spec: s, Content: content})
+				break
+			}
+		}
+	}
+	markerContent, err := readMarkerContent(dir, marker.Filepath, marker.LineNumber, marker.EndLineNumber)
+	if err != nil {
+		return ShowResult{}, fmt.Errorf("error reading marker content: %s", err)
+	}
+	return ShowResult{
+		IsSpec:      false,
+		ID:          markerID,
+		Marker:      marker,
+		Content:     markerContent,
+		LinkedSpecs: linkedSpecs,
+	}, nil
+}
+
+// EntityExists reports whether the given ID exists in state as a spec or
+// marker. Used by the dispatch to set the exit code for `drift show`.
+func EntityExists(state core.EvaluatedState, id string) bool {
+	if isSpecID(id) {
+		for _, s := range state.Specs {
+			if s.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	for _, m := range state.Markers {
+		if m.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// DiffEdgeExists reports whether a given marker/spec pair has a diff edge
+// available (i.e., both exist in state).
+func DiffEdgeExists(state core.EvaluatedState, markerID, specID string) bool {
+	hasMarker := false
+	for _, m := range state.Markers {
+		if m.ID == markerID {
+			hasMarker = true
+			break
+		}
+	}
+	if !hasMarker {
+		return false
+	}
+	for _, s := range state.Specs {
+		if s.ID == specID {
+			return true
+		}
+	}
+	return false
+}

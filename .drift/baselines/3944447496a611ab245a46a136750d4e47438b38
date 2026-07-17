@@ -1,0 +1,22 @@
+	case "show":
+		if len(args) < 2 {
+			return presenter.Error(output.ErrorResult{
+				Command: "show",
+				Message: "usage: drift show <marker|spec>\n\nExample: drift show cval\n         drift show core.validate",
+				Exit:    1,
+			}), 1
+		}
+		state, err := orch.Todo()
+		if err != nil {
+			return presenter.Error(output.ErrorResult{Command: "show", Message: err.Error(), Exit: 1}), 1
+		}
+		result, err := output.BuildShowResult(state, dir, args[1])
+		if err != nil {
+			return presenter.Error(output.ErrorResult{Command: "show", Message: err.Error(), Exit: 1}), 1
+		}
+		code := 0
+		if !output.EntityExists(state, args[1]) {
+			code = 1
+		}
+		return presenter.Show(result), code
+

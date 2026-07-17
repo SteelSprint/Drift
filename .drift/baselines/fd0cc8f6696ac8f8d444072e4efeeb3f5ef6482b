@@ -1,0 +1,2 @@
+	case "skill":
+		return presenter.Text(output.TextResult{Text: skillContent}), 0

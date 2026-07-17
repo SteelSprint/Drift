@@ -1,0 +1,36 @@
+var recognizedFlags = map[string]map[string]bool{
+	"init":   {},
+	"todo":   {},
+	"skill":  {},
+	"list":   {"--verbose": true},
+	"show":   {},
+	"diff":   {"--all": true},
+	"link":   {},
+	"unlink": {},
+	"reset":  {},
+}
+
+func rejectUnknownFlags(args []string) (string, bool) {
+	if len(args) == 0 {
+		return "", false
+	}
+	cmd := args[0]
+	allowed, ok := recognizedFlags[cmd]
+	if !ok {
+		return "", false
+	}
+	for _, a := range args[1:] {
+		if !strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "--help" || a == "-h" {
+			continue
+		}
+		if allowed[a] {
+			continue
+		}
+		return fmt.Sprintf("unknown flag: %s", a), true
+	}
+	return "", false
+}
+

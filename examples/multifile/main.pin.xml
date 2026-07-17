@@ -1,5 +1,0 @@
-<main>
-  <import path="./core.pin.xml" />
-  <import path="./utils.pin.xml" />
-  <import path="./dispatch.pin.xml" />
-</main>

@@ -14,7 +14,7 @@ import (
 
 func writeMainDrift(t *testing.T, dir, content string) {
 	t.Helper()
-	testutil.WriteSpecFile(t, dir, "main.pin.xml", content)
+	testutil.WriteSpecFile(t, dir, "main.drift.xml", content)
 }
 
 func TestCLIInit(t *testing.T) {
@@ -279,9 +279,9 @@ func handleRequest() {
 	t.Run("link_with_module_imports", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./core.pin.xml" />
+  <import path="./core.drift.xml" />
 </main>`)
-		testutil.WriteSpecFile(t, dir, "core.pin.xml", `<module name="core">
+		testutil.WriteSpecFile(t, dir, "core.drift.xml", `<module name="core">
   <spec id="validate">Validation must reject duplicates.</spec>
 </module>`)
 		cli.Run([]string{"init"}, dir)
@@ -1096,10 +1096,10 @@ func a() { doSomething() }
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
 		}
-		if strings.Contains(output, "main.pin.xml:0") {
+		if strings.Contains(output, "main.drift.xml:0") {
 			t.Fatalf("output should not show :0 for specs, got: %s", output)
 		}
-		if !strings.Contains(output, "main.pin.xml") {
+		if !strings.Contains(output, "main.drift.xml") {
 			t.Fatalf("output should show spec filepath, got: %s", output)
 		}
 	})
@@ -1773,7 +1773,7 @@ func a() { doSomething() }
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		os.Remove(filepath.Join(dir, "main.pin.xml"))
+		os.Remove(filepath.Join(dir, "main.drift.xml"))
 
 		output, code := cli.Run([]string{"show", "main.s1"}, dir)
 		if code == 0 {

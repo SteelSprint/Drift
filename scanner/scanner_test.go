@@ -12,7 +12,7 @@ import (
 
 func writeMainDrift(t *testing.T, dir, content string) {
 	t.Helper()
-	testutil.WriteSpecFile(t, dir, "main.pin.xml", content)
+	testutil.WriteSpecFile(t, dir, "main.drift.xml", content)
 }
 
 func writeModuleFile(t *testing.T, dir, name, content string) {
@@ -36,7 +36,7 @@ func TestScannerEmptyProject(t *testing.T) {
 	t.Run("missing_main_pin_xml_errors", func(t *testing.T) {
 		dir := t.TempDir()
 		scanner := scanner.NewFileScanner(dir)
-		assertScanError(t, scanner, "main.pin.xml")
+		assertScanError(t, scanner, "main.drift.xml")
 	})
 
 	t.Run("empty_main_returns_no_specs", func(t *testing.T) {
@@ -104,8 +104,8 @@ func TestScannerSpecDiscovery(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected spec main.validate_input, not found. specs: %+v", result.Specs)
 		}
-		if spec.Filepath != filepath.Join(dir, "main.pin.xml") {
-			t.Fatalf("filepath = %q, want %q", spec.Filepath, filepath.Join(dir, "main.pin.xml"))
+		if spec.Filepath != filepath.Join(dir, "main.drift.xml") {
+			t.Fatalf("filepath = %q, want %q", spec.Filepath, filepath.Join(dir, "main.drift.xml"))
 		}
 		if spec.Hash == "" {
 			t.Fatalf("expected non-empty hash")
@@ -115,9 +115,9 @@ func TestScannerSpecDiscovery(t *testing.T) {
 	t.Run("main_imports_one_module", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./core.pin.xml" />
+  <import path="./core.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "core.pin.xml", `<module name="core">
+		writeModuleFile(t, dir, "core.drift.xml", `<module name="core">
   <spec id="validate">Validation must reject duplicates.</spec>
 </module>`)
 
@@ -132,21 +132,21 @@ func TestScannerSpecDiscovery(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected spec core.validate, not found. specs: %+v", result.Specs)
 		}
-		if spec.Filepath != filepath.Join(dir, "core.pin.xml") {
-			t.Fatalf("filepath = %q, want %q", spec.Filepath, filepath.Join(dir, "core.pin.xml"))
+		if spec.Filepath != filepath.Join(dir, "core.drift.xml") {
+			t.Fatalf("filepath = %q, want %q", spec.Filepath, filepath.Join(dir, "core.drift.xml"))
 		}
 	})
 
 	t.Run("main_imports_multiple_modules", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./auth.pin.xml" />
-  <import path="./api.pin.xml" />
+  <import path="./auth.drift.xml" />
+  <import path="./api.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "auth.pin.xml", `<module name="auth">
+		writeModuleFile(t, dir, "auth.drift.xml", `<module name="auth">
   <spec id="login">Login required.</spec>
 </module>`)
-		writeModuleFile(t, dir, "api.pin.xml", `<module name="api">
+		writeModuleFile(t, dir, "api.drift.xml", `<module name="api">
   <spec id="endpoint">API endpoint must be versioned.</spec>
 </module>`)
 
@@ -168,10 +168,10 @@ func TestScannerSpecDiscovery(t *testing.T) {
 	t.Run("main_with_direct_specs_and_imports", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./core.pin.xml" />
+  <import path="./core.drift.xml" />
   <spec id="app_entry">App entry point must validate config.</spec>
 </main>`)
-		writeModuleFile(t, dir, "core.pin.xml", `<module name="core">
+		writeModuleFile(t, dir, "core.drift.xml", `<module name="core">
   <spec id="validate">Validation must reject duplicates.</spec>
 </module>`)
 
@@ -193,9 +193,9 @@ func TestScannerSpecDiscovery(t *testing.T) {
 	t.Run("one_module_many_specs", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./core.pin.xml" />
+  <import path="./core.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "core.pin.xml", `<module name="core">
+		writeModuleFile(t, dir, "core.drift.xml", `<module name="core">
   <spec id="validate">validate spec</spec>
   <spec id="authenticate">auth spec</spec>
   <spec id="log">log spec</spec>
@@ -239,13 +239,13 @@ func TestScannerSpecDiscovery(t *testing.T) {
 	t.Run("same_spec_id_in_different_modules_ok", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./a.pin.xml" />
-  <import path="./b.pin.xml" />
+  <import path="./a.drift.xml" />
+  <import path="./b.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "a.pin.xml", `<module name="a">
+		writeModuleFile(t, dir, "a.drift.xml", `<module name="a">
   <spec id="shared">a version</spec>
 </module>`)
-		writeModuleFile(t, dir, "b.pin.xml", `<module name="b">
+		writeModuleFile(t, dir, "b.drift.xml", `<module name="b">
   <spec id="shared">b version</spec>
 </module>`)
 
@@ -290,13 +290,13 @@ func TestScannerImportGraph(t *testing.T) {
 	t.Run("transitive_imports_all_loaded", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./a.pin.xml" />
+  <import path="./a.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "a.pin.xml", `<module name="a">
-  <import path="./b.pin.xml" />
+		writeModuleFile(t, dir, "a.drift.xml", `<module name="a">
+  <import path="./b.drift.xml" />
   <spec id="spec_a">a spec</spec>
 </module>`)
-		writeModuleFile(t, dir, "b.pin.xml", `<module name="b">
+		writeModuleFile(t, dir, "b.drift.xml", `<module name="b">
   <spec id="spec_b">b spec</spec>
 </module>`)
 
@@ -318,18 +318,18 @@ func TestScannerImportGraph(t *testing.T) {
 	t.Run("diamond_imports_deduplicated", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./a.pin.xml" />
-  <import path="./b.pin.xml" />
+  <import path="./a.drift.xml" />
+  <import path="./b.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "a.pin.xml", `<module name="a">
-  <import path="./shared.pin.xml" />
+		writeModuleFile(t, dir, "a.drift.xml", `<module name="a">
+  <import path="./shared.drift.xml" />
   <spec id="spec_a">a spec</spec>
 </module>`)
-		writeModuleFile(t, dir, "b.pin.xml", `<module name="b">
-  <import path="./shared.pin.xml" />
+		writeModuleFile(t, dir, "b.drift.xml", `<module name="b">
+  <import path="./shared.drift.xml" />
   <spec id="spec_b">b spec</spec>
 </module>`)
-		writeModuleFile(t, dir, "shared.pin.xml", `<module name="shared">
+		writeModuleFile(t, dir, "shared.drift.xml", `<module name="shared">
   <spec id="spec_shared">shared spec</spec>
 </module>`)
 
@@ -354,13 +354,13 @@ func TestScannerImportGraph(t *testing.T) {
 	t.Run("duplicate_module_names_error", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./a.pin.xml" />
-  <import path="./b.pin.xml" />
+  <import path="./a.drift.xml" />
+  <import path="./b.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "a.pin.xml", `<module name="dup">
+		writeModuleFile(t, dir, "a.drift.xml", `<module name="dup">
   <spec id="spec_a">a spec</spec>
 </module>`)
-		writeModuleFile(t, dir, "b.pin.xml", `<module name="dup">
+		writeModuleFile(t, dir, "b.drift.xml", `<module name="dup">
   <spec id="spec_b">b spec</spec>
 </module>`)
 
@@ -371,14 +371,14 @@ func TestScannerImportGraph(t *testing.T) {
 	t.Run("cycle_detection_errors_with_trace", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./a.pin.xml" />
+  <import path="./a.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "a.pin.xml", `<module name="a">
-  <import path="./b.pin.xml" />
+		writeModuleFile(t, dir, "a.drift.xml", `<module name="a">
+  <import path="./b.drift.xml" />
   <spec id="spec_a">a spec</spec>
 </module>`)
-		writeModuleFile(t, dir, "b.pin.xml", `<module name="b">
-  <import path="./a.pin.xml" />
+		writeModuleFile(t, dir, "b.drift.xml", `<module name="b">
+  <import path="./a.drift.xml" />
   <spec id="spec_b">b spec</spec>
 </module>`)
 
@@ -389,11 +389,11 @@ func TestScannerImportGraph(t *testing.T) {
 	t.Run("import_path_not_found_errors", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./nonexistent.pin.xml" />
+  <import path="./nonexistent.drift.xml" />
 </main>`)
 
 		scanner := scanner.NewFileScanner(dir)
-		assertScanError(t, scanner, "nonexistent.pin.xml")
+		assertScanError(t, scanner, "nonexistent.drift.xml")
 	})
 
 	t.Run("imports_in_subdirectories", func(t *testing.T) {
@@ -401,9 +401,9 @@ func TestScannerImportGraph(t *testing.T) {
 		subdir := filepath.Join(dir, "sub")
 		os.Mkdir(subdir, 0755)
 		writeMainDrift(t, dir, `<main>
-  <import path="./sub/nested.pin.xml" />
+  <import path="./sub/nested.drift.xml" />
 </main>`)
-		writeModuleFile(t, subdir, "nested.pin.xml", `<module name="nested">
+		writeModuleFile(t, subdir, "nested.drift.xml", `<module name="nested">
   <spec id="deep">deep spec</spec>
 </module>`)
 
@@ -422,9 +422,9 @@ func TestScannerImportGraph(t *testing.T) {
 	t.Run("module_without_name_attribute_errors", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./core.pin.xml" />
+  <import path="./core.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "core.pin.xml", `<module>
+		writeModuleFile(t, dir, "core.drift.xml", `<module>
   <spec id="validate">validate spec</spec>
 </module>`)
 
@@ -672,9 +672,9 @@ func TestScannerMixedSpecsAndMarkers(t *testing.T) {
 	t.Run("specs_and_markers_across_multiple_files", func(t *testing.T) {
 		dir := t.TempDir()
 		writeMainDrift(t, dir, `<main>
-  <import path="./specs.pin.xml" />
+  <import path="./specs.drift.xml" />
 </main>`)
-		writeModuleFile(t, dir, "specs.pin.xml", `<module name="specs">
+		writeModuleFile(t, dir, "specs.drift.xml", `<module name="specs">
   <spec id="validate_input">input must be validated</spec>
   <spec id="auth_check">auth must be checked</spec>
 </module>`)
@@ -1255,7 +1255,7 @@ func TestScannerNonGoExtensions(t *testing.T) {
 func TestScannerSpecErrors(t *testing.T) {
 	t.Run("malformed_xml_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		testutil.WriteSpecFile(t, dir, "main.pin.xml", `<<invalid>>`)
+		testutil.WriteSpecFile(t, dir, "main.drift.xml", `<<invalid>>`)
 
 		sc := scanner.NewFileScanner(dir)
 		_, err := sc.Scan()
@@ -1269,7 +1269,7 @@ func TestScannerSpecErrors(t *testing.T) {
 
 	t.Run("wrong_root_element_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		testutil.WriteSpecFile(t, dir, "main.pin.xml", `<foo><spec id="a">text</spec></foo>`)
+		testutil.WriteSpecFile(t, dir, "main.drift.xml", `<foo><spec id="a">text</spec></foo>`)
 
 		sc := scanner.NewFileScanner(dir)
 		assertScanError(t, sc, "expected <main> or <module>")

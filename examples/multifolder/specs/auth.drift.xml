@@ -1,5 +1,5 @@
 <module name="auth">
-  <import path="../shared/common.pin.xml" />
+  <import path="../shared/common.drift.xml" />
 
   <spec id="authenticate"> Authentication MUST verify tokens before granting access. Tokens MUST
     match the common token format. <ref spec="common.token_format"></ref>

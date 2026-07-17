@@ -1,6 +1,6 @@
 <module name="gateway">
-  <import path="./auth.pin.xml" />
-  <import path="./payments.pin.xml" />
+  <import path="./auth.drift.xml" />
+  <import path="./payments.drift.xml" />
 
   <spec id="route">
     The gateway MUST <ref spec="auth.authenticate">route requests to auth</ref> and

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// ReadSpecContent reads the .pin.xml file at filepath, locates the <spec>
+// ReadSpecContent reads the .drift.xml file at filepath, locates the <spec>
 // element whose id attribute matches the local part of specID (the suffix
 // after the first dot), and returns its trimmed inner content.
 //

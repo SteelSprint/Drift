@@ -1,0 +1,7 @@
+<main>
+  <import path="./core/core.drift.xml" />
+  <import path="./scanner/scanner.drift.xml" />
+  <import path="./statestore/statestore.drift.xml" />
+  <import path="./orchestrator/orchestrator.drift.xml" />
+  <import path="./cli/cli.drift.xml" />
+</main>

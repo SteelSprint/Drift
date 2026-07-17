@@ -1,5 +1,5 @@
 <module name="payments">
-  <import path="../shared/common.pin.xml" />
+  <import path="../shared/common.drift.xml" />
 
   <spec id="charge">
     Charges MUST validate <ref spec="common.currency_format">amount and currency</ref>

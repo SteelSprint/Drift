@@ -1,0 +1,4 @@
+<main>
+  <import path="./specs.drift.xml" />
+  <import path="../../shared/common.drift.xml" />
+</main>

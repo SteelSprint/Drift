@@ -21,7 +21,7 @@ var skillContent string
 //go:embed help.txt
 var helpContent string
 
-//go:embed init_main.pin.xml
+//go:embed init_main.drift.xml
 var initMainDriftXML string
 
 var markerSyntax = "D" + "! id=<markerid>"
@@ -45,7 +45,7 @@ func Run(args []string, dir string) (string, int) {
 		if err := writeInitFiles(dir); err != nil {
 			return fmt.Sprintf("Initialized .drift/ but failed to write template: %s", err.Error()), 0
 		}
-		return "Initialized .drift/ and main.pin.xml\nEdit main.pin.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.", 0
+		return "Initialized .drift/ and main.drift.xml\nEdit main.drift.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.", 0
 
 	case "todo":
 		state, err := orch.Todo()
@@ -182,7 +182,7 @@ func helpText() string {
 
 // D! id=cinit range-start
 func writeInitFiles(dir string) error {
-	mainPath := dir + "/main.pin.xml"
+	mainPath := dir + "/main.drift.xml"
 	if !fileExists(mainPath) {
 		// D! id=cskill range-end
 		if err := writeFile(mainPath, initMainDriftXML); err != nil {
@@ -210,7 +210,7 @@ func formatTodo(state core.EvaluatedState) string {
 		nMarkers := len(state.Markers)
 		nLinks := len(state.Links)
 		if nSpecs == 0 && nMarkers == 0 {
-			return "Nothing to check: no specs or markers registered.\nCreate spec files (*.pin.xml) and place " + markerSyntax + " markers in your code,\nthen run `drift link <marker> <module.spec>` to connect them."
+			return "Nothing to check: no specs or markers registered.\nCreate spec files (*.drift.xml) and place " + markerSyntax + " markers in your code,\nthen run `drift link <marker> <module.spec>` to connect them."
 		}
 		return fmt.Sprintf("No changes detected. %d specs, %d markers, %d links in sync.", nSpecs, nMarkers, nLinks)
 	}
@@ -284,7 +284,7 @@ func formatTodo(state core.EvaluatedState) string {
 // D! id=ofmtl range-start
 func formatList(state core.EvaluatedState, verbose bool) string {
 	if len(state.Specs) == 0 && len(state.Markers) == 0 {
-		return "No specs or markers registered.\nRun `drift init` to get started, then create spec files (*.pin.xml) and place " + markerSyntax + " markers in your code."
+		return "No specs or markers registered.\nRun `drift init` to get started, then create spec files (*.drift.xml) and place " + markerSyntax + " markers in your code."
 	}
 
 	driftedEdges := make(map[string]bool)

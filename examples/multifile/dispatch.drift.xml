@@ -1,5 +1,5 @@
 <module name="dispatch">
-    <import path="./core.pin.xml" />
+    <import path="./core.drift.xml" />
 
     <spec id="behaviour"> The app MUST dispatch commands to core handlers. Every command passes
         through validation before execution. <ref spec="core.validate" /></spec>

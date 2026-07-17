@@ -1,0 +1,3 @@
+<main>
+  <import path="./specs/gateway.drift.xml" />
+</main>

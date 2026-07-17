@@ -28,7 +28,7 @@ func setupProject(t *testing.T) (dir string, orch *orchestrator.Orchestrator) {
 	t.Helper()
 	dir = t.TempDir()
 
-	writeSpecFile(t, dir, "main.pin.xml", `<main>
+	writeSpecFile(t, dir, "main.drift.xml", `<main>
 <spec id="s1">Spec content line 1</spec>
 </main>`)
 
@@ -113,7 +113,7 @@ func TestOrchestratorDiffSpecDrifted(t *testing.T) {
 		dir, orch := setupProject(t)
 
 		// Modify the spec content.
-		writeSpecFile(t, dir, "main.pin.xml", `<main>
+		writeSpecFile(t, dir, "main.drift.xml", `<main>
 <spec id="s1">CHANGED spec content</spec>
 </main>`)
 
@@ -176,7 +176,7 @@ func TestOrchestratorDiffNoBaseline(t *testing.T) {
 	t.Run("diff_with_missing_baseline_snapshot", func(t *testing.T) {
 		dir := t.TempDir()
 
-		writeSpecFile(t, dir, "main.pin.xml", `<main>
+		writeSpecFile(t, dir, "main.drift.xml", `<main>
 <spec id="s1">Spec content</spec>
 </main>`)
 		writeCodeFile(t, dir, "code.go", `package main
@@ -198,7 +198,7 @@ func f() {}
 		// Manually save a state with a link but DON'T write baseline files
 		// (simulate state.xml that predates the baselines/ directory).
 		stateStore.Save(statestore.State{
-			Specs:   []core.Spec{{ID: "main.s1", Hash: "fakehash", Filepath: filepath.Join(dir, "main.pin.xml")}},
+			Specs:   []core.Spec{{ID: "main.s1", Hash: "fakehash", Filepath: filepath.Join(dir, "main.drift.xml")}},
 			Markers: []core.Marker{{ID: "m1", Hash: "fakehash2", Filepath: filepath.Join(dir, "code.go"), LineNumber: 3, EndLineNumber: 5}},
 			Links:   []core.Link{{SpecID: "main.s1", MarkerID: "m1"}},
 		})
@@ -228,7 +228,7 @@ func TestOrchestratorDiffSpecDeleted(t *testing.T) {
 		dir, orch := setupProject(t)
 
 		// Remove the spec entirely.
-		writeSpecFile(t, dir, "main.pin.xml", `<main></main>`)
+		writeSpecFile(t, dir, "main.drift.xml", `<main></main>`)
 
 		result, err := orch.Diff("m1", "main.s1")
 		if err != nil {
@@ -280,7 +280,7 @@ func TestOrchestratorResetWritesNewBaselines(t *testing.T) {
 		dir, orch := setupProject(t)
 
 		// Drift the spec.
-		writeSpecFile(t, dir, "main.pin.xml", `<main>
+		writeSpecFile(t, dir, "main.drift.xml", `<main>
 <spec id="s1">NEW spec content</spec>
 </main>`)
 

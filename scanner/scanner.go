@@ -81,9 +81,9 @@ type specElem struct {
 
 // D! id=sspec range-start
 func (s *FileScanner) scanSpecs() ([]core.Spec, error) {
-	mainPath := filepath.Join(s.dir, "main.pin.xml")
+	mainPath := filepath.Join(s.dir, "main.drift.xml")
 	if _, err := os.Stat(mainPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("main.pin.xml not found in %s", s.dir)
+		return nil, fmt.Errorf("main.drift.xml not found in %s", s.dir)
 	}
 
 	loader := &importLoader{

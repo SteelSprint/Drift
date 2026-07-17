@@ -1,0 +1,5 @@
+<main>
+  <import path="./core.drift.xml" />
+  <import path="./utils.drift.xml" />
+  <import path="./dispatch.drift.xml" />
+</main>

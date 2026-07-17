@@ -1,4 +1,0 @@
-<main>
-  <import path="./specs.pin.xml" />
-  <import path="../../shared/common.pin.xml" />
-</main>

@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	"driftpin/core"
-	"driftpin/internal/diff"
-	"driftpin/orchestrator"
-	"driftpin/pinstore"
-	"driftpin/scanner"
+	"drift/core"
+	"drift/internal/diff"
+	"drift/orchestrator"
+	"drift/statestore"
+	"drift/scanner"
 )
 
 //go:embed skill.md
@@ -22,7 +22,7 @@ var skillContent string
 var helpContent string
 
 //go:embed init_main.pin.xml
-var initMainPinXML string
+var initMainDriftXML string
 
 var markerSyntax = "D" + "! id=<markerid>"
 
@@ -32,10 +32,10 @@ func Run(args []string, dir string) (string, int) {
 		return helpText(), 0
 	}
 
-	pin := pinstore.NewFilePinStore(dir)
+	stateStore := statestore.NewFileStateStore(dir)
 	scanner := scanner.NewFileScanner(dir)
-	baselines := pinstore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
-	orch := orchestrator.NewOrchestrator(pin, scanner, baselines)
+	baselines := statestore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
+	orch := orchestrator.NewOrchestrator(stateStore, scanner, baselines)
 
 	switch args[0] {
 	case "init":
@@ -43,9 +43,9 @@ func Run(args []string, dir string) (string, int) {
 			return err.Error(), 1
 		}
 		if err := writeInitFiles(dir); err != nil {
-			return fmt.Sprintf("Initialized .driftpin/ but failed to write template: %s", err.Error()), 0
+			return fmt.Sprintf("Initialized .drift/ but failed to write template: %s", err.Error()), 0
 		}
-		return "Initialized .driftpin/ and main.pin.xml\nEdit main.pin.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.", 0
+		return "Initialized .drift/ and main.pin.xml\nEdit main.pin.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.", 0
 
 	case "todo":
 		state, err := orch.Todo()
@@ -185,7 +185,7 @@ func writeInitFiles(dir string) error {
 	mainPath := dir + "/main.pin.xml"
 	if !fileExists(mainPath) {
 		// D! id=cskill range-end
-		if err := writeFile(mainPath, initMainPinXML); err != nil {
+		if err := writeFile(mainPath, initMainDriftXML); err != nil {
 			return err
 		}
 	}

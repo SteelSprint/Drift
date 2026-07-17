@@ -3,8 +3,8 @@ package core_test
 import (
 	"testing"
 
-	"driftpin/core"
-	"driftpin/internal/testutil"
+	"drift/core"
+	"drift/internal/testutil"
 )
 
 func newScanFromBaselines(specs []core.Spec, markers []core.Marker, specHashOverrides map[string]string, markerHashOverrides map[string]string) core.Scan {

@@ -4,11 +4,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"driftpin/core"
-	"driftpin/internal/testutil"
-	"driftpin/orchestrator"
-	"driftpin/pinstore"
-	"driftpin/scanner"
+	"drift/core"
+	"drift/internal/testutil"
+	"drift/orchestrator"
+	"drift/statestore"
+	"drift/scanner"
 )
 
 func writeSpecFile(t *testing.T, dir, name, content string) {
@@ -23,7 +23,7 @@ func writeCodeFile(t *testing.T, dir, name, content string) {
 
 // setupProject creates a temp dir with one spec (main.s1) and one marker (m1),
 // runs init + link, and returns the orchestrator wired with real file-backed
-// pin store, scanner, and baseline store.
+// state store, scanner, and baseline store.
 func setupProject(t *testing.T) (dir string, orch *orchestrator.Orchestrator) {
 	t.Helper()
 	dir = t.TempDir()
@@ -41,10 +41,10 @@ func f() {
 `+testutil.MarkerEnd("m1")+`
 `)
 
-	pin := pinstore.NewFilePinStore(dir)
+	stateStore := statestore.NewFileStateStore(dir)
 	sc := scanner.NewFileScanner(dir)
-	baselines := pinstore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
-	orch = orchestrator.NewOrchestrator(pin, sc, baselines)
+	baselines := statestore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
+	orch = orchestrator.NewOrchestrator(stateStore, sc, baselines)
 
 	if err := orch.Init(); err != nil {
 		t.Fatalf("Init failed: %v", err)
@@ -71,7 +71,7 @@ func TestOrchestratorLinkWritesBaselines(t *testing.T) {
 		spec := testutil.FindSpecInEvaluatedState(t, todo, "main.s1")
 		marker := testutil.FindMarkerInEvaluatedState(t, todo, "m1")
 
-		baselines := pinstore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
+		baselines := statestore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
 		if _, ok := baselines.Read(spec.Hash); !ok {
 			t.Fatalf("spec baseline file missing for hash %s", spec.Hash)
 		}
@@ -187,17 +187,17 @@ func f() {}
 `)
 
 		// Use a baseline store in a dir that won't have files (simulate pre-migration).
-		pin := pinstore.NewFilePinStore(dir)
+		stateStore := statestore.NewFileStateStore(dir)
 		sc := scanner.NewFileScanner(dir)
-		baselines := pinstore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
-		orch := orchestrator.NewOrchestrator(pin, sc, baselines)
+		baselines := statestore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
+		orch := orchestrator.NewOrchestrator(stateStore, sc, baselines)
 
 		if err := orch.Init(); err != nil {
 			t.Fatal(err)
 		}
 		// Manually save a state with a link but DON'T write baseline files
 		// (simulate state.xml that predates the baselines/ directory).
-		pin.Save(pinstore.PinState{
+		stateStore.Save(statestore.State{
 			Specs:   []core.Spec{{ID: "main.s1", Hash: "fakehash", Filepath: filepath.Join(dir, "main.pin.xml")}},
 			Markers: []core.Marker{{ID: "m1", Hash: "fakehash2", Filepath: filepath.Join(dir, "code.go"), LineNumber: 3, EndLineNumber: 5}},
 			Links:   []core.Link{{SpecID: "main.s1", MarkerID: "m1"}},
@@ -307,7 +307,7 @@ func TestOrchestratorResetWritesNewBaselines(t *testing.T) {
 
 		// New baseline file should exist at the new hash.
 		spec := testutil.FindSpecInEvaluatedState(t, todoAfter, "main.s1")
-		baselines := pinstore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
+		baselines := statestore.NewBaselineStore(filepath.Join(dir, ".driftpin", "baselines"))
 		content, ok := baselines.Read(spec.Hash)
 		if !ok {
 			t.Fatalf("new spec baseline missing for hash %s", spec.Hash)

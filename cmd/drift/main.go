@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"driftpin/cli"
+	"drift/cli"
 )
 
 func main() {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"driftpin/internal/diff"
+	"drift/internal/diff"
 )
 
 func TestUnifiedDiffIdentity(t *testing.T) {

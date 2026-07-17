@@ -1,54 +1,54 @@
-package pinstore_test
+package statestore_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"driftpin/core"
-	"driftpin/internal/testutil"
-	"driftpin/pinstore"
+	"drift/core"
+	"drift/internal/testutil"
+	"drift/statestore"
 )
 
-func TestFilePinStoreRoundTrip(t *testing.T) {
+func TestFileStateStoreRoundTrip(t *testing.T) {
 	shapes := []struct {
 		name  string
-		state pinstore.PinState
+		state statestore.State
 	}{
-		{"empty", pinstore.PinState{}},
-		{"one_spec", pinstore.PinState{
+		{"empty", statestore.State{}},
+		{"one_spec", statestore.State{
 			Specs: []core.Spec{testutil.NewSpec("s1", "h1")},
 		}},
-		{"one_marker", pinstore.PinState{
+		{"one_marker", statestore.State{
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1")},
 		}},
-		{"one_spec_one_marker_no_link", pinstore.PinState{
+		{"one_spec_one_marker_no_link", statestore.State{
 			Specs:   []core.Spec{testutil.NewSpec("s1", "h1")},
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1")},
 		}},
-		{"one_spec_one_marker_one_link", pinstore.PinState{
+		{"one_spec_one_marker_one_link", statestore.State{
 			Specs:   []core.Spec{testutil.NewSpec("s1", "h1")},
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1")},
 			Links:   []core.Link{testutil.NewLink("s1", "m1")},
 		}},
-		{"one_resolution", pinstore.PinState{
+		{"one_resolution", statestore.State{
 			Specs:           []core.Spec{testutil.NewSpec("s1", "h1")},
 			Markers:         []core.Marker{testutil.NewMarker("m1", "h1")},
 			Links:           []core.Link{testutil.NewLink("s1", "m1")},
 			ResolutionState: []core.ResolutionState{testutil.NewResolutionState("s1", "m1", "ch1", "ch2")},
 		}},
-		{"many_specs", pinstore.PinState{
+		{"many_specs", statestore.State{
 			Specs: []core.Spec{testutil.NewSpec("s1", "h1"), testutil.NewSpec("s2", "h2"), testutil.NewSpec("s3", "h3")},
 		}},
-		{"many_markers", pinstore.PinState{
+		{"many_markers", statestore.State{
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1"), testutil.NewMarker("m2", "h2"), testutil.NewMarker("m3", "h3")},
 		}},
-		{"many_links_2x2", pinstore.PinState{
+		{"many_links_2x2", statestore.State{
 			Specs:   []core.Spec{testutil.NewSpec("s1", "h1"), testutil.NewSpec("s2", "h2")},
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1"), testutil.NewMarker("m2", "h2")},
 			Links:   []core.Link{testutil.NewLink("s1", "m1"), testutil.NewLink("s1", "m2"), testutil.NewLink("s2", "m1"), testutil.NewLink("s2", "m2")},
 		}},
-		{"many_resolutions", pinstore.PinState{
+		{"many_resolutions", statestore.State{
 			Specs:   []core.Spec{testutil.NewSpec("s1", "h1"), testutil.NewSpec("s2", "h2")},
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1"), testutil.NewMarker("m2", "h2")},
 			Links:   []core.Link{testutil.NewLink("s1", "m1"), testutil.NewLink("s2", "m2")},
@@ -57,7 +57,7 @@ func TestFilePinStoreRoundTrip(t *testing.T) {
 				testutil.NewResolutionState("s2", "m2", "ch3", "ch4"),
 			},
 		}},
-		{"full_graph_3x3", pinstore.PinState{
+		{"full_graph_3x3", statestore.State{
 			Specs:   []core.Spec{testutil.NewSpec("s1", "h1"), testutil.NewSpec("s2", "h2"), testutil.NewSpec("s3", "h3")},
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1"), testutil.NewMarker("m2", "h2"), testutil.NewMarker("m3", "h3")},
 			Links: []core.Link{
@@ -70,7 +70,7 @@ func TestFilePinStoreRoundTrip(t *testing.T) {
 				testutil.NewResolutionState("s2", "m2", "ch3", "ch4"),
 			},
 		}},
-		{"specs_with_locations", pinstore.PinState{
+		{"specs_with_locations", statestore.State{
 			Specs: []core.Spec{
 				testutil.NewSpecWithLocation("s1", "h1", "/project/specs/auth.xml", 42),
 				testutil.NewSpecWithLocation("s2", "h2", "/project/specs/api.xml", 88),
@@ -86,36 +86,36 @@ func TestFilePinStoreRoundTrip(t *testing.T) {
 	for _, shape := range shapes {
 		t.Run(shape.name, func(t *testing.T) {
 			dir := t.TempDir()
-			store := pinstore.NewFilePinStore(dir)
+			store := statestore.NewFileStateStore(dir)
 
 			err := store.Save(shape.state)
 			testutil.AssertNoError(t, err)
 
 			loaded, err := store.Load()
 			testutil.AssertNoError(t, err)
-			testutil.AssertPinStateEquals(t, loaded, shape.state)
+			testutil.AssertStateEquals(t, loaded, shape.state)
 		})
 	}
 }
 
-func TestFilePinStoreLoadMissing(t *testing.T) {
+func TestFileStateStoreLoadMissing(t *testing.T) {
 	t.Run("missing_file_returns_error", func(t *testing.T) {
 		dir := t.TempDir()
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		_, err := store.Load()
-		testutil.AssertErrorWraps(t, err, pinstore.ErrPinNotFound)
+		testutil.AssertErrorWraps(t, err, statestore.ErrStateNotFound)
 	})
 }
 
-func TestFilePinStoreLoadMalformed(t *testing.T) {
+func TestFileStateStoreLoadMalformed(t *testing.T) {
 	t.Run("malformed_xml_returns_error", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(dir, ".driftpin"), 0755); err != nil {
 			t.Fatal(err)
 		}
-		pinPath := filepath.Join(dir, ".driftpin", "state.xml")
-		os.WriteFile(pinPath, []byte("not valid xml <"), 0644)
-		store := pinstore.NewFilePinStore(dir)
+		stateFilePath := filepath.Join(dir, ".driftpin", "state.xml")
+		os.WriteFile(stateFilePath, []byte("not valid xml <"), 0644)
+		store := statestore.NewFileStateStore(dir)
 		_, err := store.Load()
 		if err == nil {
 			t.Fatalf("expected error loading malformed XML")
@@ -123,12 +123,12 @@ func TestFilePinStoreLoadMalformed(t *testing.T) {
 	})
 }
 
-func TestFilePinStoreSaveOverwrite(t *testing.T) {
+func TestFileStateStoreSaveOverwrite(t *testing.T) {
 	t.Run("save_overwrites_existing", func(t *testing.T) {
 		dir := t.TempDir()
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 
-		initial := pinstore.PinState{
+		initial := statestore.State{
 			Specs:   []core.Spec{testutil.NewSpec("s1", "h1")},
 			Markers: []core.Marker{testutil.NewMarker("m1", "h1")},
 			Links:   []core.Link{testutil.NewLink("s1", "m1")},
@@ -136,30 +136,30 @@ func TestFilePinStoreSaveOverwrite(t *testing.T) {
 		err := store.Save(initial)
 		testutil.AssertNoError(t, err)
 
-		err = store.Save(pinstore.PinState{})
+		err = store.Save(statestore.State{})
 		testutil.AssertNoError(t, err)
 
 		loaded, err := store.Load()
 		testutil.AssertNoError(t, err)
-		testutil.AssertPinStateEquals(t, loaded, pinstore.PinState{})
+		testutil.AssertStateEquals(t, loaded, statestore.State{})
 	})
 }
 
-func TestFilePinStoreSaveEmptyCreatesFile(t *testing.T) {
+func TestFileStateStoreSaveEmptyCreatesFile(t *testing.T) {
 	t.Run("save_empty_creates_file", func(t *testing.T) {
 		dir := t.TempDir()
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 
-		err := store.Save(pinstore.PinState{})
+		err := store.Save(statestore.State{})
 		testutil.AssertNoError(t, err)
 
-		pinPath := filepath.Join(dir, ".driftpin", "state.xml")
-		if _, err := os.Stat(pinPath); os.IsNotExist(err) {
-			t.Fatalf(".driftpin/state.xml not created")
+		stateFilePath := filepath.Join(dir, ".driftpin", "state.xml")
+		if _, err := os.Stat(stateFilePath); os.IsNotExist(err) {
+			t.Fatalf(".drift/state.xml not created")
 		}
 		baselinesDir := filepath.Join(dir, ".driftpin", "baselines")
 		if info, err := os.Stat(baselinesDir); err != nil || !info.IsDir() {
-			t.Fatalf(".driftpin/baselines/ not created")
+			t.Fatalf(".drift/baselines/ not created")
 		}
 	})
 }

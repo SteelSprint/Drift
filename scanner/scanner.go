@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"driftpin/core"
+	"drift/core"
 )
 
 // D! id=scode range-start
@@ -60,7 +60,7 @@ func (s *FileScanner) Scan() (ScanResult, error) {
 	return ScanResult{Specs: specs, Markers: markers}, nil
 }
 
-type pinFileXML struct {
+type specFileXML struct {
 	XMLName xml.Name
 	Name    string       `xml:"name,attr"`
 	Imports []importElem `xml:"import"`
@@ -137,7 +137,7 @@ func (l *importLoader) load(absPath string) ([]core.Spec, error) {
 		return nil, err
 	}
 
-	var file pinFileXML
+	var file specFileXML
 	if err := xml.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("%s: %w", absPath, err)
 	}

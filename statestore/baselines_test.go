@@ -1,17 +1,17 @@
-package pinstore_test
+package statestore_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"driftpin/internal/testutil"
-	"driftpin/pinstore"
+	"drift/internal/testutil"
+	"drift/statestore"
 )
 
 func TestBaselineStoreWriteReadRoundTrip(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), ".driftpin", "baselines")
-	store := pinstore.NewBaselineStore(dir)
+	store := statestore.NewBaselineStore(dir)
 
 	content := "line1\nline2\nline3\n"
 	hash := testutil.ExpectedSha1Hex(content)
@@ -28,7 +28,7 @@ func TestBaselineStoreWriteReadRoundTrip(t *testing.T) {
 		t.Fatalf("Read content mismatch: got %q, want %q", got, content)
 	}
 
-	// File should live at .driftpin/baselines/<hash>.
+	// File should live at .drift/baselines/<hash>.
 	if _, err := os.Stat(filepath.Join(dir, hash)); os.IsNotExist(err) {
 		t.Fatalf("baseline file not created at expected path")
 	}
@@ -36,7 +36,7 @@ func TestBaselineStoreWriteReadRoundTrip(t *testing.T) {
 
 func TestBaselineStoreWriteDedup(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), ".driftpin", "baselines")
-	store := pinstore.NewBaselineStore(dir)
+	store := statestore.NewBaselineStore(dir)
 
 	content := "same\n"
 	hash := testutil.ExpectedSha1Hex(content)
@@ -57,7 +57,7 @@ func TestBaselineStoreWriteDedup(t *testing.T) {
 
 func TestBaselineStoreReadMissing(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), ".driftpin", "baselines")
-	store := pinstore.NewBaselineStore(dir)
+	store := statestore.NewBaselineStore(dir)
 
 	if _, err := os.Stat(dir); err == nil {
 		t.Fatalf("baselines dir should not exist yet")
@@ -69,7 +69,7 @@ func TestBaselineStoreReadMissing(t *testing.T) {
 
 func TestBaselineStoreWriteHashMismatch(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), ".driftpin", "baselines")
-	store := pinstore.NewBaselineStore(dir)
+	store := statestore.NewBaselineStore(dir)
 
 	content := "actual\n"
 	declaredHash := "deadbeef" // wrong on purpose
@@ -85,7 +85,7 @@ func TestBaselineStoreWriteHashMismatch(t *testing.T) {
 
 func TestBaselineStoreDelete(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), ".driftpin", "baselines")
-	store := pinstore.NewBaselineStore(dir)
+	store := statestore.NewBaselineStore(dir)
 
 	content := "toDelete\n"
 	hash := testutil.ExpectedSha1Hex(content)
@@ -102,7 +102,7 @@ func TestBaselineStoreDelete(t *testing.T) {
 
 func TestBaselineStoreDeleteMissing(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), ".driftpin", "baselines")
-	store := pinstore.NewBaselineStore(dir)
+	store := statestore.NewBaselineStore(dir)
 	if err := store.Delete("neverExisted"); err != nil {
 		t.Fatalf("Delete missing file should not error: %v", err)
 	}

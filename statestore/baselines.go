@@ -1,4 +1,4 @@
-package pinstore
+package statestore
 
 import (
 	"crypto/sha1"
@@ -19,7 +19,7 @@ func NewBaselineStore(dir string) *BaselineStore {
 	return &BaselineStore{dir: dir}
 }
 
-// Write stores content at .driftpin/baselines/<hash> if absent.
+// Write stores content at .drift/baselines/<hash> if absent.
 // Verifies sha1(content) == hash defensively; mismatches produce ErrBaselineHashMismatch.
 // If a file already exists for hash, Write is a no-op (dedup).
 func (b *BaselineStore) Write(hash, content string) error {

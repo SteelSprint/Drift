@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"driftpin/cli"
-	"driftpin/internal/testutil"
-	"driftpin/pinstore"
+	"drift/cli"
+	"drift/internal/testutil"
+	"drift/statestore"
 )
 
-func writeMainPin(t *testing.T, dir, content string) {
+func writeMainDrift(t *testing.T, dir, content string) {
 	t.Helper()
 	testutil.WriteSpecFile(t, dir, "main.pin.xml", content)
 }
@@ -20,14 +20,14 @@ func writeMainPin(t *testing.T, dir, content string) {
 func TestCLIInit(t *testing.T) {
 	t.Run("init_creates_drift_pin", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		output, code := cli.Run([]string{"init"}, dir)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0, output: %s", code, output)
 		}
-		pinPath := filepath.Join(dir, ".driftpin", "state.xml")
-		if _, err := os.Stat(pinPath); os.IsNotExist(err) {
-			t.Fatalf(".driftpin/state.xml not created")
+		stateFilePath := filepath.Join(dir, ".driftpin", "state.xml")
+		if _, err := os.Stat(stateFilePath); os.IsNotExist(err) {
+			t.Fatalf(".drift/state.xml not created")
 		}
 	})
 
@@ -50,23 +50,23 @@ func TestCLIInit(t *testing.T) {
 
 	t.Run("init_creates_valid_empty_pin", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		_, code := cli.Run([]string{"init"}, dir)
 		if code != 0 {
 			t.Fatalf("init failed")
 		}
 
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		state, err := store.Load()
 		testutil.AssertNoError(t, err)
-		testutil.AssertPinStateEquals(t, state, pinstore.PinState{})
+		testutil.AssertStateEquals(t, state, statestore.State{})
 	})
 }
 
 func TestCLITodoWithoutInit(t *testing.T) {
 	t.Run("todo_without_init_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		output, code := cli.Run([]string{"todo"}, dir)
 		if code == 0 {
 			t.Fatalf("expected non-zero exit code, got 0, output: %s", output)
@@ -80,7 +80,7 @@ func TestCLITodoWithoutInit(t *testing.T) {
 func TestCLIResetWithoutInit(t *testing.T) {
 	t.Run("reset_without_init_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		output, code := cli.Run([]string{"reset", "m1", "main.s1"}, dir)
 		if code == 0 {
 			t.Fatalf("expected non-zero exit code, got 0, output: %s", output)
@@ -91,7 +91,7 @@ func TestCLIResetWithoutInit(t *testing.T) {
 func TestCLINoArgs(t *testing.T) {
 	t.Run("no_args_shows_help", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		output, code := cli.Run([]string{}, dir)
 		if code != 0 {
 			t.Fatalf("expected exit code 0 for no args, got %d, output: %s", code, output)
@@ -105,7 +105,7 @@ func TestCLINoArgs(t *testing.T) {
 func TestCLIUnknownCommand(t *testing.T) {
 	t.Run("unknown_command_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		output, code := cli.Run([]string{"frobnicate"}, dir)
 		if code == 0 {
 			t.Fatalf("expected non-zero exit code for unknown command")
@@ -119,7 +119,7 @@ func TestCLIUnknownCommand(t *testing.T) {
 func TestCLIResetBadFormat(t *testing.T) {
 	t.Run("reset_without_arguments", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 		output, code := cli.Run([]string{"reset"}, dir)
 		if code == 0 {
@@ -129,7 +129,7 @@ func TestCLIResetBadFormat(t *testing.T) {
 
 	t.Run("reset_missing_spec_argument", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 		output, code := cli.Run([]string{"reset", "m1"}, dir)
 		if code == 0 {
@@ -141,7 +141,7 @@ func TestCLIResetBadFormat(t *testing.T) {
 func TestCLIFullFlowSpecMarkerLinkDrift(t *testing.T) {
 	t.Run("init_create_spec_create_marker_todo_no_links_no_drift", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -164,7 +164,7 @@ func handleRequest() {
 
 	t.Run("link_then_todo_no_drift", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -194,7 +194,7 @@ func handleRequest() {
 
 	t.Run("link_then_modify_code_then_todo_shows_drift", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -237,7 +237,7 @@ func handleRequest() {
 
 	t.Run("drift_then_reset_clears_drift", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -278,7 +278,7 @@ func handleRequest() {
 
 	t.Run("link_with_module_imports", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./core.pin.xml" />
 </main>`)
 		testutil.WriteSpecFile(t, dir, "core.pin.xml", `<module name="core">
@@ -309,7 +309,7 @@ func validate() { check() }
 
 	t.Run("todo_both_changed_shows_both_message", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">original spec</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -322,7 +322,7 @@ func a() { original() }
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">changed spec</spec>
 </main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
@@ -343,7 +343,7 @@ func a() { changed() }
 func TestCLILinkErrors(t *testing.T) {
 	t.Run("link_nonexistent_marker", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -356,7 +356,7 @@ func TestCLILinkErrors(t *testing.T) {
 
 	t.Run("link_nonexistent_spec", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() {}
@@ -371,7 +371,7 @@ func a() {}
 
 	t.Run("link_duplicate", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -391,7 +391,7 @@ func a() {}
 
 	t.Run("link_missing_spec_argument", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"link", "m1"}, dir)
@@ -402,7 +402,7 @@ func a() {}
 
 	t.Run("link_without_init", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		output, code := cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		if code == 0 {
 			t.Fatalf("expected non-zero exit code, got 0, output: %s", output)
@@ -429,7 +429,7 @@ func assertTodoCountInOutput(t *testing.T, output string, want int) {
 
 func assertPinResolutionCount(t *testing.T, dir string, want int) {
 	t.Helper()
-	store := pinstore.NewFilePinStore(dir)
+	store := statestore.NewFileStateStore(dir)
 	state, err := store.Load()
 	testutil.AssertNoError(t, err)
 	if len(state.ResolutionState) != want {
@@ -440,7 +440,7 @@ func assertPinResolutionCount(t *testing.T, dir string, want int) {
 func TestCLIManyToManyOneSpecManyMarkers(t *testing.T) {
 	t.Run("1_spec_2_markers_full_cycle", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="auth_token_expiry">token must expire</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -468,7 +468,7 @@ func loginHandler() {
 		}
 		assertTodoCountInOutput(t, output, 0)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="auth_token_expiry">token must expire within 24 hours</spec>
 </main>`)
 
@@ -507,7 +507,7 @@ func loginHandler() {
 func TestCLIManyToManyOneMarkerManySpecs(t *testing.T) {
 	t.Run("2_specs_1_marker_full_cycle", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_file_size">file size must be validated</spec>
   <spec id="scan_for_malware">files must be scanned for malware</spec>
 </main>`)
@@ -572,7 +572,7 @@ func uploadHandler() {
 func TestCLIManyToManyTwoByTwo(t *testing.T) {
 	t.Run("2_specs_2_markers_4_edges_full_cycle", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="rate_limit_per_user">per-user rate limiting required</spec>
   <spec id="log_rate_limit_hits">rate limit hits must be logged</spec>
 </main>`)
@@ -603,7 +603,7 @@ func requestHandler() {
 		}
 		assertTodoCountInOutput(t, output, 0)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="rate_limit_per_user">per-user rate limiting required with 100 req/min</spec>
   <spec id="log_rate_limit_hits">rate limit hits must be logged to syslog</spec>
 </main>`)
@@ -667,7 +667,7 @@ func requestHandler() {
 func TestCLIManyToManyThreeByThree(t *testing.T) {
 	t.Run("3_specs_3_markers_9_edges_partial_then_full_collapse", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_amount">amount must be validated</spec>
   <spec id="check_fraud_rules">fraud rules must be checked</spec>
   <spec id="log_transaction">transactions must be logged</spec>
@@ -713,7 +713,7 @@ func walletHandler() {
 		}
 		assertTodoCountInOutput(t, output, 0)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_amount">amount must be validated and positive</spec>
   <spec id="check_fraud_rules">fraud rules must be checked with ML model</spec>
   <spec id="log_transaction">transactions must be logged with audit trail</spec>
@@ -776,11 +776,11 @@ func walletHandler() {
 		}
 		assertTodoCountInOutput(t, output, 0)
 
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		state, err := store.Load()
 		testutil.AssertNoError(t, err)
 		if len(state.Links) != 9 {
-			t.Fatalf("expected 9 links in pin, got %d", len(state.Links))
+			t.Fatalf("expected 9 links in state, got %d", len(state.Links))
 		}
 		if len(state.ResolutionState) != 0 {
 			t.Fatalf("expected 0 resolutions after full collapse, got %d", len(state.ResolutionState))
@@ -791,7 +791,7 @@ func walletHandler() {
 func TestCLIUnlink(t *testing.T) {
 	t.Run("unlink_removes_link", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -814,7 +814,7 @@ func handleRequest() {
 			t.Fatalf("output should contain 'Unlinked', got: %s", output)
 		}
 
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		state, err := store.Load()
 		testutil.AssertNoError(t, err)
 		if len(state.Links) != 0 {
@@ -824,7 +824,7 @@ func handleRequest() {
 
 	t.Run("unlink_nonexistent_link_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -847,7 +847,7 @@ func a() {}
 
 	t.Run("unlink_missing_args_returns_usage", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"unlink"}, dir)
@@ -861,7 +861,7 @@ func a() {}
 
 	t.Run("unlink_without_init_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 
 		output, code := cli.Run([]string{"unlink", "m1", "main.s1"}, dir)
 		if code == 0 {
@@ -871,7 +871,7 @@ func a() {}
 
 	t.Run("unlink_removes_resolution_state", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -892,7 +892,7 @@ func a() { doSomethingElse() }
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"reset", "m1", "main.s1"}, dir)
 
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		state, _ := store.Load()
 		if len(state.ResolutionState) != 0 {
 			t.Fatalf("expected 0 resolutions after reset-collapse, got %d", len(state.ResolutionState))
@@ -907,13 +907,13 @@ func a() { anotherChange() }
 		cli.Run([]string{"todo"}, dir)
 		cli.Run([]string{"reset", "m1", "main.s1"}, dir)
 
-		store = pinstore.NewFilePinStore(dir)
+		store = statestore.NewFileStateStore(dir)
 		state, _ = store.Load()
 		assertPinResolutionCount(t, dir, 0)
 
 		cli.Run([]string{"unlink", "m1", "main.s1"}, dir)
 
-		store = pinstore.NewFilePinStore(dir)
+		store = statestore.NewFileStateStore(dir)
 		state, _ = store.Load()
 		if len(state.Links) != 0 {
 			t.Fatalf("expected 0 links after unlink, got %d", len(state.Links))
@@ -927,7 +927,7 @@ func a() { anotherChange() }
 func TestCLIList(t *testing.T) {
 	t.Run("list_no_init_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 
 		output, code := cli.Run([]string{"list"}, dir)
 		if code == 0 {
@@ -937,7 +937,7 @@ func TestCLIList(t *testing.T) {
 
 	t.Run("list_empty_shows_no_specs", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"list"}, dir)
@@ -951,7 +951,7 @@ func TestCLIList(t *testing.T) {
 
 	t.Run("list_shows_specs_markers_links", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -992,7 +992,7 @@ func handleRequest() {
 
 	t.Run("list_shows_drifted_status", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1022,7 +1022,7 @@ func a() { doSomethingElse() }
 
 	t.Run("list_shows_unlinked", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
   <spec id="s2">spec two</spec>
 </main>`)
@@ -1051,7 +1051,7 @@ func b() { doOther() }
 
 	t.Run("list_verbose_shows_spec_text", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated before processing</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1080,7 +1080,7 @@ func handleRequest() {
 
 	t.Run("list_no_line_number_for_specs", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1106,7 +1106,7 @@ func a() { doSomething() }
 
 	t.Run("list_verbose_truncates_long_spec_text", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">This is a very long spec text that exceeds eighty characters significantly and should be truncated with an ellipsis marker</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1129,7 +1129,7 @@ func a() {}
 
 	t.Run("list_verbose_truncates_long_marker_content", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1153,7 +1153,7 @@ func a() {}
 
 	t.Run("list_shows_marker_range_format", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1179,7 +1179,7 @@ func a() { doSomething() }
 
 	t.Run("list_verbose_skips_deleted_spec_preview", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
   <spec id="s2">spec two</spec>
 </main>`)
@@ -1193,7 +1193,7 @@ func a() { doSomething() }
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 
@@ -1211,7 +1211,7 @@ func a() { doSomething() }
 
 	t.Run("list_verbose_skips_deleted_marker_preview", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1248,7 +1248,7 @@ func a() { doSomething() }
 
 func TestCLIPerSubcommandHelp(t *testing.T) {
 	dir := t.TempDir()
-	writeMainPin(t, dir, `<main></main>`)
+	writeMainDrift(t, dir, `<main></main>`)
 	cli.Run([]string{"init"}, dir)
 
 	tests := []struct {
@@ -1283,7 +1283,7 @@ func TestCLIPerSubcommandHelp(t *testing.T) {
 func TestCLISkill(t *testing.T) {
 	t.Run("skill_returns_content", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"skill"}, dir)
@@ -1304,7 +1304,7 @@ func TestCLISkill(t *testing.T) {
 func TestCLIDeletionDrift(t *testing.T) {
 	t.Run("spec_deleted_shows_deletion_message", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
   <spec id="s2">spec two</spec>
 </main>`)
@@ -1317,7 +1317,7 @@ func a() { doSomething() }
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s2">spec two</spec>
 </main>`)
 
@@ -1335,7 +1335,7 @@ func a() { doSomething() }
 
 	t.Run("spec_deleted_reset_prunes_and_cleans", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
   <spec id="s2">spec two</spec>
 </main>`)
@@ -1348,7 +1348,7 @@ func a() { doSomething() }
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s2">spec two</spec>
 </main>`)
 
@@ -1365,7 +1365,7 @@ func a() { doSomething() }
 			t.Fatalf("expected clean todo after reset, got: %s", output)
 		}
 
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		state, err := store.Load()
 		testutil.AssertNoError(t, err)
 		for _, s := range state.Specs {
@@ -1382,7 +1382,7 @@ func a() { doSomething() }
 
 	t.Run("marker_deleted_shows_deletion_message", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1416,7 +1416,7 @@ func a() { doSomething() }
 func TestCLIOrphanReset(t *testing.T) {
 	t.Run("reset_orphan_spec", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
   <spec id="s2">spec two</spec>
 </main>`)
@@ -1430,7 +1430,7 @@ func a() { doSomething() }
 		cli.Run([]string{"link", "m2", "main.s2"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"todo"}, dir)
@@ -1444,7 +1444,7 @@ func a() { doSomething() }
 			t.Fatalf("output should mention removal, got: %s", output)
 		}
 
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		state, _ := store.Load()
 		for _, s := range state.Specs {
 			if s.ID == "main.s2" {
@@ -1455,7 +1455,7 @@ func a() { doSomething() }
 
 	t.Run("reset_orphan_marker", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1486,7 +1486,7 @@ func a() { doSomething() }
 			t.Fatalf("output should mention removal, got: %s", output)
 		}
 
-		store := pinstore.NewFilePinStore(dir)
+		store := statestore.NewFileStateStore(dir)
 		state, _ := store.Load()
 		for _, m := range state.Markers {
 			if m.ID == "m2" {
@@ -1497,7 +1497,7 @@ func a() { doSomething() }
 
 	t.Run("reset_orphan_live_spec_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1520,7 +1520,7 @@ func a() { doSomething() }
 
 	t.Run("reset_orphan_with_links_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
   <spec id="s2">spec two</spec>
 </main>`)
@@ -1533,7 +1533,7 @@ func a() { doSomething() }
 		cli.Run([]string{"link", "m1", "main.s2"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 
@@ -1548,7 +1548,7 @@ func a() { doSomething() }
 
 	t.Run("reset_orphan_nonexistent_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"reset", "nonexistent"}, dir)
@@ -1561,7 +1561,7 @@ func a() { doSomething() }
 func TestCLIListDeletedTag(t *testing.T) {
 	t.Run("list_shows_deleted_spec", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
   <spec id="s2">spec two</spec>
 </main>`)
@@ -1574,7 +1574,7 @@ func a() { doSomething() }
 		cli.Run([]string{"link", "m1", "main.s1"}, dir)
 		cli.Run([]string{"todo"}, dir)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 
@@ -1591,7 +1591,7 @@ func a() { doSomething() }
 func TestCLIShow(t *testing.T) {
 	t.Run("show_marker_displays_spec_and_content", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1629,7 +1629,7 @@ func handleRequest() {
 
 	t.Run("show_spec_displays_spec_and_linked_markers", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1664,7 +1664,7 @@ func handleRequest() {
 
 	t.Run("show_nonexistent_marker_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"show", "nonexistent"}, dir)
@@ -1678,7 +1678,7 @@ func handleRequest() {
 
 	t.Run("show_nonexistent_spec_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"show", "main.nonexistent"}, dir)
@@ -1692,7 +1692,7 @@ func handleRequest() {
 
 	t.Run("show_missing_args_returns_usage", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		cli.Run([]string{"init"}, dir)
 
 		output, code := cli.Run([]string{"show"}, dir)
@@ -1706,7 +1706,7 @@ func handleRequest() {
 
 	t.Run("show_unlinked_marker_shows_no_specs", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1734,7 +1734,7 @@ func handleRequest() {
 
 	t.Run("show_marker_with_unreadable_content_file", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1760,7 +1760,7 @@ func a() { doSomething() }
 
 	t.Run("show_spec_with_unreadable_content_file", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1788,7 +1788,7 @@ func a() { doSomething() }
 func TestCLITodoExitCodes(t *testing.T) {
 	t.Run("clean_todo_exits_0", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1807,7 +1807,7 @@ func a() {}
 
 	t.Run("drift_todo_exits_1", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1832,7 +1832,7 @@ func a() { doSomethingElse() }
 
 	t.Run("error_todo_exits_2", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 
 		_, code := cli.Run([]string{"todo"}, dir)
 		if code != 2 {
@@ -1844,7 +1844,7 @@ func a() { doSomethingElse() }
 func TestCLIResetConfirmation(t *testing.T) {
 	t.Run("reset_prints_confirmation", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)
@@ -1882,7 +1882,7 @@ func a() { doSomethingElse() }
 
 	t.Run("reset_exact_confirmation_format", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec one</spec>
 </main>`)
 		cli.Run([]string{"init"}, dir)

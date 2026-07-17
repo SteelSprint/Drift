@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"driftpin/core"
-	"driftpin/pinstore"
-	"driftpin/scanner"
+	"drift/core"
+	"drift/statestore"
+	"drift/scanner"
 )
 
 var (
@@ -22,15 +22,15 @@ var (
 )
 
 type Orchestrator struct {
-	pin       pinstore.PinStore
+	stateStore statestore.StateStore
 	scanner   scanner.Scanner
 	core      *core.CoreAlgorithm
-	baselines *pinstore.BaselineStore
+	baselines *statestore.BaselineStore
 }
 
-func NewOrchestrator(pin pinstore.PinStore, scanner scanner.Scanner, baselines *pinstore.BaselineStore) *Orchestrator {
+func NewOrchestrator(stateStore statestore.StateStore, scanner scanner.Scanner, baselines *statestore.BaselineStore) *Orchestrator {
 	return &Orchestrator{
-		pin:       pin,
+		stateStore:       stateStore,
 		scanner:   scanner,
 		core:      core.NewCoreAlgorithm(),
 		baselines: baselines,
@@ -61,7 +61,7 @@ type DiffResult struct {
 // BaselineStore is nil (e.g. in tests that don't exercise diff), this
 // is a no-op. The scanned hash always equals sha1(current content), so
 // the integrity check in BaselineStore.Write is satisfied. For entities
-// whose pinned hash differs from the scanned hash (drifted), this creates
+// whose baselined hash differs from the scanned hash (drifted), this creates
 // an orphan file at the scanned-hash address — harmless and dedup-safe.
 func (o *Orchestrator) writeBaseline(scannedHash, filepath, specID string, startLine, endLine int, isSpec bool) error {
 	if o.baselines == nil {
@@ -82,14 +82,14 @@ func (o *Orchestrator) writeBaseline(scannedHash, filepath, specID string, start
 
 // D! id=oinit range-start
 func (o *Orchestrator) Init() error {
-	return o.pin.Save(pinstore.PinState{})
+	return o.stateStore.Save(statestore.State{})
 }
 
 // D! id=oinit range-end
 
 // D! id=otodo range-start
 func (o *Orchestrator) Todo() (core.EvaluatedState, error) {
-	state, err := o.pin.Load()
+	state, err := o.stateStore.Load()
 	if err != nil {
 		return core.EvaluatedState{}, err
 	}
@@ -126,7 +126,7 @@ func (o *Orchestrator) Todo() (core.EvaluatedState, error) {
 
 // D! id=orest range-start
 func (o *Orchestrator) Reset(markerID, specID string) (core.EvaluatedState, error) {
-	state, err := o.pin.Load()
+	state, err := o.stateStore.Load()
 	if err != nil {
 		return core.EvaluatedState{}, err
 	}
@@ -165,7 +165,7 @@ func (o *Orchestrator) Reset(markerID, specID string) (core.EvaluatedState, erro
 		return core.EvaluatedState{}, err
 	}
 
-	err = o.pin.Save(pinstore.PinState{
+	err = o.stateStore.Save(statestore.State{
 		Specs:           evaluated.Specs,
 		Markers:         evaluated.Markers,
 		Links:           evaluated.Links,
@@ -195,7 +195,7 @@ func (o *Orchestrator) Reset(markerID, specID string) (core.EvaluatedState, erro
 
 // D! id=crorph range-start
 func (o *Orchestrator) ResetOrphan(id string) error {
-	state, err := o.pin.Load()
+	state, err := o.stateStore.Load()
 	if err != nil {
 		return err
 	}
@@ -251,7 +251,7 @@ func (o *Orchestrator) ResetOrphan(id string) error {
 				newResolutions = append(newResolutions, r)
 			}
 		}
-		return o.pin.Save(pinstore.PinState{
+		return o.stateStore.Save(statestore.State{
 			Specs:           newSpecs,
 			Markers:         state.Markers,
 			Links:           state.Links,
@@ -293,7 +293,7 @@ func (o *Orchestrator) ResetOrphan(id string) error {
 			newResolutions = append(newResolutions, r)
 		}
 	}
-	return o.pin.Save(pinstore.PinState{
+	return o.stateStore.Save(statestore.State{
 		Specs:           state.Specs,
 		Markers:         newMarkers,
 		Links:           state.Links,
@@ -305,7 +305,7 @@ func (o *Orchestrator) ResetOrphan(id string) error {
 
 // D! id=olink range-start
 func (o *Orchestrator) Link(markerID, specID string) error {
-	state, err := o.pin.Load()
+	state, err := o.stateStore.Load()
 	if err != nil {
 		return err
 	}
@@ -363,7 +363,7 @@ func (o *Orchestrator) Link(markerID, specID string) error {
 		}
 	}
 
-	if err := o.pin.Save(pinstore.PinState{
+	if err := o.stateStore.Save(statestore.State{
 		Specs:           reconciledSpecs,
 		Markers:         reconciledMarkers,
 		Links:           append(state.Links, core.Link{SpecID: specID, MarkerID: markerID}),
@@ -391,7 +391,7 @@ func (o *Orchestrator) Link(markerID, specID string) error {
 
 // D! id=ounlnk range-start
 func (o *Orchestrator) Unlink(markerID, specID string) error {
-	state, err := o.pin.Load()
+	state, err := o.stateStore.Load()
 	if err != nil {
 		return err
 	}
@@ -419,7 +419,7 @@ func (o *Orchestrator) Unlink(markerID, specID string) error {
 		newResolutions = append(newResolutions, res)
 	}
 
-	return o.pin.Save(pinstore.PinState{
+	return o.stateStore.Save(statestore.State{
 		Specs:           state.Specs,
 		Markers:         state.Markers,
 		Links:           newLinks,
@@ -430,10 +430,10 @@ func (o *Orchestrator) Unlink(markerID, specID string) error {
 // D! id=ounlnk range-end
 
 // D! id=orspc range-start
-func reconcileSpecs(pinned []core.Spec, scanned []core.Spec) ([]core.Spec, error) {
-	pinnedByID := make(map[string]core.Spec, len(pinned))
-	for _, s := range pinned {
-		pinnedByID[s.ID] = s
+func reconcileSpecs(baselined []core.Spec, scanned []core.Spec) ([]core.Spec, error) {
+	baselinedByID := make(map[string]core.Spec, len(baselined))
+	for _, s := range baselined {
+		baselinedByID[s.ID] = s
 	}
 
 	scannedByID := make(map[string]bool, len(scanned))
@@ -441,12 +441,12 @@ func reconcileSpecs(pinned []core.Spec, scanned []core.Spec) ([]core.Spec, error
 		scannedByID[s.ID] = true
 	}
 
-	result := make([]core.Spec, 0, len(scanned)+len(pinned))
+	result := make([]core.Spec, 0, len(scanned)+len(baselined))
 	for _, s := range scanned {
-		if pinned, ok := pinnedByID[s.ID]; ok {
+		if baselined, ok := baselinedByID[s.ID]; ok {
 			result = append(result, core.Spec{
 				ID:         s.ID,
-				Hash:       pinned.Hash,
+				Hash:       baselined.Hash,
 				Filepath:   s.Filepath,
 				LineNumber: s.LineNumber,
 				Module:     s.Module,
@@ -455,7 +455,7 @@ func reconcileSpecs(pinned []core.Spec, scanned []core.Spec) ([]core.Spec, error
 			result = append(result, s)
 		}
 	}
-	for id, p := range pinnedByID {
+	for id, p := range baselinedByID {
 		if !scannedByID[id] {
 			result = append(result, core.Spec{
 				ID:         p.ID,
@@ -473,10 +473,10 @@ func reconcileSpecs(pinned []core.Spec, scanned []core.Spec) ([]core.Spec, error
 // D! id=orspc range-end
 
 // D! id=ormrk range-start
-func reconcileMarkers(pinned []core.Marker, scanned []core.Marker) ([]core.Marker, error) {
-	pinnedByID := make(map[string]core.Marker, len(pinned))
-	for _, m := range pinned {
-		pinnedByID[m.ID] = m
+func reconcileMarkers(baselined []core.Marker, scanned []core.Marker) ([]core.Marker, error) {
+	baselinedByID := make(map[string]core.Marker, len(baselined))
+	for _, m := range baselined {
+		baselinedByID[m.ID] = m
 	}
 
 	scannedByID := make(map[string]bool, len(scanned))
@@ -484,12 +484,12 @@ func reconcileMarkers(pinned []core.Marker, scanned []core.Marker) ([]core.Marke
 		scannedByID[m.ID] = true
 	}
 
-	result := make([]core.Marker, 0, len(scanned)+len(pinned))
+	result := make([]core.Marker, 0, len(scanned)+len(baselined))
 	for _, m := range scanned {
-		if pinned, ok := pinnedByID[m.ID]; ok {
+		if baselined, ok := baselinedByID[m.ID]; ok {
 			result = append(result, core.Marker{
 				ID:            m.ID,
-				Hash:          pinned.Hash,
+				Hash:          baselined.Hash,
 				Filepath:      m.Filepath,
 				LineNumber:    m.LineNumber,
 				EndLineNumber: m.EndLineNumber,
@@ -498,7 +498,7 @@ func reconcileMarkers(pinned []core.Marker, scanned []core.Marker) ([]core.Marke
 			result = append(result, m)
 		}
 	}
-	for id, p := range pinnedByID {
+	for id, p := range baselinedByID {
 		if !scannedByID[id] {
 			result = append(result, core.Marker{
 				ID:            p.ID,
@@ -517,7 +517,7 @@ func reconcileMarkers(pinned []core.Marker, scanned []core.Marker) ([]core.Marke
 
 // D! id=odiff range-start
 func (o *Orchestrator) Diff(markerID, specID string) (DiffResult, error) {
-	state, err := o.pin.Load()
+	state, err := o.stateStore.Load()
 	if err != nil {
 		return DiffResult{}, err
 	}

@@ -30,12 +30,12 @@ func ReadSpecContent(filepath, specID string) (string, error) {
 		ID      string `xml:"id,attr"`
 		Content string `xml:",innerxml"`
 	}
-	type pinFile struct {
+	type specFile struct {
 		XMLName xml.Name
 		Specs   []specElem `xml:"spec"`
 	}
 
-	var file pinFile
+	var file specFile
 	if err := xml.Unmarshal(data, &file); err != nil {
 		return "", err
 	}

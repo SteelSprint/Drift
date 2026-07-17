@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"driftpin/cli"
-	"driftpin/internal/testutil"
+	"drift/cli"
+	"drift/internal/testutil"
 )
 
 func setupDiffProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 
-	writeMainPin(t, dir, `<main>
+	writeMainDrift(t, dir, `<main>
 <spec id="s1">Spec content line 1</spec>
 </main>`)
 
@@ -55,7 +55,7 @@ func TestCLIDiffSpecDrifted(t *testing.T) {
 	t.Run("diff_shows_spec_changes", func(t *testing.T) {
 		dir := setupDiffProject(t)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
 <spec id="s1">CHANGED spec content</spec>
 </main>`)
 
@@ -111,7 +111,7 @@ func TestCLIDiffOneArgMarker(t *testing.T) {
 	t.Run("diff_one_arg_marker_expands", func(t *testing.T) {
 		dir := setupDiffProject(t)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
 <spec id="s1">CHANGED</spec>
 </main>`)
 
@@ -132,7 +132,7 @@ func TestCLIDiffOneArgSpec(t *testing.T) {
 	t.Run("diff_one_arg_spec_expands", func(t *testing.T) {
 		dir := setupDiffProject(t)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
 <spec id="s1">CHANGED</spec>
 </main>`)
 
@@ -153,7 +153,7 @@ func TestCLIDiffNoBaseline(t *testing.T) {
 	t.Run("diff_no_baseline_snapshot", func(t *testing.T) {
 		dir := t.TempDir()
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
 <spec id="s1">Spec content</spec>
 </main>`)
 		testutil.WriteCodeFile(t, dir, "code.go", `package main
@@ -187,7 +187,7 @@ func TestCLIDiffSpecDeleted(t *testing.T) {
 	t.Run("diff_deleted_spec_shows_all_removed", func(t *testing.T) {
 		dir := setupDiffProject(t)
 
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 
 		output, code := cli.Run([]string{"diff", "m1", "main.s1"}, dir)
 		if code != 0 {
@@ -229,7 +229,7 @@ func TestCLIDiffFormat(t *testing.T) {
 	t.Run("diff_has_separator_between_sides", func(t *testing.T) {
 		dir := setupDiffProject(t)
 
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
 <spec id="s1">CHANGED</spec>
 </main>`)
 		testutil.WriteCodeFile(t, dir, "code.go", `package main

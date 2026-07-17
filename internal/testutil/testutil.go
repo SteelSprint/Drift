@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"driftpin/core"
-	"driftpin/pinstore"
+	"drift/core"
+	"drift/statestore"
 )
 
 func NewSpec(id string, hash string) core.Spec {
@@ -129,7 +129,7 @@ func AssertTodoDriftFlags(t *testing.T, todo core.Todo, wantSpecChanged bool, wa
 	}
 }
 
-func AssertPinStateEquals(t *testing.T, got, want pinstore.PinState) {
+func AssertStateEquals(t *testing.T, got, want statestore.State) {
 	t.Helper()
 	if len(got.Specs) != len(want.Specs) {
 		t.Fatalf("specs length = %d, want %d (got=%v want=%v)", len(got.Specs), len(want.Specs), got.Specs, want.Specs)
@@ -234,8 +234,8 @@ func FindMarkerInEvaluatedState(t *testing.T, state core.EvaluatedState, id stri
 	return core.Marker{}
 }
 
-func EvaluatedStateToPinState(state core.EvaluatedState) pinstore.PinState {
-	return pinstore.PinState{
+func EvaluatedToState(state core.EvaluatedState) statestore.State {
+	return statestore.State{
 		Specs:           state.Specs,
 		Markers:         state.Markers,
 		Links:           state.Links,

@@ -1,4 +1,4 @@
-package pinstore
+package statestore
 
 import (
 	"encoding/xml"
@@ -6,47 +6,47 @@ import (
 	"os"
 	"path/filepath"
 
-	"driftpin/core"
+	"drift/core"
 )
 
 // D! id=pnope range-start
-var ErrPinNotFound = errors.New(".driftpin/state.xml not found, run 'drift init' first")
+var ErrStateNotFound = errors.New(".drift/state.xml not found, run 'drift init' first")
 
 // D! id=pnope range-end
 
-type PinState struct {
+type State struct {
 	Specs           []core.Spec
 	Markers         []core.Marker
 	Links           []core.Link
 	ResolutionState []core.ResolutionState
 }
 
-type PinStore interface {
-	Load() (PinState, error)
-	Save(PinState) error
+type StateStore interface {
+	Load() (State, error)
+	Save(State) error
 }
 
-type FilePinStore struct {
+type FileStateStore struct {
 	dir string
 }
 
-func NewFilePinStore(dir string) *FilePinStore {
-	return &FilePinStore{dir: dir}
+func NewFileStateStore(dir string) *FileStateStore {
+	return &FileStateStore{dir: dir}
 }
 
-func (s *FilePinStore) Dir() string {
+func (s *FileStateStore) Dir() string {
 	return s.dir
 }
 
-func (s *FilePinStore) statePath() string {
+func (s *FileStateStore) statePath() string {
 	return filepath.Join(s.dir, ".driftpin", "state.xml")
 }
 
-func (s *FilePinStore) baselinesDir() string {
+func (s *FileStateStore) baselinesDir() string {
 	return filepath.Join(s.dir, ".driftpin", "baselines")
 }
 
-type pinFileXML struct {
+type stateFileXML struct {
 	XMLName     xml.Name        `xml:"drift"`
 	Specs       []specXML       `xml:"specs>spec"`
 	Markers     []markerXML     `xml:"markers>marker"`
@@ -82,18 +82,18 @@ type resolutionXML struct {
 }
 
 // D! id=pload range-start
-func (s *FilePinStore) Load() (PinState, error) {
+func (s *FileStateStore) Load() (State, error) {
 	data, err := os.ReadFile(s.statePath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return PinState{}, ErrPinNotFound
+			return State{}, ErrStateNotFound
 		}
-		return PinState{}, err
+		return State{}, err
 	}
 
-	var file pinFileXML
+	var file stateFileXML
 	if err := xml.Unmarshal(data, &file); err != nil {
-		return PinState{}, err
+		return State{}, err
 	}
 
 	specs := make([]core.Spec, len(file.Specs))
@@ -135,7 +135,7 @@ func (s *FilePinStore) Load() (PinState, error) {
 		}
 	}
 
-	return PinState{
+	return State{
 		Specs:           specs,
 		Markers:         markers,
 		Links:           links,
@@ -146,11 +146,11 @@ func (s *FilePinStore) Load() (PinState, error) {
 // D! id=pload range-end
 
 // D! id=psave range-start
-func (s *FilePinStore) Save(state PinState) error {
+func (s *FileStateStore) Save(state State) error {
 	if err := os.MkdirAll(s.baselinesDir(), 0755); err != nil {
 		return err
 	}
-	file := pinFileXML{
+	file := stateFileXML{
 		Specs:       make([]specXML, len(state.Specs)),
 		Markers:     make([]markerXML, len(state.Markers)),
 		Links:       make([]linkXML, len(state.Links)),

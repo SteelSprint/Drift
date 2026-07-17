@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"driftpin/internal/testutil"
-	"driftpin/scanner"
+	"drift/internal/testutil"
+	"drift/scanner"
 )
 
-func writeMainPin(t *testing.T, dir, content string) {
+func writeMainDrift(t *testing.T, dir, content string) {
 	t.Helper()
 	testutil.WriteSpecFile(t, dir, "main.pin.xml", content)
 }
@@ -41,7 +41,7 @@ func TestScannerEmptyProject(t *testing.T) {
 
 	t.Run("empty_main_returns_no_specs", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 
 		scanner := scanner.NewFileScanner(dir)
 		result, err := scanner.Scan()
@@ -53,7 +53,7 @@ func TestScannerEmptyProject(t *testing.T) {
 
 	t.Run("empty_main_still_discovers_markers", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("m1")+`
 func a() {}
 `+testutil.MarkerEnd("m1")+`
@@ -69,7 +69,7 @@ func a() {}
 
 	t.Run("specs_wrapper_rejected", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <specs>
     <spec id="validate">input must be validated</spec>
   </specs>
@@ -89,7 +89,7 @@ func a() {}
 func TestScannerSpecDiscovery(t *testing.T) {
 	t.Run("main_with_direct_specs_implicit_main_module", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="validate_input">input must be validated</spec>
 </main>`)
 
@@ -114,7 +114,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("main_imports_one_module", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./core.pin.xml" />
 </main>`)
 		writeModuleFile(t, dir, "core.pin.xml", `<module name="core">
@@ -139,7 +139,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("main_imports_multiple_modules", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./auth.pin.xml" />
   <import path="./api.pin.xml" />
 </main>`)
@@ -167,7 +167,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("main_with_direct_specs_and_imports", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./core.pin.xml" />
   <spec id="app_entry">App entry point must validate config.</spec>
 </main>`)
@@ -192,7 +192,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("one_module_many_specs", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./core.pin.xml" />
 </main>`)
 		writeModuleFile(t, dir, "core.pin.xml", `<module name="core">
@@ -217,7 +217,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("spec_missing_id_attribute_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec>no id here</spec>
 </main>`)
 
@@ -227,7 +227,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("duplicate_spec_ids_within_same_module_error", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="dup">first</spec>
   <spec id="dup">second</spec>
 </main>`)
@@ -238,7 +238,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("same_spec_id_in_different_modules_ok", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./a.pin.xml" />
   <import path="./b.pin.xml" />
 </main>`)
@@ -266,7 +266,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 
 	t.Run("hash_is_sha1_deterministic", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">deterministic content</spec>
 </main>`)
 
@@ -289,7 +289,7 @@ func TestScannerSpecDiscovery(t *testing.T) {
 func TestScannerImportGraph(t *testing.T) {
 	t.Run("transitive_imports_all_loaded", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./a.pin.xml" />
 </main>`)
 		writeModuleFile(t, dir, "a.pin.xml", `<module name="a">
@@ -317,7 +317,7 @@ func TestScannerImportGraph(t *testing.T) {
 
 	t.Run("diamond_imports_deduplicated", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./a.pin.xml" />
   <import path="./b.pin.xml" />
 </main>`)
@@ -353,7 +353,7 @@ func TestScannerImportGraph(t *testing.T) {
 
 	t.Run("duplicate_module_names_error", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./a.pin.xml" />
   <import path="./b.pin.xml" />
 </main>`)
@@ -370,7 +370,7 @@ func TestScannerImportGraph(t *testing.T) {
 
 	t.Run("cycle_detection_errors_with_trace", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./a.pin.xml" />
 </main>`)
 		writeModuleFile(t, dir, "a.pin.xml", `<module name="a">
@@ -388,7 +388,7 @@ func TestScannerImportGraph(t *testing.T) {
 
 	t.Run("import_path_not_found_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./nonexistent.pin.xml" />
 </main>`)
 
@@ -400,7 +400,7 @@ func TestScannerImportGraph(t *testing.T) {
 		dir := t.TempDir()
 		subdir := filepath.Join(dir, "sub")
 		os.Mkdir(subdir, 0755)
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./sub/nested.pin.xml" />
 </main>`)
 		writeModuleFile(t, subdir, "nested.pin.xml", `<module name="nested">
@@ -421,7 +421,7 @@ func TestScannerImportGraph(t *testing.T) {
 
 	t.Run("module_without_name_attribute_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./core.pin.xml" />
 </main>`)
 		writeModuleFile(t, dir, "core.pin.xml", `<module>
@@ -436,7 +436,7 @@ func TestScannerImportGraph(t *testing.T) {
 func TestScannerMarkerDiscovery(t *testing.T) {
 	t.Run("one_code_file_one_marker", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", `package main
 
 `+testutil.MarkerStart("abc123")+`
@@ -473,7 +473,7 @@ func handleRequest() {
 
 	t.Run("one_code_file_many_markers", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", `package main
 
 `+testutil.MarkerStart("m1")+`
@@ -505,7 +505,7 @@ func handlerB() {
 
 	t.Run("many_code_files", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "a.go", testutil.MarkerStart("ma")+`
 func a() { x() }
 `+testutil.MarkerEnd("ma")+`
@@ -531,7 +531,7 @@ func b() { y() }
 
 	t.Run("duplicate_marker_shortcodes_error", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "a.go", testutil.MarkerStart("dup")+`
 func a() { }
 `+testutil.MarkerEnd("dup")+`
@@ -547,7 +547,7 @@ func b() { }
 
 	t.Run("marker_hash_is_sha1_deterministic", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("abc")+`
 func handler() {
 	doSomething()
@@ -574,7 +574,7 @@ func handler() {
 func TestScannerRangeHashing(t *testing.T) {
 	t.Run("hashes_lines_between_start_and_end_exclusive", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		code := testutil.MarkerStart("abc") + `
 line2
 line3
@@ -602,7 +602,7 @@ line4
 
 	t.Run("empty_range_hashes_empty_string", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		code := testutil.MarkerStart("abc") + `
 ` + testutil.MarkerEnd("abc") + `
 `
@@ -622,7 +622,7 @@ line4
 
 	t.Run("stores_start_and_end_line_numbers", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		code := `package main
 
 ` + testutil.MarkerStart("abc") + `
@@ -648,7 +648,7 @@ func handler() {
 
 	t.Run("single_line_range_hashes_single_content_line", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		code := testutil.MarkerStart("abc") + `
 only_line
 ` + testutil.MarkerEnd("abc") + `
@@ -671,7 +671,7 @@ only_line
 func TestScannerMixedSpecsAndMarkers(t *testing.T) {
 	t.Run("specs_and_markers_across_multiple_files", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <import path="./specs.pin.xml" />
 </main>`)
 		writeModuleFile(t, dir, "specs.pin.xml", `<module name="specs">
@@ -703,7 +703,7 @@ func validate() { check() }
 func TestScannerDriftIgnore(t *testing.T) {
 	t.Run("no_drift_ignore_scans_all", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
 `+testutil.MarkerEnd("keep")+`
@@ -724,7 +724,7 @@ func b() {}
 
 	t.Run("star_test_go_excludes_test_files", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, "*_test.go\n")
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
@@ -752,7 +752,7 @@ func b() {}
 
 	t.Run("trailing_slash_skips_directory_subtree", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, ".git/\n")
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
@@ -782,7 +782,7 @@ func b() {}
 
 	t.Run("comments_and_empty_lines_ignored", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, "# this is a comment\n\n*_test.go\n# another comment\n")
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
@@ -810,7 +810,7 @@ func b() {}
 
 	t.Run("path_pattern_excludes_specific_file", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteIgnoreFile(t, dir, "sub/skip.go\n")
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
 func a() {}
@@ -849,7 +849,7 @@ func c() {}
 func TestScannerIgnoresNonPinXmlNonCodeFiles(t *testing.T) {
 	t.Run("ignores_txt_md_json_files", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "notes.txt", testutil.MarkerStart("should_not_find")+"\n")
 		testutil.WriteCodeFile(t, dir, "readme.md", testutil.MarkerStart("should_not_find_either")+"\n")
 		testutil.WriteCodeFile(t, dir, "data.json", testutil.MarkerStart("nope")+"\n")
@@ -870,7 +870,7 @@ func TestScannerIgnoresNonPinXmlNonCodeFiles(t *testing.T) {
 func TestScannerIDFormatValidation(t *testing.T) {
 	t.Run("spec_id_with_dot_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="bad.id">spec with dot in id</spec>
 </main>`)
 		sc := scanner.NewFileScanner(dir)
@@ -879,7 +879,7 @@ func TestScannerIDFormatValidation(t *testing.T) {
 
 	t.Run("marker_id_with_dot_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="s1">spec</spec>
 </main>`)
 		badMarker := "// D! id=bad" + ".marker range-start\nfunc a() {}\n// D! id=bad" + ".marker range-end\n"
@@ -890,7 +890,7 @@ func TestScannerIDFormatValidation(t *testing.T) {
 
 	t.Run("spec_id_without_dot_ok", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main>
+		writeMainDrift(t, dir, `<main>
   <spec id="good_id">spec without dot</spec>
 </main>`)
 		sc := scanner.NewFileScanner(dir)
@@ -906,7 +906,7 @@ func TestScannerIDFormatValidation(t *testing.T) {
 
 	t.Run("marker_id_without_dot_ok", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("good_marker")+`
 func a() {}
 `+testutil.MarkerEnd("good_marker")+`
@@ -926,7 +926,7 @@ func a() {}
 func TestScannerRangeMarkers(t *testing.T) {
 	t.Run("old_style_marker_without_suffix_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", "// D! id=foo\nfunc a() {}\n")
 
 		scanner := scanner.NewFileScanner(dir)
@@ -935,7 +935,7 @@ func TestScannerRangeMarkers(t *testing.T) {
 
 	t.Run("range_start_without_range_end_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("foo")+`
 func a() {}
 `)
@@ -947,7 +947,7 @@ func a() {}
 
 	t.Run("range_end_without_range_start_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", `package main
 
 `+testutil.MarkerEnd("foo")+`
@@ -960,7 +960,7 @@ func a() {}
 
 	t.Run("all_unpaired_markers_reported_at_once", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("foo")+`
 func a() {}
 `+testutil.MarkerEnd("bar")+`
@@ -982,7 +982,7 @@ func a() {}
 
 	t.Run("range_end_before_range_start_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", `package main
 
 `+testutil.MarkerEnd("foo")+`
@@ -996,7 +996,7 @@ func a() {}
 
 	t.Run("nested_ranges_allowed", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("outer")+`
 func a() {
 `+testutil.MarkerStart("inner")+`
@@ -1017,7 +1017,7 @@ func a() {
 
 	t.Run("overlapping_ranges_allowed", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("a")+`
 line1
 `+testutil.MarkerStart("b")+`
@@ -1038,7 +1038,7 @@ line3
 
 	t.Run("duplicate_range_start_for_same_id_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("x")+`
 content1
 `+testutil.MarkerStart("x")+`
@@ -1052,7 +1052,7 @@ content2
 
 	t.Run("duplicate_range_end_for_same_id_errors", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("x")+`
 content1
 `+testutil.MarkerEnd("x")+`
@@ -1066,7 +1066,7 @@ content2
 
 	t.Run("multiple_unpaired_starts_reported_at_once", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("aaa")+`
 content_a
 `+testutil.MarkerStart("bbb")+`
@@ -1091,7 +1091,7 @@ content_b
 func TestScannerMarkerBlanking(t *testing.T) {
 	t.Run("other_marker_declarations_blanked_from_hash", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		code := testutil.MarkerStart("outer") + `
 func a() {
 ` + testutil.MarkerStart("inner") + `
@@ -1122,7 +1122,7 @@ func a() {
 
 	t.Run("changing_inner_marker_id_does_not_change_outer_hash", func(t *testing.T) {
 		dir1 := t.TempDir()
-		writeMainPin(t, dir1, `<main></main>`)
+		writeMainDrift(t, dir1, `<main></main>`)
 		code1 := testutil.MarkerStart("outer") + `
 func a() {
 ` + testutil.MarkerStart("inner_a") + `
@@ -1134,7 +1134,7 @@ func a() {
 		testutil.WriteCodeFile(t, dir1, "main.go", code1)
 
 		dir2 := t.TempDir()
-		writeMainPin(t, dir2, `<main></main>`)
+		writeMainDrift(t, dir2, `<main></main>`)
 		code2 := testutil.MarkerStart("outer") + `
 func a() {
 ` + testutil.MarkerStart("inner_b") + `
@@ -1163,7 +1163,7 @@ func a() {
 
 	t.Run("overlapping_ranges_blank_inner_marker_declarations", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		// A: lines 1-10, B: lines 5-15 (overlapping, not nested)
 		code := testutil.MarkerStart("A") + `
 line2
@@ -1219,7 +1219,7 @@ line14
 func TestScannerNonGoExtensions(t *testing.T) {
 	t.Run("py_file_markers_discovered", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "script.py", "# D! id=py1 range-start\ndef hello():\n    pass\n# D! id=py1 range-end\n")
 
 		sc := scanner.NewFileScanner(dir)
@@ -1236,7 +1236,7 @@ func TestScannerNonGoExtensions(t *testing.T) {
 
 	t.Run("js_file_markers_discovered", func(t *testing.T) {
 		dir := t.TempDir()
-		writeMainPin(t, dir, `<main></main>`)
+		writeMainDrift(t, dir, `<main></main>`)
 		testutil.WriteCodeFile(t, dir, "app.js", "// D! id=js1 range-start\nfunction hello() {\n  return 1;\n}\n// D! id=js1 range-end\n")
 
 		sc := scanner.NewFileScanner(dir)

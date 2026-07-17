@@ -1,18 +1,18 @@
-Driftpin is a spec-drift detection tool designed for LLM coding agents. It tracks the relationship between specification terms (specs) and the code that implements them (markers). When either side changes, `drift todo` surfaces the drift so the agent can verify alignment.
+Drift is a spec-drift detection tool designed for LLM coding agents. It tracks the relationship between specification terms (specs) and the code that implements them (markers). When either side changes, `drift todo` surfaces the drift so the agent can verify alignment.
 
 # Quick Start
 
 ```
-drift init            # Initialize: creates .driftpin/ + a starter main.pin.xml
+drift init            # Initialize: creates .drift/ + a starter main.drift.xml
 drift help            # Show command reference
 drift skill           # Print this guide (pipe to a file or read into context)
 ```
 
 # Workflow
 
-1. **Initialize**: `drift init` — creates `.driftpin/` (state directory with `state.xml` and `baselines/`) and `main.pin.xml` (spec entry point template). Edit `main.pin.xml` to add your specs.
+1. **Initialize**: `drift init` — creates `.drift/` (state directory with `state.xml` and `baselines/`) and `main.drift.xml` (spec entry point template). Edit `main.drift.xml` to add your specs.
 
-2. **Write specs**: Edit `*.pin.xml` files. Each file has a root `<module name="...">` (or `<main>` for the entry point). Specs are `<spec id="...">description</spec>` elements — they must be **direct children** of the root element, not nested inside a `<specs>` wrapper.
+2. **Write specs**: Edit `*.drift.xml` files. Each file has a root `<module name="...">` (or `<main>` for the entry point). Specs are `<spec id="...">description</spec>` elements — they must be **direct children** of the root element, not nested inside a `<specs>` wrapper.
 
 3. **Place markers**: Add `// D! id=<markerid> range-start` and `// D! id=<markerid> range-end` comment lines in your code, wrapping the code that implements a spec. The marker IDs are short unique strings you choose.
 
@@ -26,17 +26,17 @@ drift skill           # Print this guide (pipe to a file or read into context)
 
 # Spec Files
 
-Specs live in `*.pin.xml` files. The entry point is `main.pin.xml` in the project root.
+Specs live in `*.drift.xml` files. The entry point is `main.drift.xml` in the project root.
 
-**main.pin.xml** (entry point — can be pure manifest or have direct specs):
+**main.drift.xml** (entry point — can be pure manifest or have direct specs):
 ```xml
 <main>
-  <import path="./core/core.pin.xml"/>
+  <import path="./core/core.drift.xml"/>
   <spec id="bootstrap">Initialize the project and load all modules</spec>
 </main>
 ```
 
-**Module files** (e.g. `core/core.pin.xml`):
+**Module files** (e.g. `core/core.drift.xml`):
 ```xml
 <module name="core">
   <spec id="validate">Input must be validated before processing</spec>
@@ -44,7 +44,7 @@ Specs live in `*.pin.xml` files. The entry point is `main.pin.xml` in the projec
 </module>
 ```
 
-Spec IDs are qualified as `<module>.<specId>`. Specs in `main.pin.xml` use the `main.` prefix (e.g. `main.bootstrap`). Imports are relative to the importing file. Diamond imports are deduplicated by absolute path. Cycles are detected and reported with a trace.
+Spec IDs are qualified as `<module>.<specId>`. Specs in `main.drift.xml` use the `main.` prefix (e.g. `main.bootstrap`). Imports are relative to the importing file. Diamond imports are deduplicated by absolute path. Cycles are detected and reported with a trace.
 
 **ID format invariants:** The local `id` attribute in a `<spec>` element must NOT contain a dot — dots are reserved for module qualification (e.g. `module.specid`). Marker shortcodes must NOT contain a dot either. This ensures every spec ID has exactly one dot (separating module from local ID) and marker IDs have none, enabling unambiguous disambiguation in CLI commands like `drift reset <id>`.
 
@@ -75,7 +75,7 @@ The marker pattern is a regex: `D!\s+id=(\S+)(?:\s+(range-start|range-end))?`. I
 
 | Command | Description |
 |---|---|
-| `drift init` | Create `.driftpin/` directory (state.xml + baselines/) and `main.pin.xml` template. |
+| `drift init` | Create `.drift/` directory (state.xml + baselines/) and `main.drift.xml` template. |
 | `drift todo` | Scan specs and markers, report drift. Exit 0 if clean, 1 if drift, 2 on error. Each item includes a hint to run `drift diff`. |
 | `drift list [--verbose]` | Show all specs, markers, links, and sync state. `--verbose` adds spec text and marker content preview. Read-only. |
 | `drift show <marker\|spec>` | Show current content of a spec or marker with filepath and line ranges. Linked specs/markers are also displayed. Read-only. |
@@ -90,7 +90,7 @@ The marker pattern is a regex: `D!\s+id=(\S+)(?:\s+(range-start|range-end))?`. I
 
 # How Drift Detection Works
 
-`drift` SHA1-hashes spec content (the text inside `<spec>` elements) and marker content (the lines between `range-start` and `range-end`, with other marker declarations blanked). These hashes are stored as baselines in `.driftpin/state.xml`. On each `drift todo`, current hashes are compared against baselines:
+`drift` SHA1-hashes spec content (the text inside `<spec>` elements) and marker content (the lines between `range-start` and `range-end`, with other marker declarations blanked). These hashes are stored as baselines in `.drift/state.xml`. On each `drift todo`, current hashes are compared against baselines:
 
 - **No drift**: All hashes match → "No changes detected. N specs, M markers, K links in sync."
 - **Marker changed**: The code near a marker was modified. Check if it still matches the spec.
@@ -113,9 +113,9 @@ Each side shows:
 
 When there's no baseline snapshot (e.g. pre-migration or content-addressed miss), the diff shows "Status: no baseline snapshot (hash X)" — informational, not an error.
 
-# .driftpin/ directory
+# .drift/ directory
 
-`.driftpin/` is the state directory at the project root. It contains:
+`.drift/` is the state directory at the project root. It contains:
 
 - `state.xml` — XML state file storing baseline hashes, links, and resolution state. Tool-managed — do not edit by hand. Commit to git.
 - `baselines/` — content-addressed baseline files. Each file is named by its SHA1 hash (`sha1(content) == filename`). Written on `link` and `reset`. Dedup'd automatically. Orphaned files (from collapsed baselines) are harmless. Commit to git.
@@ -131,7 +131,7 @@ A `.gitignore`-style file at the project root. Patterns exclude files/directorie
 - **Nested ranges:** An outer range can contain inner ranges. Inner marker declarations are blanked from the outer range's hash, so changing an inner marker's ID does not affect the outer marker's hash.
 - **Overlapping ranges:** Ranges that partially overlap (neither fully contains the other) are allowed.
 - **Empty ranges:** A `range-start` immediately followed by `range-end` (no content between them) hashes an empty string. This is allowed but not useful.
-- **Deleted specs:** When a spec is removed from a `.pin.xml` file but still in `state.xml`, it is treated as drift (not an error). `drift todo` shows a deletion-specific message. Resolve with `drift reset <marker> <spec>`. After resolution, the deleted spec and its links are pruned from `state.xml`.
+- **Deleted specs:** When a spec is removed from a `.drift.xml` file but still in `state.xml`, it is treated as drift (not an error). `drift todo` shows a deletion-specific message. Resolve with `drift reset <marker> <spec>`. After resolution, the deleted spec and its links are pruned from `state.xml`.
 - **Deleted markers:** Same deletion-as-drift model as specs. The marker's hash becomes empty, triggering drift on all linked edges.
 - **Orphaned entries (deleted, no links):** Shown with `[deleted]` tag in `drift list`. Cleaned via `drift reset <id>` (single-arg: dot = spec, no dot = marker).
 - **`drift reset` semantics:** Rewrites the baseline hash to the current hash and clears the resolution entry. Prints "Resolved: MARKER → SPEC. Baseline updated." on success.

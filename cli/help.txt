@@ -6,7 +6,7 @@ Usage:
   drift <command> [args]
 
 Commands:
-  init                          Initialize: create .driftpin/ + starter main.pin.xml
+  init                          Initialize: create .drift/ + starter main.drift.xml
   todo                          Scan specs and markers, report drift
   list                          Show all specs, markers, links, and sync state
   show <marker|spec>            Show current content of a spec or marker
@@ -23,7 +23,7 @@ Marker syntax:
   // D! id=<markerid> range-end      Place below the code that implements a spec
 
 Spec files:
-  *.pin.xml with <main> or <module name="..."> root
+  *.drift.xml with <main> or <module name="..."> root
   Specs are <spec id="...">description</spec> — direct children of root
   Spec IDs are module-qualified: <module>.<specId>
 

@@ -1,6 +1,6 @@
-# Driftpin
+# Drift
 
-**Driftpin** links your requirements to the exact code that makes them real. When the code or the requirements change, the tool tells you exactly what is affected — not "something in this file," but which lines, which function, which rule. One rule can point to many places in the code, so you can trace any requirement to every spot that carries it out. `drift todo` tells you what fell out of sync. `drift diff` shows you what changed. `drift show` walks you through every piece of code behind a rule. This lets AI agents check their own work against the rules before saying "done" — not just "the tests passed," but "every rule still matches its code."
+**Drift** links your requirements to the exact code that makes them real. When the code or the requirements change, the tool tells you exactly what is affected — not "something in this file," but which lines, which function, which rule. One rule can point to many places in the code, so you can trace any requirement to every spot that carries it out. `drift todo` tells you what fell out of sync. `drift diff` shows you what changed. `drift show` walks you through every piece of code behind a rule. This lets AI agents check their own work against the rules before saying "done" — not just "the tests passed," but "every rule still matches its code."
 
 ## Quickstart
 
@@ -11,7 +11,7 @@ That's it. The tool is self-documenting. `drift skill` prints a complete guide t
 
 ## Example: An AI agent changed your code — did it stay true to the rules?
 
-You have a TODO app in Python. You wrote a rule: *"The title must not be empty."* You asked an AI agent to add a feature. It changed the code — but it also snuck in a new rule you didn't ask for. Driftpin catches this.
+You have a TODO app in Python. You wrote a rule: *"The title must not be empty."* You asked an AI agent to add a feature. It changed the code — but it also snuck in a new rule you didn't ask for. Drift catches this.
 
 **Step 1 — Check for drift.** `drift todo` scans your rules and your code. If anything fell out of sync, it tells you exactly where:
 
@@ -21,7 +21,7 @@ $ drift todo
 1 marker has unchecked changes.
 
 1. [TODO] Edge between marker "add_func" in "app.py:5" and spec term
-   "main.add_todo" in "main.pin.xml:0". The marker has changed but not
+   "main.add_todo" in "main.drift.xml:0". The marker has changed but not
    the spec term. Check whether the changed code still complies with
    the spec term and make any modifications necessary. Once you are
    satisfied, run `drift reset add_func main.add_todo` to mark this
@@ -36,7 +36,7 @@ Something changed. The tool doesn't just say "file changed" — it says **which 
 ```bash
 $ drift diff add_func main.add_todo
 
-Spec: main.add_todo (main.pin.xml)
+Spec: main.add_todo (main.drift.xml)
 Status: in sync
 
 ---
@@ -63,7 +63,7 @@ The `+` lines are what the agent added. Your rule said "must not be empty." The 
 $ drift show main.add_todo
 
 === Spec: main.add_todo ===
-File: main.pin.xml
+File: main.drift.xml
 Hash: a1b2c3d4
 
 Add a new todo item. The title must not be empty.
@@ -92,9 +92,9 @@ That's the whole loop: **detect → see what changed → review → resolve.** T
 
 ## Anatomy
 
-- **Specs** — `*.pin.xml` files containing `<spec id="...">` elements under `<main>` or `<module name="...">` roots
+- **Specs** — `*.drift.xml` files containing `<spec id="...">` elements under `<main>` or `<module name="...">` roots
 - **Markers** — `// D! id=<shortcode> range-start` and `// D! id=<shortcode> range-end` comment lines in code files, wrapping the code that implements a spec
-- **`.driftpin/`** — state directory at project root containing `state.xml` (baseline hashes, links, resolution state) and `baselines/` (content-addressed baseline snapshots). Tool-managed — do not edit by hand. Commit to git.
+- **`.drift/`** — state directory at project root containing `state.xml` (baseline hashes, links, resolution state) and `baselines/` (content-addressed baseline snapshots). Tool-managed — do not edit by hand. Commit to git.
 - **CLI** — `drift init`, `drift todo`, `drift list`, `drift show`, `drift diff`, `drift link`, `drift unlink`, `drift reset`, `drift help`, `drift skill`
 
 See [DOCUMENTATION.md](DOCUMENTATION.md) for the full documentation.

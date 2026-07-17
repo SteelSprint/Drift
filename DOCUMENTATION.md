@@ -13,23 +13,23 @@ The binary is self-describing:
 
 ## How it works
 
-`drift` asks you to save your specs in `*.pin.xml` files. Each file contains `<spec id="...">` elements that describe individual spec terms. `drift` then scans your code files for `D! id=<shortcode>` markers — short unique IDs placed in comments above the code that implements each spec term. Specs and markers form a many-to-many graph — a single spec term can be enforced by several markers, and a single marker can refer to several spec terms. Each link between a spec term and a marker is called an **edge**. When a change occurs on either side of an edge, `drift todo` surfaces one todo item per affected edge, with filepaths and line numbers where your LLM should check for drifts in specification.
+`drift` asks you to save your specs in `*.drift.xml` files. Each file contains `<spec id="...">` elements that describe individual spec terms. `drift` then scans your code files for `D! id=<shortcode>` markers — short unique IDs placed in comments above the code that implements each spec term. Specs and markers form a many-to-many graph — a single spec term can be enforced by several markers, and a single marker can refer to several spec terms. Each link between a spec term and a marker is called an **edge**. When a change occurs on either side of an edge, `drift todo` surfaces one todo item per affected edge, with filepaths and line numbers where your LLM should check for drifts in specification.
 
-`drift` hashes spec terms as well as markers (SHA1 of content), and saves those hashes inside `drift.pin`, which should be committed to git. This is an XML file that contains the hashes of specs and markers, the links between them, and a temporary resolution state area for partial todo-list resolutions. The algorithm manages this file itself — the user should refrain from touching `drift.pin` manually.
+`drift` hashes spec terms as well as markers (SHA1 of content), and saves those hashes inside `.drift/state.xml`, which should be committed to git. This is an XML file that contains the hashes of specs and markers, the links between them, and a temporary resolution state area for partial todo-list resolutions. The algorithm manages this file itself — the user should refrain from touching `.drift/state.xml` manually.
 
 ### Spec files
 
-Specs are defined in `*.pin.xml` files. The entry point is `main.pin.xml` in the project root.
+Specs are defined in `*.drift.xml` files. The entry point is `main.drift.xml` in the project root.
 
-**main.pin.xml** (entry point — can be pure manifest or have direct specs):
+**main.drift.xml** (entry point — can be pure manifest or have direct specs):
 ```xml
 <main>
-  <import path="./core/core.pin.xml"/>
+  <import path="./core/core.drift.xml"/>
   <spec id="bootstrap">Initialize the project and load all modules</spec>
 </main>
 ```
 
-**Module files** (e.g. `core/core.pin.xml`):
+**Module files** (e.g. `core/core.drift.xml`):
 ```xml
 <module name="core">
   <spec id="validate_input">input must be validated before processing</spec>
@@ -37,9 +37,9 @@ Specs are defined in `*.pin.xml` files. The entry point is `main.pin.xml` in the
 </module>
 ```
 
-Specs are **direct children** of the root element. Do not wrap them in a `<specs>` element — the scanner will reject this. Spec IDs are module-qualified: `<module>.<specId>`. Specs in `main.pin.xml` use the `main.` prefix (e.g. `main.bootstrap`).
+Specs are **direct children** of the root element. Do not wrap them in a `<specs>` element — the scanner will reject this. Spec IDs are module-qualified: `<module>.<specId>`. Specs in `main.drift.xml` use the `main.` prefix (e.g. `main.bootstrap`).
 
-The scanner walks the import graph starting from `main.pin.xml`. Imports are relative to the importing file. Diamond imports are deduplicated by absolute path. Duplicate module names cause an error. Cycles are detected and reported with a trace.
+The scanner walks the import graph starting from `main.drift.xml`. Imports are relative to the importing file. Diamond imports are deduplicated by absolute path. Duplicate module names cause an error. Cycles are detected and reported with a trace.
 
 ### Markers
 
@@ -56,7 +56,7 @@ The scanner finds these lines, records the shortcode, filepath, and line number,
 
 ### Links
 
-Markers and specs have separate IDs — a marker's shortcode does not match a spec's ID. Links between them are declared in `drift.pin` via the CLI:
+Markers and specs have separate IDs — a marker's shortcode does not match a spec's ID. Links between them are declared in `.drift/state.xml` via the CLI:
 
 ```bash
 $ drift link 4hy7fh3h core.validate_input
@@ -69,12 +69,12 @@ This validates that both the marker and spec exist, then persists the link. Link
 
 | Command | Description |
 |---|---|
-| `drift init` | Creates `drift.pin` and a starter `main.pin.xml` template. Required before other commands. |
-| `drift todo` | Scans the filesystem, reconciles with `drift.pin`, and surfaces any drift as a todo list. Does not modify `drift.pin`. |
-| `drift link <marker> <module.spec>` | Declares a link between a marker and a spec term. Validates both exist and the link isn't a duplicate. Saves specs, markers, and the new link to `drift.pin`. |
+| `drift init` | Creates `.drift/state.xml` and a starter `main.drift.xml` template. Required before other commands. |
+| `drift todo` | Scans the filesystem, reconciles with `.drift/state.xml`, and surfaces any drift as a todo list. Does not modify `.drift/state.xml`. |
+| `drift link <marker> <module.spec>` | Declares a link between a marker and a spec term. Validates both exist and the link isn't a duplicate. Saves specs, markers, and the new link to `.drift/state.xml`. |
 | `drift unlink <marker> <module.spec>` | Removes a link between a marker and a spec term. Also clears any resolution state for that edge. |
 | `drift list` | Shows all specs, markers, links, and sync state. Read-only. |
-| `drift reset <marker> <module.spec>` | Marks a specific edge as resolved. Saves updated state to `drift.pin`. If all edges for a node are resolved, baselines collapse automatically. |
+| `drift reset <marker> <module.spec>` | Marks a specific edge as resolved. Saves updated state to `.drift/state.xml`. If all edges for a node are resolved, baselines collapse automatically. |
 | `drift help` | Prints command reference with marker syntax, spec file format, and examples. |
 | `drift skill` | Prints a comprehensive guide for LLM agents covering the full workflow, module/import system, and drift detection model. |
 
@@ -82,10 +82,10 @@ This validates that both the marker and spec exist, then persists the link. Link
 
 When `drift todo` or `drift reset` runs, the orchestrator:
 
-1. Loads `drift.pin` (baseline hashes, links, resolution state)
+1. Loads `.drift/state.xml` (baseline hashes, links, resolution state)
 2. Scans the filesystem (current specs, markers, and their hashes)
 3. **Reconciles** — for each discovered spec/marker:
-   - If already in `drift.pin` → keeps the baseline hash from the pin, updates filepath/line if changed
+   - If already in `.drift/state.xml` → keeps the baseline hash from state, updates filepath/line if changed
    - If new (not in pin) → baseline = current hash (no drift on first discovery)
    - If in pin but not found on disk → error
 4. Builds the scan and runs the core algorithm
@@ -100,8 +100,8 @@ First, initialize and discover:
 
 ```bash
 $ drift init
-Initialized drift.pin and main.pin.xml
-Edit main.pin.xml to add your specs, then place D! id=<markerid> markers in your code.
+Initialized .drift/ and main.drift.xml
+Edit main.drift.xml to add your specs, then place D! id=<markerid> markers in your code.
 Run `drift skill` for a comprehensive guide.
 
 $ drift todo
@@ -122,10 +122,10 @@ $ drift todo
 
 1 marker has unchecked changes.
 
-1. [TODO] Edge between marker "4hy7fh3h" in "/workspaces/my-project/src/main.go:15" and spec term "core.validate_input" in "/workspaces/my-project/core/core.pin.xml:1". The marker has changed but not the spec term. Please check whether the changed code still complies with the spec term and make any modifications necessary. Once you are satisfied, run `drift reset 4hy7fh3h core.validate_input` to mark this todo item as complete.
+1. [TODO] Edge between marker "4hy7fh3h" in "/workspaces/my-project/src/main.go:15" and spec term "core.validate_input" in "/workspaces/my-project/core/core.drift.xml:1". The marker has changed but not the spec term. Please check whether the changed code still complies with the spec term and make any modifications necessary. Once you are satisfied, run `drift reset 4hy7fh3h core.validate_input` to mark this todo item as complete.
 ```
 
-At this point `drift.pin` is still unchanged — `drift todo` doesn't modify the file.
+At this point `.drift/state.xml` is still unchanged — `drift todo` doesn't modify the file.
 
 Then you mark the edge as resolved:
 
@@ -133,7 +133,7 @@ Then you mark the edge as resolved:
 $ drift reset 4hy7fh3h core.validate_input
 ```
 
-Since the marker has no more unchecked specs, and the spec has no more unchecked markers, the baselines collapse — `drift.pin` is updated with the new hashes. The next `drift todo` will report "No changes detected: ..."
+Since the marker has no more unchecked specs, and the spec has no more unchecked markers, the baselines collapse — `.drift/state.xml` is updated with the new hashes. The next `drift todo` will report "No changes detected: ..."
 
 ## Drift detection output
 
@@ -161,9 +161,9 @@ $ drift todo
 
 1 spec item has unchecked changes.
 
-1. [TODO] Edge between marker "a1b2c3d4" in "src/middleware/auth.go:42" and spec term "core.auth_token_expiry" in "specs/auth.pin.xml:24". The spec term has changed but not the marker. Please check whether the new version of the spec term is still reflected in the code and make any modifications necessary. Once you are satisfied, run `drift reset a1b2c3d4 core.auth_token_expiry` to mark this todo item as complete.
+1. [TODO] Edge between marker "a1b2c3d4" in "src/middleware/auth.go:42" and spec term "core.auth_token_expiry" in "specs/auth.drift.xml:24". The spec term has changed but not the marker. Please check whether the new version of the spec term is still reflected in the code and make any modifications necessary. Once you are satisfied, run `drift reset a1b2c3d4 core.auth_token_expiry` to mark this todo item as complete.
 
-2. [TODO] Edge between marker "e5f6g7h8" in "src/api/handlers/login.go:88" and spec term "core.auth_token_expiry" in "specs/auth.pin.xml:24". The spec term has changed but not the marker. Please check whether the new version of the spec term is still reflected in the code and make any modifications necessary. Once you are satisfied, run `drift reset e5f6g7h8 core.auth_token_expiry` to mark this todo item as complete.
+2. [TODO] Edge between marker "e5f6g7h8" in "src/api/handlers/login.go:88" and spec term "core.auth_token_expiry" in "specs/auth.drift.xml:24". The spec term has changed but not the marker. Please check whether the new version of the spec term is still reflected in the code and make any modifications necessary. Once you are satisfied, run `drift reset e5f6g7h8 core.auth_token_expiry` to mark this todo item as complete.
 ```
 
 ### One marker, many spec terms
@@ -175,23 +175,23 @@ $ drift todo
 
 1 marker has unchecked changes.
 
-1. [TODO] Edge between marker "k9l0m1n2" in "src/api/handlers/upload.go:115" and spec term "core.validate_file_size" in "specs/uploads.pin.xml:12". The marker has changed but not the spec term. Please check whether the changed code still complies with the spec term and make any modifications necessary. Once you are satisfied, run `drift reset k9l0m1n2 core.validate_file_size` to mark this todo item as complete.
+1. [TODO] Edge between marker "k9l0m1n2" in "src/api/handlers/upload.go:115" and spec term "core.validate_file_size" in "specs/uploads.drift.xml:12". The marker has changed but not the spec term. Please check whether the changed code still complies with the spec term and make any modifications necessary. Once you are satisfied, run `drift reset k9l0m1n2 core.validate_file_size` to mark this todo item as complete.
 
-2. [TODO] Edge between marker "k9l0m1n2" in "src/api/handlers/upload.go:115" and spec term "core.scan_for_malware" in "specs/uploads.pin.xml:48". The marker has changed but not the spec term. Please check whether the changed code still complies with the spec term and make any modifications necessary. Once you are satisfied, run `drift reset k9l0m1n2 core.scan_for_malware` to mark this todo item as complete.
+2. [TODO] Edge between marker "k9l0m1n2" in "src/api/handlers/upload.go:115" and spec term "core.scan_for_malware" in "specs/uploads.drift.xml:48". The marker has changed but not the spec term. Please check whether the changed code still complies with the spec term and make any modifications necessary. Once you are satisfied, run `drift reset k9l0m1n2 core.scan_for_malware` to mark this todo item as complete.
 ```
 
-## Drift.pin walkthrough
+## State file walkthrough
 
-`drift.pin` is an XML state file at the project root. It stores baseline hashes, links, and resolution state. It is tool-managed — do not edit it by hand. Commit it to git.
+`.drift/state.xml` is an XML state file inside the `.drift/` state directory. It stores baseline hashes, links, and resolution state. It is tool-managed — do not edit it by hand. Commit it to git.
 
 ### Clean state (no drift)
 
-After `drift init`, `drift todo` (discovers specs/markers), and `drift link` for all edges, the `drift.pin` looks like this — baselines match current content, no resolution entries:
+After `drift init`, `drift todo` (discovers specs/markers), and `drift link` for all edges, the `.drift/state.xml` looks like this — baselines match current content, no resolution entries:
 
 ```xml
 <drift>
   <specs>
-    <spec id="core.validate_input" hash="S98YH3T2T32..." filepath="core/core.pin.xml" line="0"/>
+    <spec id="core.validate_input" hash="S98YH3T2T32..." filepath="core/core.drift.xml" line="0"/>
   </specs>
   <markers>
     <marker id="4hy7fh3h" hash="JHIO34YU..." filepath="src/main.go" line="15"/>
@@ -206,7 +206,7 @@ After `drift init`, `drift todo` (discovers specs/markers), and `drift link` for
 
 ### After drift detected
 
-When a spec or marker changes, `drift todo` surfaces the edge. But `drift.pin` is **not modified** by `drift todo` — the baselines stay as-is. Drift is detected by comparing current content hashes against the baselines in the file.
+When a spec or marker changes, `drift todo` surfaces the edge. But `.drift/state.xml` is **not modified** by `drift todo` — the baselines stay as-is. Drift is detected by comparing current content hashes against the baselines in the file.
 
 ### After resolving an edge
 
@@ -214,12 +214,12 @@ When a spec or marker changes, `drift todo` surfaces the edge. But `drift.pin` i
 $ drift reset 4hy7fh3h core.validate_input
 ```
 
-Since the marker has no more unchecked specs, and the spec has no more unchecked markers, the baselines collapse — `drift.pin` is updated with the new hashes, and resolution entries are pruned:
+Since the marker has no more unchecked specs, and the spec has no more unchecked markers, the baselines collapse — `.drift/state.xml` is updated with the new hashes, and resolution entries are pruned:
 
 ```xml
 <drift>
   <specs>
-    <spec id="core.validate_input" hash="FGHJKNE..." filepath="core/core.pin.xml" line="0"/>
+    <spec id="core.validate_input" hash="FGHJKNE..." filepath="core/core.drift.xml" line="0"/>
   </specs>
   <markers>
     <marker id="4hy7fh3h" hash="0HGO24G4..." filepath="src/main.go" line="15"/>

@@ -1,5 +1,5 @@
 ---
-description: "Subject LLM being evaluated on cold-start driftpin usage (sandboxed)"
+description: "Subject LLM being evaluated on cold-start drift usage (sandboxed)"
 mode: primary
 steps: 40
 permission:

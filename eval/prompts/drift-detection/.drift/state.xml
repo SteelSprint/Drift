@@ -1,10 +1,10 @@
 <drift>
   <specs>
-    <spec id="main.add" hash="593755cb8bb35d23987ee218f9dcf8e37f16c844" filepath="/workspaces/filament/eval/prompts/drift-detection/main.pin.xml" line="0"></spec>
-    <spec id="main.sub" hash="f8dddee5ae15c3a6d95cef25d805fcdb0e248630" filepath="/workspaces/filament/eval/prompts/drift-detection/main.pin.xml" line="0"></spec>
-    <spec id="main.mul" hash="6f08f8f4d41e1702b4dbe9555ccd46fe1c4a315e" filepath="/workspaces/filament/eval/prompts/drift-detection/main.pin.xml" line="0"></spec>
-    <spec id="main.div" hash="c8a4827d1f7d87e10cfc7a56f19117fd1869b63a" filepath="/workspaces/filament/eval/prompts/drift-detection/main.pin.xml" line="0"></spec>
-    <spec id="main.cli" hash="4f97fafe4ef03b4b94b24991f620d005d8e4c475" filepath="/workspaces/filament/eval/prompts/drift-detection/main.pin.xml" line="0"></spec>
+    <spec id="main.add" hash="593755cb8bb35d23987ee218f9dcf8e37f16c844" filepath="/workspaces/filament/eval/prompts/drift-detection/main.drift.xml" line="0"></spec>
+    <spec id="main.sub" hash="f8dddee5ae15c3a6d95cef25d805fcdb0e248630" filepath="/workspaces/filament/eval/prompts/drift-detection/main.drift.xml" line="0"></spec>
+    <spec id="main.mul" hash="6f08f8f4d41e1702b4dbe9555ccd46fe1c4a315e" filepath="/workspaces/filament/eval/prompts/drift-detection/main.drift.xml" line="0"></spec>
+    <spec id="main.div" hash="c8a4827d1f7d87e10cfc7a56f19117fd1869b63a" filepath="/workspaces/filament/eval/prompts/drift-detection/main.drift.xml" line="0"></spec>
+    <spec id="main.cli" hash="4f97fafe4ef03b4b94b24991f620d005d8e4c475" filepath="/workspaces/filament/eval/prompts/drift-detection/main.drift.xml" line="0"></spec>
   </specs>
   <markers>
     <marker id="main_func" hash="49c35f5b9ef17a680baca536f8e8073e68a36305" filepath="main.go" line="30" endline="66"></marker>

@@ -1,10 +1,10 @@
 ## Your environment
 
-Your workspace contains a working Go project with three string utility functions and driftpin set up. All specs, markers, and links exist, and `drift todo` reports "No changes detected." — but one of the marker-to-spec links is WRONG. A marker is linked to the incorrect spec. The link is consistent (just wrong), so `drift todo` doesn't flag it.
+Your workspace contains a working Go project with three string utility functions and drift set up. All specs, markers, and links exist, and `drift todo` reports "No changes detected." — but one of the marker-to-spec links is WRONG. A marker is linked to the incorrect spec. The link is consistent (just wrong), so `drift todo` doesn't flag it.
 
 ## Your task
 
-Inspect the driftpin links to find the incorrect one. Fix it by removing the wrong link and creating the correct one. After fixing, `drift todo` should still report "No changes detected."
+Inspect the drift links to find the incorrect one. Fix it by removing the wrong link and creating the correct one. After fixing, `drift todo` should still report "No changes detected."
 
 ## Success criteria
 

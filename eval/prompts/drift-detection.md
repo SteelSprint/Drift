@@ -1,12 +1,12 @@
 ## Your environment
 
-Your workspace contains a working Go calculator with driftpin already set up: spec file (main.pin.xml), markers in the code, all links, and a clean drift.pin. The project compiles with `go build`.
+Your workspace contains a working Go calculator with drift already set up: spec file (main.drift.xml), markers in the code, all links, and a clean .drift/state.xml. The project compiles with `go build`.
 
 ## Your task
 
 The calculator's `div` function returns an error only for division by zero. Modify it to also return an error when the divisor is negative zero (i.e., `b == 0 && math.Signbit(b)`). Do NOT change any other function.
 
-After modifying the code, use driftpin to detect the drift and resolve it once you've verified the code still matches the spec.
+After modifying the code, use drift to detect the drift and resolve it once you've verified the code still matches the spec.
 
 ## Success criteria
 

@@ -254,7 +254,7 @@ func (p *Pipeline) runOpencode(a *opencodeArgs) error {
 }
 
 func buildSubjectPrompt(task string) string {
-	return fmt.Sprintf(`You are being evaluated on your ability to use a spec-drift tool called "driftpin".
+	return fmt.Sprintf(`You are being evaluated on your ability to use a spec-drift tool called "drift".
 
 A pre-built `+"`drift`"+` binary is in your working directory. It is executable. You have NO documentation, NO source code, and NO outside help — only the binary. Figure out how to use it by inspecting the binary (e.g. running it with no args, `+"`--help`"+`, `+"`drift skill`"+`, or trying subcommands).
 
@@ -265,11 +265,11 @@ A pre-built `+"`drift`"+` binary is in your working directory. It is executable.
 1. Figure out how the `+"`drift`"+` binary works by exploring it yourself.
 2. Complete the task described above.
 3. Write a file called `+"`self-debrief.md`"+` in your project root with these EXACT sections:
-   - **What worked well**: What was easy or intuitive about using driftpin.
+   - **What worked well**: What was easy or intuitive about using drift.
    - **What was confusing**: What was hard to understand or figure out.
    - **Errors encountered**: Any errors you hit and how you resolved them (or didn't).
    - **Missing documentation**: Things you needed to know that weren't discoverable from the binary alone.
-   - **Suggestions for the tool authors**: Concrete improvements that would make driftpin easier for an LLM to use cold.
+   - **Suggestions for the tool authors**: Concrete improvements that would make drift easier for an LLM to use cold.
 
 ## Important
 
@@ -279,11 +279,11 @@ A pre-built `+"`drift`"+` binary is in your working directory. It is executable.
 }
 
 func buildJudgePrompt(originalTask, workspaceDir, runDir string) string {
-	return fmt.Sprintf(`You are the JUDGE in an LLM-as-judge evaluation of a spec-drift tool called "driftpin".
+	return fmt.Sprintf(`You are the JUDGE in an LLM-as-judge evaluation of a spec-drift tool called "drift".
 
 ## Context
 
-A subject LLM was given a task and asked to use driftpin (a spec-drift tool) end-to-end while completing it. The subject received ONLY a pre-built `+"`drift`"+` binary and the task prompt — no documentation, no source code. You must evaluate how well the subject used driftpin and how well the tool served the subject.
+A subject LLM was given a task and asked to use drift (a spec-drift tool) end-to-end while completing it. The subject received ONLY a pre-built `+"`drift`"+` binary and the task prompt — no documentation, no source code. You must evaluate how well the subject used drift and how well the tool served the subject.
 
 ## Artifacts to inspect
 
@@ -294,7 +294,7 @@ A subject LLM was given a task and asked to use driftpin (a spec-drift tool) end
    - The task prompt includes a "## Success criteria" section with specific outcomes. You MUST verify each one.
    - Run `+"`drift todo`"+` from inside the workspace to check sync state.
    - Run `+"`drift list`"+` from inside the workspace to inspect specs, markers, and links.
-   - Check `+"`*.pin.xml`"+` files — are specs meaningful?
+   - Check `+"`*.drift.xml`"+` files — are specs meaningful?
    - Check markers (`+"`D! id=...`"+`) in code — are they placed at meaningful locations?
    - Read `+"`self-debrief.md`"+` — the subject's own feedback.
 
@@ -308,20 +308,20 @@ Write a file called `+"`report.md`"+` in the run directory (your current working
 ### 1. Scorecard
 
 Rate EACH success criterion from the task prompt as PASS or FAIL with a one-line note. List them by number, matching the task prompt's "## Success criteria" section. Then rate these universal criteria:
-- Used driftpin commands correctly (no tool misuse, correct syntax)
+- Used drift commands correctly (no tool misuse, correct syntax)
 - Self-debrief.md quality (thorough, honest, actionable feedback)
 
 ### 2. Qualitative Assessment
 
 3-5 paragraphs covering:
-- How well did the subject understand and use driftpin?
+- How well did the subject understand and use drift?
 - What patterns of confusion or success did you see?
 - Did the subject's `+"`self-debrief.md`"+` reveal any UX problems?
 - Was the binary self-describing enough for cold use?
 
 ### 3. Tool-Improvement Recommendations
 
-A PRIORITIZED list of concrete, actionable improvements to driftpin, ordered by impact:
+A PRIORITIZED list of concrete, actionable improvements to drift, ordered by impact:
 1. [High/Medium/Low] <recommendation> — <reasoning>
 2. ...
 
@@ -511,7 +511,7 @@ func buildSynthesisPrompt(runDirs []string, batchLabel string) string {
 		pathsList += fmt.Sprintf("   %d. `%s`\n", i+1, p)
 	}
 
-	return fmt.Sprintf(`You are the JUDGE in an LLM-as-judge evaluation of a spec-drift tool called "driftpin".
+	return fmt.Sprintf(`You are the JUDGE in an LLM-as-judge evaluation of a spec-drift tool called "drift".
 
 You previously evaluated %d subject run(s) in batch %q. Each run produced a `+"`report.md`"+`. Your job now is to synthesize all reports into a single cross-run observation record.
 

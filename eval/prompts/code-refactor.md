@@ -1,12 +1,12 @@
 ## Your environment
 
-Your workspace contains a working Go temperature converter with driftpin set up and clean. The `Convert` function does all work — converting to Celsius then from Celsius — in a single function body. The project compiles with `go build`.
+Your workspace contains a working Go temperature converter with drift set up and clean. The `Convert` function does all work — converting to Celsius then from Celsius — in a single function body. The project compiles with `go build`.
 
 ## Your task
 
 Refactor the `Convert` function by extracting the "to Celsius" and "from Celsius" logic into separate helper functions (`toCelsius` and `fromCelsius`). The behavior must remain exactly the same — this is a purely cosmetic refactoring. Do NOT change the specs.
 
-After refactoring, use driftpin to detect the drift and resolve it after verifying the behavior is unchanged.
+After refactoring, use drift to detect the drift and resolve it after verifying the behavior is unchanged.
 
 ## Success criteria
 

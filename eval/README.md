@@ -1,6 +1,6 @@
-# Driftpin Eval Pipeline
+# Drift Eval Pipeline
 
-LLM-as-judge evaluation of driftpin's cold-start UX. A subject LLM is handed ONLY a pre-built `drift` binary and a task prompt — no docs, no source, no agents. It must figure out the tool from the binary alone. A judge LLM evaluates the result and produces tool-improvement recommendations.
+LLM-as-judge evaluation of drift's cold-start UX. A subject LLM is handed ONLY a pre-built `drift` binary and a task prompt — no docs, no source, no agents. It must figure out the tool from the binary alone. A judge LLM evaluates the result and produces tool-improvement recommendations.
 
 ## Usage
 
@@ -32,7 +32,7 @@ go run ./eval --dry-run "build a TODO app"
 
 1. **Stage** — Builds the `drift` binary and copies it into a fresh `eval/runs/<timestamp>/workspace/` directory. Stages the judge agent definition in the run directory. The subject gets nothing else — no docs, no source, no pre-installed skills.
 
-2. **Subject run** — An LLM (default: MiMo v2.5 Pro) is launched in the workspace via `opencode run --auto --format json`. It receives only the task prompt as a message. It must discover how to use `drift` from the binary alone (e.g. running it with no args, `--help`, or trying subcommands). It builds a project, uses driftpin end-to-end, and writes a `self-debrief.md`.
+2. **Subject run** — An LLM (default: MiMo v2.5 Pro) is launched in the workspace via `opencode run --auto --format json`. It receives only the task prompt as a message. It must discover how to use `drift` from the binary alone (e.g. running it with no args, `--help`, or trying subcommands). It builds a project, uses drift end-to-end, and writes a `self-debrief.md`.
 
 3. **Judge run** — A smarter LLM (default: GLM-5.2) is launched in the run directory via `opencode run --agent eval-judge --auto`. It inspects the subject's workspace (runs `drift todo`, reads spec files, checks markers/links), reads the subject's `self-debrief.md`, samples the transcript, and writes a `report.md`.
 

@@ -13,7 +13,7 @@ import (
 
 const (
 	subjectTimeout = 30 * time.Minute
-	judgeTimeout   = 15 * time.Minute
+	judgeTimeout   = 30 * time.Minute
 )
 
 var stdoutMu sync.Mutex
@@ -176,7 +176,7 @@ func (p *Pipeline) runSubject(prompt string) error {
 	}
 	defer subjectOut.Close()
 
-	fullPrompt := buildSubjectPrompt(prompt)
+	fullPrompt := p.resolveSubjectPrompt(prompt)
 
 	return p.runOpencode(&opencodeArgs{
 		agent:   "eval-subject",
@@ -187,6 +187,21 @@ func (p *Pipeline) runSubject(prompt string) error {
 		stdout:  subjectOut,
 		timeout: subjectTimeout,
 	})
+}
+
+// resolveSubjectPrompt checks for a prompt-specific subject wrapper at
+// eval/prompts/<fixtureName>-subject.md. If found, substitutes {{TASK}}
+// and returns the specialized prompt. Otherwise falls back to the generic
+// buildSubjectPrompt.
+func (p *Pipeline) resolveSubjectPrompt(task string) string {
+	templatePath := filepath.Join(p.repoRoot, "eval", "prompts", p.fixtureName+"-subject.md")
+	data, err := os.ReadFile(templatePath)
+	if err != nil {
+		return buildSubjectPrompt(task)
+	}
+	prompt := string(data)
+	prompt = replaceAll(prompt, "{{TASK}}", task)
+	return prompt
 }
 
 func (p *Pipeline) runJudge(originalPrompt string) error {

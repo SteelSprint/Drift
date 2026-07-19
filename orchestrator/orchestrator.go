@@ -63,6 +63,31 @@ type DiffResult struct {
 	IsSeed bool
 }
 
+// ChangeSummary describes the mutations a state-changing operation would
+// apply (or did apply, in dry-run vs post-apply modes). Returned by
+// ResetClosure, Link, and Unlink in both preview and post-apply forms.
+// See cli.reset_format, cli.link_format, cli.unlink_format.
+type ChangeSummary struct {
+	Operation   string        // human-readable: "resolve closure a3f7b2c1" / "link cval → main.validate"
+	NodeChanges []NodeChange
+	EdgeChanges []EdgeChange
+}
+
+// NodeChange describes a single spec/marker baseline change.
+type NodeChange struct {
+	ID      string
+	Kind    string // "changed" / "added" / "removed"
+	OldHash string // truncated to 8 chars at render time
+	NewHash string
+}
+
+// EdgeChange describes a single edge add/remove.
+type EdgeChange struct {
+	From string
+	To   string
+	Kind string // "added" / "removed"
+}
+
 // writeBaseline writes a content-addressed baseline file for the given
 // spec or marker using its current scanned hash. Best-effort.
 func (o *Orchestrator) writeBaseline(scannedHash, filepath, specID string, startLine, endLine int, isSpec bool) error {
@@ -147,30 +172,49 @@ func (o *Orchestrator) Todo() (core.EvaluatedState, error) {
 // Broken-edge events are no-ops; closures with only broken-edge events
 // are refused.
 func (o *Orchestrator) ResetClosure(hash string) (core.EvaluatedState, error) {
+	evaluated, _, err := o.ResetClosureWithSummary(hash)
+	return evaluated, err
+}
+
+// ResetClosureWithSummary does the same work as ResetClosure and additionally
+// returns a ChangeSummary describing what mutated. Used by the CLI to print
+// the per-event change summary after applying (see cli.reset_format).
+func (o *Orchestrator) ResetClosureWithSummary(hash string) (core.EvaluatedState, ChangeSummary, error) {
+	return o.resetClosureInner(hash, true)
+}
+
+// PreviewResetClosure computes the ChangeSummary that ResetClosure would
+// apply, WITHOUT saving state. Used by --dry-run. See cli.reset_format.
+func (o *Orchestrator) PreviewResetClosure(hash string) (ChangeSummary, error) {
+	_, summary, err := o.resetClosureInner(hash, false)
+	return summary, err
+}
+
+func (o *Orchestrator) resetClosureInner(hash string, save bool) (core.EvaluatedState, ChangeSummary, error) {
 	unlock, err := o.stateStore.Lock()
 	if err != nil {
-		return core.EvaluatedState{}, err
+		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 	defer unlock()
 
-	state, err := o.stateStore.Load()
+	beforeState, err := o.stateStore.Load()
 	if err != nil {
-		return core.EvaluatedState{}, err
+		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
 	scanResult, err := o.scanner.Scan()
 	if err != nil {
-		return core.EvaluatedState{}, err
+		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
-	reconciledSpecs, err := reconcileSpecs(state.Specs, scanResult.Specs)
+	reconciledSpecs, err := reconcileSpecs(beforeState.Specs, scanResult.Specs)
 	if err != nil {
-		return core.EvaluatedState{}, err
+		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
-	reconciledMarkers, err := reconcileMarkers(state.Markers, scanResult.Markers)
+	reconciledMarkers, err := reconcileMarkers(beforeState.Markers, scanResult.Markers)
 	if err != nil {
-		return core.EvaluatedState{}, err
+		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
 	scan := buildScan(scanResult, reconciledSpecs, reconciledMarkers)
@@ -178,53 +222,53 @@ func (o *Orchestrator) ResetClosure(hash string) (core.EvaluatedState, error) {
 	ctx := core.CoreAlgorithmContext{
 		Specs:   reconciledSpecs,
 		Markers: reconciledMarkers,
-		Edges:   state.Edges,
+		Edges:   beforeState.Edges,
 		Action:  core.ResetClosureAction{Hash: hash, Scan: scan},
 	}
 
 	evaluated, err := o.core.EvaluateState(ctx)
 	if err != nil {
 		if errors.Is(err, core.ErrClosureNotFound) {
-			return core.EvaluatedState{}, ErrResetClosureNotFound
+			return core.EvaluatedState{}, ChangeSummary{}, ErrResetClosureNotFound
 		}
 		if errors.Is(err, core.ErrBrokenEdgeNotResettable) {
-			return core.EvaluatedState{}, ErrResetClosureOnlyBroken
+			return core.EvaluatedState{}, ChangeSummary{}, ErrResetClosureOnlyBroken
 		}
-		return core.EvaluatedState{}, err
+		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
-	// Merge scan's spec-spec edges into baseline (so newly-cited refs
-	// declared via <ref> tags make it into state.xml when their closure
-	// resets). This mirrors the pre-closure mergeScannedEdges behavior.
 	savedEdges := mergeScannedEdges(evaluated.Edges, scanResult.Edges)
-
-	if err := o.stateStore.Save(statestore.State{
+	afterState := statestore.State{
 		Specs:   evaluated.Specs,
 		Markers: evaluated.Markers,
 		Edges:   savedEdges,
-	}); err != nil {
-		return core.EvaluatedState{}, err
 	}
 
-	// Best-effort: refresh baseline files for any node whose hash changed.
-	for _, ev := range evaluated.Closures {
-		if ev.Hash != hash {
-			continue
+	if save {
+		if err := o.stateStore.Save(afterState); err != nil {
+			return core.EvaluatedState{}, ChangeSummary{}, err
 		}
-		for _, e := range ev.Events {
-			switch e.Kind {
-			case core.EventNodeChanged, core.EventNodeAdded:
-				if s, ok := findSpecByID(scanResult.Specs, e.NodeID); ok {
-					_ = o.writeBaseline(s.Hash, s.Filepath, s.ID, 0, 0, true)
-				}
-				if m, ok := findMarkerByID(scanResult.Markers, e.NodeID); ok {
-					_ = o.writeBaseline(m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
+		// Best-effort: refresh baseline files for any node whose hash changed.
+		for _, ev := range evaluated.Closures {
+			if ev.Hash != hash {
+				continue
+			}
+			for _, e := range ev.Events {
+				switch e.Kind {
+				case core.EventNodeChanged, core.EventNodeAdded:
+					if s, ok := findSpecByID(scanResult.Specs, e.NodeID); ok {
+						_ = o.writeBaseline(s.Hash, s.Filepath, s.ID, 0, 0, true)
+					}
+					if m, ok := findMarkerByID(scanResult.Markers, e.NodeID); ok {
+						_ = o.writeBaseline(m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
+					}
 				}
 			}
 		}
 	}
 
-	return evaluated, nil
+	summary := computeChangeSummary(beforeState, afterState, "resolve closure "+hash)
+	return evaluated, summary, nil
 }
 
 // D! id=orest range-end
@@ -252,30 +296,45 @@ func findMarkerByID(markers []core.Marker, id string) (core.Marker, bool) {
 // it to baseline. The edge kind is implicit from endpoint types: marker IDs
 // contain no dot, spec IDs contain exactly one.
 func (o *Orchestrator) Link(markerID, specID string) error {
+	_, err := o.LinkWithSummary(markerID, specID)
+	return err
+}
+
+// LinkWithSummary does the same work as Link and returns the ChangeSummary.
+func (o *Orchestrator) LinkWithSummary(markerID, specID string) (ChangeSummary, error) {
+	return o.linkInner(markerID, specID, true)
+}
+
+// PreviewLink computes the ChangeSummary Link would apply, WITHOUT saving.
+func (o *Orchestrator) PreviewLink(markerID, specID string) (ChangeSummary, error) {
+	return o.linkInner(markerID, specID, false)
+}
+
+func (o *Orchestrator) linkInner(markerID, specID string, save bool) (ChangeSummary, error) {
 	unlock, err := o.stateStore.Lock()
 	if err != nil {
-		return err
+		return ChangeSummary{}, err
 	}
 	defer unlock()
 
-	state, err := o.stateStore.Load()
+	beforeState, err := o.stateStore.Load()
 	if err != nil {
-		return err
+		return ChangeSummary{}, err
 	}
 
 	scanResult, err := o.scanner.Scan()
 	if err != nil {
-		return err
+		return ChangeSummary{}, err
 	}
 
-	reconciledSpecs, err := reconcileSpecs(state.Specs, scanResult.Specs)
+	reconciledSpecs, err := reconcileSpecs(beforeState.Specs, scanResult.Specs)
 	if err != nil {
-		return err
+		return ChangeSummary{}, err
 	}
 
-	reconciledMarkers, err := reconcileMarkers(state.Markers, scanResult.Markers)
+	reconciledMarkers, err := reconcileMarkers(beforeState.Markers, scanResult.Markers)
 	if err != nil {
-		return err
+		return ChangeSummary{}, err
 	}
 
 	// D! id=cperr range-start
@@ -292,7 +351,7 @@ func (o *Orchestrator) Link(markerID, specID string) error {
 		for _, m := range reconciledMarkers {
 			available = append(available, m.ID)
 		}
-		return fmt.Errorf("link references unknown marker %q.\nMarkers must be %s comment lines in code files.\nAvailable markers: %s", markerID, markerSyntax, strings.Join(available, ", "))
+		return ChangeSummary{}, fmt.Errorf("link references unknown marker %q.\nMarkers must be %s comment lines in code files.\nAvailable markers: %s", markerID, markerSyntax, strings.Join(available, ", "))
 	}
 
 	specExists := false
@@ -307,20 +366,17 @@ func (o *Orchestrator) Link(markerID, specID string) error {
 		for _, s := range reconciledSpecs {
 			available = append(available, s.ID)
 		}
-		return fmt.Errorf("link references unknown spec %q.\nSpec IDs are module-qualified: <module>.<specId> (e.g. main.example or core.validate).\nAvailable specs: %s", specID, strings.Join(available, ", "))
+		return ChangeSummary{}, fmt.Errorf("link references unknown spec %q.\nSpec IDs are module-qualified: <module>.<specId> (e.g. main.example or core.validate).\nAvailable specs: %s", specID, strings.Join(available, ", "))
 	}
 
-	for _, e := range state.Edges {
+	for _, e := range beforeState.Edges {
 		if e.From == markerID && e.To == specID {
-			return fmt.Errorf("%w: marker=%q spec=%q", ErrLinkAlreadyExists, markerID, specID)
+			return ChangeSummary{}, fmt.Errorf("%w: marker=%q spec=%q", ErrLinkAlreadyExists, markerID, specID)
 		}
 	}
 
-	mergedEdges := mergeScannedEdges(state.Edges, scanResult.Edges)
+	mergedEdges := mergeScannedEdges(beforeState.Edges, scanResult.Edges)
 
-	// Establish baselines for the linked marker and spec by setting their
-	// Hash to the current scan hash. Without this, the first post-link todo
-	// would flag them as NODE_CHANGED (baseline empty vs scan non-empty).
 	scanSpecHashes := make(map[string]string, len(scanResult.Specs))
 	for _, s := range scanResult.Specs {
 		scanSpecHashes[s.ID] = s.Hash
@@ -340,64 +396,181 @@ func (o *Orchestrator) Link(markerID, specID string) error {
 		}
 	}
 
-	if err := o.stateStore.Save(statestore.State{
+	afterState := statestore.State{
 		Specs:   reconciledSpecs,
 		Markers: reconciledMarkers,
 		Edges:   append(mergedEdges, core.Edge{From: markerID, To: specID}),
-	}); err != nil {
-		return err
 	}
 
-	for _, s := range scanResult.Specs {
-		if s.ID == specID {
-			_ = o.writeBaseline(s.Hash, s.Filepath, specID, 0, 0, true)
-			break
+	if save {
+		if err := o.stateStore.Save(afterState); err != nil {
+			return ChangeSummary{}, err
+		}
+		for _, s := range scanResult.Specs {
+			if s.ID == specID {
+				_ = o.writeBaseline(s.Hash, s.Filepath, specID, 0, 0, true)
+				break
+			}
+		}
+		for _, m := range scanResult.Markers {
+			if m.ID == markerID {
+				_ = o.writeBaseline(m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
+				break
+			}
 		}
 	}
-	for _, m := range scanResult.Markers {
-		if m.ID == markerID {
-			_ = o.writeBaseline(m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
-			break
-		}
-	}
-	return nil
+
+	summary := computeChangeSummary(beforeState, afterState, fmt.Sprintf("link %s → %s", markerID, specID))
+	return summary, nil
 }
 
 // D! id=olink range-end
 
 // D! id=ounlnk range-start
 func (o *Orchestrator) Unlink(markerID, specID string) error {
+	_, err := o.UnlinkWithSummary(markerID, specID)
+	return err
+}
+
+// UnlinkWithSummary does the same work as Unlink and returns the ChangeSummary.
+func (o *Orchestrator) UnlinkWithSummary(markerID, specID string) (ChangeSummary, error) {
+	return o.unlinkInner(markerID, specID, true)
+}
+
+// PreviewUnlink computes the ChangeSummary Unlink would apply, WITHOUT saving.
+func (o *Orchestrator) PreviewUnlink(markerID, specID string) (ChangeSummary, error) {
+	return o.unlinkInner(markerID, specID, false)
+}
+
+func (o *Orchestrator) unlinkInner(markerID, specID string, save bool) (ChangeSummary, error) {
 	unlock, err := o.stateStore.Lock()
 	if err != nil {
-		return err
+		return ChangeSummary{}, err
 	}
 	defer unlock()
 
-	state, err := o.stateStore.Load()
+	beforeState, err := o.stateStore.Load()
 	if err != nil {
-		return err
+		return ChangeSummary{}, err
 	}
 
 	edgeIndex := -1
-	for i, e := range state.Edges {
+	for i, e := range beforeState.Edges {
 		if e.From == markerID && e.To == specID {
 			edgeIndex = i
 			break
 		}
 	}
 	if edgeIndex == -1 {
-		return fmt.Errorf("%w: marker=%q spec=%q", ErrUnlinkNotFound, markerID, specID)
+		return ChangeSummary{}, fmt.Errorf("%w: marker=%q spec=%q", ErrUnlinkNotFound, markerID, specID)
 	}
 
-	newEdges := make([]core.Edge, 0, len(state.Edges)-1)
-	newEdges = append(newEdges, state.Edges[:edgeIndex]...)
-	newEdges = append(newEdges, state.Edges[edgeIndex+1:]...)
+	newEdges := make([]core.Edge, 0, len(beforeState.Edges)-1)
+	newEdges = append(newEdges, beforeState.Edges[:edgeIndex]...)
+	newEdges = append(newEdges, beforeState.Edges[edgeIndex+1:]...)
 
-	return o.stateStore.Save(statestore.State{
-		Specs:   state.Specs,
-		Markers: state.Markers,
+	afterState := statestore.State{
+		Specs:   beforeState.Specs,
+		Markers: beforeState.Markers,
 		Edges:   newEdges,
-	})
+	}
+	if save {
+		if err := o.stateStore.Save(afterState); err != nil {
+			return ChangeSummary{}, err
+		}
+	}
+	summary := computeChangeSummary(beforeState, afterState, fmt.Sprintf("unlink %s → %s", markerID, specID))
+	return summary, nil
+}
+
+// computeChangeSummary diffs two statestore.State values and returns a
+// ChangeSummary describing the mutations. Used by reset/link/unlink in both
+// preview (dry-run) and post-apply forms. See output.change_summary_format.
+func computeChangeSummary(before, after statestore.State, operation string) ChangeSummary {
+	summary := ChangeSummary{Operation: operation}
+
+	beforeSpecs := make(map[string]core.Spec, len(before.Specs))
+	for _, s := range before.Specs {
+		beforeSpecs[s.ID] = s
+	}
+	afterSpecs := make(map[string]core.Spec, len(after.Specs))
+	for _, s := range after.Specs {
+		afterSpecs[s.ID] = s
+	}
+	for id, a := range afterSpecs {
+		if b, ok := beforeSpecs[id]; ok {
+			if b.Hash != a.Hash {
+				summary.NodeChanges = append(summary.NodeChanges, NodeChange{
+					ID: id, Kind: "changed", OldHash: b.Hash, NewHash: a.Hash,
+				})
+			}
+		} else {
+			summary.NodeChanges = append(summary.NodeChanges, NodeChange{
+				ID: id, Kind: "added", NewHash: a.Hash,
+			})
+		}
+	}
+	for id, b := range beforeSpecs {
+		if _, ok := afterSpecs[id]; !ok {
+			summary.NodeChanges = append(summary.NodeChanges, NodeChange{
+				ID: id, Kind: "removed", OldHash: b.Hash,
+			})
+		}
+	}
+
+	beforeMarkers := make(map[string]core.Marker, len(before.Markers))
+	for _, m := range before.Markers {
+		beforeMarkers[m.ID] = m
+	}
+	afterMarkers := make(map[string]core.Marker, len(after.Markers))
+	for _, m := range after.Markers {
+		afterMarkers[m.ID] = m
+	}
+	for id, a := range afterMarkers {
+		if b, ok := beforeMarkers[id]; ok {
+			if b.Hash != a.Hash {
+				summary.NodeChanges = append(summary.NodeChanges, NodeChange{
+					ID: id, Kind: "changed", OldHash: b.Hash, NewHash: a.Hash,
+				})
+			}
+		} else {
+			summary.NodeChanges = append(summary.NodeChanges, NodeChange{
+				ID: id, Kind: "added", NewHash: a.Hash,
+			})
+		}
+	}
+	for id, b := range beforeMarkers {
+		if _, ok := afterMarkers[id]; !ok {
+			summary.NodeChanges = append(summary.NodeChanges, NodeChange{
+				ID: id, Kind: "removed", OldHash: b.Hash,
+			})
+		}
+	}
+
+	beforeEdgeSet := make(map[string]bool, len(before.Edges))
+	for _, e := range before.Edges {
+		beforeEdgeSet[e.From+"\x00"+e.To] = true
+	}
+	afterEdgeSet := make(map[string]bool, len(after.Edges))
+	for _, e := range after.Edges {
+		afterEdgeSet[e.From+"\x00"+e.To] = true
+	}
+	for _, e := range after.Edges {
+		if !beforeEdgeSet[e.From+"\x00"+e.To] {
+			summary.EdgeChanges = append(summary.EdgeChanges, EdgeChange{
+				From: e.From, To: e.To, Kind: "added",
+			})
+		}
+	}
+	for _, e := range before.Edges {
+		if !afterEdgeSet[e.From+"\x00"+e.To] {
+			summary.EdgeChanges = append(summary.EdgeChanges, EdgeChange{
+				From: e.From, To: e.To, Kind: "removed",
+			})
+		}
+	}
+
+	return summary
 }
 
 // D! id=ounlnk range-end

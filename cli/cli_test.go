@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -252,5 +253,211 @@ func TestCLI_DiffSeedLabel(t *testing.T) {
 	}
 	if !strings.Contains(out, `Marker: ca [citer]`) {
 		t.Fatalf("expected 'Marker: ca [citer]' in diff output:\n%s", out)
+	}
+}
+
+// TestCLI_ResetDryRun verifies:
+// - Output contains the change-summary lines (preview).
+// - state.xml is NOT modified — next todo still reports drift.
+// - Exit code is 3 (special dry-run code).
+func TestCLI_ResetDryRun(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A spec.</spec>
+</module>`)
+	testutil.WriteCodeFile(t, dir, "code.go",
+		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n")
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	if _, code := run("init"); code != 0 {
+		t.Fatal("init failed")
+	}
+	if _, code := run("link", "ca", "m.a"); code != 0 {
+		t.Fatal("link failed")
+	}
+	// Drift the spec.
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A spec that changed.</spec>
+</module>`)
+	out, code := run("todo")
+	if code != 1 {
+		t.Fatalf("todo: code=%d", code)
+	}
+	hashLine := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "Closure ") {
+			hashLine = l
+			break
+		}
+	}
+	parts := strings.Fields(hashLine)
+	if len(parts) < 2 {
+		t.Fatalf("could not parse hash from: %q", hashLine)
+	}
+	hash := parts[1]
+
+	// Snapshot state.xml to detect mutation.
+	statePath := dir + "/.drift/state.xml"
+	beforeBytes, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, code = run("reset", "--dry-run", hash)
+	if code != 3 {
+		t.Fatalf("dry-run reset: expected exit 3, got %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "Preview — no changes written") {
+		t.Fatalf("missing preview banner:\n%s", out)
+	}
+	if !strings.Contains(out, hash) {
+		t.Fatalf("missing closure hash in preview:\n%s", out)
+	}
+	if !strings.Contains(out, "m.a") {
+		t.Fatalf("missing spec id in preview:\n%s", out)
+	}
+	if !strings.Contains(out, "changed") {
+		t.Fatalf("missing 'changed' kind in preview:\n%s", out)
+	}
+
+	// state.xml must be unchanged.
+	afterBytes, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(beforeBytes) != string(afterBytes) {
+		t.Fatalf("dry-run mutated state.xml (before=%d bytes, after=%d bytes)", len(beforeBytes), len(afterBytes))
+	}
+
+	// Next todo still reports drift.
+	out, code = run("todo")
+	if code != 1 {
+		t.Fatalf("after dry-run: expected todo to still drift (code=%d)\n%s", code, out)
+	}
+}
+
+// TestCLI_ResetSummary verifies that reset prints the change-summary lines
+// after applying (same shape as the dry-run preview).
+func TestCLI_ResetSummary(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A spec.</spec>
+</module>`)
+	testutil.WriteCodeFile(t, dir, "code.go",
+		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n")
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	run("init")
+	run("link", "ca", "m.a")
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A spec that changed.</spec>
+</module>`)
+	out, _ := run("todo")
+	hashLine := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "Closure ") {
+			hashLine = l
+			break
+		}
+	}
+	parts := strings.Fields(hashLine)
+	hash := parts[1]
+
+	out, code := run("reset", hash)
+	if code != 0 {
+		t.Fatalf("reset: code=%d\n%s", code, out)
+	}
+	if !strings.Contains(out, "Closure "+hash+" resolved") {
+		t.Fatalf("missing 'Closure HASH resolved' line:\n%s", out)
+	}
+	if !strings.Contains(out, "m.a") {
+		t.Fatalf("missing spec id in post-reset summary:\n%s", out)
+	}
+	if !strings.Contains(out, "changed") {
+		t.Fatalf("missing 'changed' kind in post-reset summary:\n%s", out)
+	}
+
+	// Verify baseline actually updated.
+	out, code = run("todo")
+	if code != 0 {
+		t.Fatalf("post-reset todo should be clean: code=%d\n%s", code, out)
+	}
+}
+
+// TestCLI_LinkDryRun verifies link --dry-run previews, doesn't save, exits 3.
+func TestCLI_LinkDryRun(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A.</spec>
+</module>`)
+	testutil.WriteCodeFile(t, dir, "code.go",
+		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n")
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	run("init")
+
+	statePath := dir + "/.drift/state.xml"
+	before, _ := os.ReadFile(statePath)
+
+	out, code := run("link", "--dry-run", "ca", "m.a")
+	if code != 3 {
+		t.Fatalf("dry-run link: expected exit 3, got %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "Preview — no changes written") {
+		t.Fatalf("missing preview banner:\n%s", out)
+	}
+	if !strings.Contains(out, "ca") || !strings.Contains(out, "m.a") {
+		t.Fatalf("missing edge info in preview:\n%s", out)
+	}
+
+	after, _ := os.ReadFile(statePath)
+	if string(before) != string(after) {
+		t.Fatalf("dry-run link mutated state.xml")
+	}
+
+	// Real link still works.
+	_, code = run("link", "ca", "m.a")
+	if code != 0 {
+		t.Fatalf("real link after dry-run: code=%d", code)
+	}
+}
+
+// TestCLI_UnlinkDryRun verifies unlink --dry-run previews, doesn't save, exits 3.
+func TestCLI_UnlinkDryRun(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A.</spec>
+</module>`)
+	testutil.WriteCodeFile(t, dir, "code.go",
+		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n")
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	run("init")
+	run("link", "ca", "m.a")
+
+	statePath := dir + "/.drift/state.xml"
+	before, _ := os.ReadFile(statePath)
+
+	out, code := run("unlink", "--dry-run", "ca", "m.a")
+	if code != 3 {
+		t.Fatalf("dry-run unlink: expected exit 3, got %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "Preview — no changes written") {
+		t.Fatalf("missing preview banner:\n%s", out)
+	}
+
+	after, _ := os.ReadFile(statePath)
+	if string(before) != string(after) {
+		t.Fatalf("dry-run unlink mutated state.xml")
 	}
 }

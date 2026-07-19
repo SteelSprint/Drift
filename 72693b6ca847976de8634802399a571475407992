@@ -1,0 +1,53 @@
+type jsonChangeNode struct {
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	OldHash string `json:"oldHash,omitempty"`
+	NewHash string `json:"newHash,omitempty"`
+}
+
+type jsonChangeEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	Kind string `json:"kind"`
+}
+
+type jsonChangeSummary struct {
+	Operation   string           `json:"operation"`
+	NodeChanges []jsonChangeNode `json:"nodeChanges,omitempty"`
+	EdgeChanges []jsonChangeEdge `json:"edgeChanges,omitempty"`
+}
+
+type jsonChangeSummaryResult struct {
+	Preview bool               `json:"preview"`
+	Message string             `json:"message,omitempty"`
+	Summary jsonChangeSummary   `json:"summary"`
+}
+
+func truncateHash(h string) string {
+	if len(h) <= 8 {
+		return h
+	}
+	return h[:8]
+}
+
+func (p JSONPresenter) ChangeSummary(r ChangeSummaryResult) string {
+	jcs := jsonChangeSummary{Operation: r.Summary.Operation}
+	for _, nc := range r.Summary.NodeChanges {
+		jcs.NodeChanges = append(jcs.NodeChanges, jsonChangeNode{
+			ID: nc.ID, Kind: nc.Kind,
+			OldHash: truncateHash(nc.OldHash),
+			NewHash: truncateHash(nc.NewHash),
+		})
+	}
+	for _, ec := range r.Summary.EdgeChanges {
+		jcs.EdgeChanges = append(jcs.EdgeChanges, jsonChangeEdge{
+			From: ec.From, To: ec.To, Kind: ec.Kind,
+		})
+	}
+	return marshal(jsonChangeSummaryResult{
+		Preview: r.Preview,
+		Message: r.Message,
+		Summary: jcs,
+	})
+}
+

@@ -461,6 +461,43 @@ func (p PlainPresenter) DiffAll(r DiffAllResult) string {
 // D! id=cdall range-end
 // D! id=cdifffmt range-end
 
+// D! id=ocsum range-start
+// formatChangeSummary renders a ChangeSummary as a stable text block.
+// Used by both --dry-run preview (with banner) and post-apply printing
+// (with optional Message lead-in). Hashes are truncated to 8 chars.
+func formatChangeSummary(r ChangeSummaryResult) string {
+	var sb strings.Builder
+	if r.Preview {
+		sb.WriteString("Preview — no changes written\n")
+	}
+	if r.Message != "" {
+		sb.WriteString(r.Message + "\n")
+	}
+	sb.WriteString(fmt.Sprintf("  operation: %s\n", r.Summary.Operation))
+	for _, nc := range r.Summary.NodeChanges {
+		old := shortHash(nc.OldHash)
+		new := shortHash(nc.NewHash)
+		switch nc.Kind {
+		case "changed":
+			sb.WriteString(fmt.Sprintf("  %-8s %s  %s → %s\n", nc.Kind, nc.ID, old, new))
+		case "added":
+			sb.WriteString(fmt.Sprintf("  %-8s %s  → %s\n", nc.Kind, nc.ID, new))
+		case "removed":
+			sb.WriteString(fmt.Sprintf("  %-8s %s  %s →\n", nc.Kind, nc.ID, old))
+		}
+	}
+	for _, ec := range r.Summary.EdgeChanges {
+		sb.WriteString(fmt.Sprintf("  edge %-8s %s → %s\n", ec.Kind, ec.From, ec.To))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p PlainPresenter) ChangeSummary(r ChangeSummaryResult) string {
+	return formatChangeSummary(r)
+}
+
+// D! id=ocsum range-end
+
 func (p PlainPresenter) Ok(r OkResult) string {
 	return r.Message
 }

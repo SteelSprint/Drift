@@ -54,10 +54,13 @@ type DiffSide struct {
 }
 
 // DiffResult holds a single spec/marker side. Closures may include both
-// specs and markers; each is diffed independently.
+// specs and markers; each is diffed independently. IsSeed reports whether
+// this side's node ID is one of the closure's seeds (originated the
+// closure) versus a transitively-reached citer. See output.diff_seed_label.
 type DiffResult struct {
 	Spec   *DiffSide
 	Marker *DiffSide
+	IsSeed bool
 }
 
 // writeBaseline writes a content-addressed baseline file for the given
@@ -540,21 +543,26 @@ func (o *Orchestrator) DiffClosure(hash string) ([]DiffResult, error) {
 	}
 
 	seen := map[string]bool{}
+	seedSet := make(map[string]bool, len(target.Seeds))
+	for _, s := range target.Seeds {
+		seedSet[s] = true
+	}
 	var out []DiffResult
 	for _, n := range target.Nodes {
 		if seen[n.ID] {
 			continue
 		}
 		seen[n.ID] = true
+		isSeed := seedSet[n.ID]
 		if n.IsSpec {
 			side := o.buildSpecDiffSide(n.ID, reconciledSpecs, scanResult)
 			if side != nil {
-				out = append(out, DiffResult{Spec: side})
+				out = append(out, DiffResult{Spec: side, IsSeed: isSeed})
 			}
 		} else {
 			side := o.buildMarkerDiffSide(n.ID, reconciledMarkers, scanResult)
 			if side != nil {
-				out = append(out, DiffResult{Marker: side})
+				out = append(out, DiffResult{Marker: side, IsSeed: isSeed})
 			}
 		}
 	}
@@ -602,18 +610,23 @@ func (o *Orchestrator) DiffAll() ([]ClosureDiff, core.EvaluatedState, error) {
 	for _, c := range closures {
 		var diffs []DiffResult
 		seen := map[string]bool{}
+		seedSet := make(map[string]bool, len(c.Seeds))
+		for _, s := range c.Seeds {
+			seedSet[s] = true
+		}
 		for _, n := range c.Nodes {
 			if seen[n.ID] {
 				continue
 			}
 			seen[n.ID] = true
+			isSeed := seedSet[n.ID]
 			if n.IsSpec {
 				if side := o.buildSpecDiffSide(n.ID, reconciledSpecs, scanResult); side != nil {
-					diffs = append(diffs, DiffResult{Spec: side})
+					diffs = append(diffs, DiffResult{Spec: side, IsSeed: isSeed})
 				}
 			} else {
 				if side := o.buildMarkerDiffSide(n.ID, reconciledMarkers, scanResult); side != nil {
-					diffs = append(diffs, DiffResult{Marker: side})
+					diffs = append(diffs, DiffResult{Marker: side, IsSeed: isSeed})
 				}
 			}
 		}

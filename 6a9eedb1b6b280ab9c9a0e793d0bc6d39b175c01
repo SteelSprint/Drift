@@ -1,0 +1,246 @@
+// DeriveClosures implements the provenance-closure algorithm:
+//
+//  1. SEEDS — collect drift events. Each event has a seed node (the citer
+//     side of the change — the node where the change is "from").
+//  2. CLOSURE PER SEED — for each seed, BFS up the citer chain (walk
+//     incoming edges). Markers cannot be cited, so propagation stops there.
+//  3. MERGE same-hash closures (rare: tightly-coupled seed pairs).
+//  4. SORT by hash for deterministic display.
+//
+// Closure membership is per-seed. Two seeds with overlapping citer chains
+// produce two closures that share non-seed citers — that's intentional and
+// the closures remain independently resettable.
+func DeriveClosures(specs []Spec, markers []Marker, baselineEdges []Edge, scan Scan) []Closure {
+	specsByID := copySpecsToMutableMap(specs)
+	markersByID := copyMarkersToMutableMap(markers)
+
+	baselineEdgeSet := make(map[string]bool, len(baselineEdges))
+	for _, e := range baselineEdges {
+		baselineEdgeSet[e.From+"\x00"+e.To] = true
+	}
+	scanEdgeSet := make(map[string]bool, len(scan.Edges))
+	for _, e := range scan.Edges {
+		scanEdgeSet[e.From+"\x00"+e.To] = true
+	}
+
+	eventsBySeed := map[string][]DriftEvent{}
+
+	addEvent := func(seed string, ev DriftEvent) {
+		ev.Seed = seed
+		eventsBySeed[seed] = append(eventsBySeed[seed], ev)
+	}
+
+	// Node drift events. Branch on the reconciler's sentinel state so
+	// reviewers see the right event kind:
+	//   - Deleted==true    → NODE_REMOVED (baseline has it, scan doesn't)
+	//   - Hash=="" && current != "" → NODE_ADDED (scan has it, baseline doesn't)
+	//   - Hash != current  → NODE_CHANGED (both sides have it, content differs)
+	for _, s := range specs {
+		current := scan.SpecHashes[s.ID]
+		switch {
+		case s.Deleted:
+			addEvent(s.ID, DriftEvent{
+				Kind:   EventNodeRemoved,
+				NodeID: s.ID,
+			})
+		case s.Hash == "" && current != "":
+			addEvent(s.ID, DriftEvent{
+				Kind:    EventNodeAdded,
+				NodeID:  s.ID,
+				NewHash: current,
+			})
+		case s.Hash != current:
+			addEvent(s.ID, DriftEvent{
+				Kind:    EventNodeChanged,
+				NodeID:  s.ID,
+				OldHash: s.Hash,
+				NewHash: current,
+			})
+		}
+	}
+	for _, m := range markers {
+		current := scan.MarkerHashes[m.ID]
+		switch {
+		case m.Deleted:
+			addEvent(m.ID, DriftEvent{
+				Kind:   EventNodeRemoved,
+				NodeID: m.ID,
+			})
+		case m.Hash == "" && current != "":
+			addEvent(m.ID, DriftEvent{
+				Kind:    EventNodeAdded,
+				NodeID:  m.ID,
+				NewHash: current,
+			})
+		case m.Hash != current:
+			addEvent(m.ID, DriftEvent{
+				Kind:    EventNodeChanged,
+				NodeID:  m.ID,
+				OldHash: m.Hash,
+				NewHash: current,
+			})
+		}
+	}
+
+	// New edges (in scan, not baseline). Skip edges whose To doesn't exist
+	// in scan — those are EDGE_BROKEN events, not EDGE_ADDED.
+	for _, e := range scan.Edges {
+		if baselineEdgeSet[e.From+"\x00"+e.To] {
+			continue
+		}
+		toExists := false
+		if h, ok := scan.SpecHashes[e.To]; ok && h != "" {
+			toExists = true
+		}
+		if !toExists {
+			if h, ok := scan.MarkerHashes[e.To]; ok && h != "" {
+				toExists = true
+			}
+		}
+		if !toExists {
+			continue
+		}
+		edgeCopy := e
+		addEvent(e.From, DriftEvent{Kind: EventEdgeAdded, Edge: &edgeCopy})
+	}
+	// Removed edges (in baseline, not scan). Only applies to spec-spec
+	// ref edges — link edges (marker-spec) are user-curated and never
+	// appear in scan, so they're never "removed" by scan-side state.
+	for _, e := range baselineEdges {
+		if scanEdgeSet[e.From+"\x00"+e.To] {
+			continue
+		}
+		if !isSpecID(e.From) || !isSpecID(e.To) {
+			continue
+		}
+		edgeCopy := e
+		addEvent(e.From, DriftEvent{Kind: EventEdgeRemoved, Edge: &edgeCopy})
+	}
+	// Broken edges (scan edge whose To endpoint doesn't exist in scan).
+	for _, e := range scan.Edges {
+		toExists := false
+		if _, ok := scan.SpecHashes[e.To]; ok && scan.SpecHashes[e.To] != "" {
+			toExists = true
+		}
+		if !toExists {
+			if _, ok := scan.MarkerHashes[e.To]; ok && scan.MarkerHashes[e.To] != "" {
+				toExists = true
+			}
+		}
+		if !toExists {
+			edgeCopy := e
+			addEvent(e.From, DriftEvent{Kind: EventEdgeBroken, Edge: &edgeCopy})
+		}
+	}
+
+	// Build incoming-edge map: incoming[T] = set of nodes that have an edge T-ward.
+	// Specifically, for edge (F, T), F is a citer of T. incoming[T] += F.
+	// We union baseline and scan edges.
+	allEdgesSet := make(map[string]Edge)
+	for _, e := range baselineEdges {
+		allEdgesSet[e.From+"\x00"+e.To] = e
+	}
+	for _, e := range scan.Edges {
+		allEdgesSet[e.From+"\x00"+e.To] = e
+	}
+	incoming := map[string]map[string]bool{}
+	for _, e := range allEdgesSet {
+		if incoming[e.To] == nil {
+			incoming[e.To] = map[string]bool{}
+		}
+		incoming[e.To][e.From] = true
+	}
+
+	// Derive closure per seed.
+	closuresByHash := map[string]*Closure{}
+	for seed, events := range eventsBySeed {
+		nodes := map[string]bool{seed: true}
+		// Marker seeds include their linked specs (outgoing edge targets)
+		// so the reviewer can see the specs the marker implements. Spec
+		// seeds do NOT include their cited specs (those specs' text is
+		// independent of the seed's drift).
+		if !isSpecID(seed) {
+			for _, e := range allEdgesSet {
+				if e.From == seed {
+					nodes[e.To] = true
+				}
+			}
+		}
+		queue := []string{}
+		for n := range nodes {
+			queue = append(queue, n)
+		}
+		for len(queue) > 0 {
+			curr := queue[0]
+			queue = queue[1:]
+			for citer := range incoming[curr] {
+				if nodes[citer] {
+					continue
+				}
+				nodes[citer] = true
+				queue = append(queue, citer)
+			}
+		}
+
+		// Collect edges among closure nodes (undirected canonicalization).
+		edgeKeySet := map[string]Edge{}
+		for _, e := range allEdgesSet {
+			if !nodes[e.From] || !nodes[e.To] {
+				continue
+			}
+			key := canonicalEdgeKey(e.From, e.To)
+			edgeKeySet[key] = e
+		}
+
+		nodeIDs := make([]string, 0, len(nodes))
+		for id := range nodes {
+			nodeIDs = append(nodeIDs, id)
+		}
+		sort.Strings(nodeIDs)
+
+		edgeKeys := make([]string, 0, len(edgeKeySet))
+		for k := range edgeKeySet {
+			edgeKeys = append(edgeKeys, k)
+		}
+		sort.Strings(edgeKeys)
+
+		hash := closureHash(nodeIDs, edgeKeys)
+
+		// Build NodeRefs.
+		nodeRefs := make([]NodeRef, 0, len(nodeIDs))
+		for _, id := range nodeIDs {
+			nodeRefs = append(nodeRefs, makeNodeRef(id, specsByID, markersByID))
+		}
+
+		// Build edge list (canonicalized).
+		closureEdges := make([]Edge, 0, len(edgeKeys))
+		for _, k := range edgeKeys {
+			closureEdges = append(closureEdges, edgeKeySet[k])
+		}
+
+		if existing, ok := closuresByHash[hash]; ok {
+			existing.Events = append(existing.Events, events...)
+			if !containsString(existing.Seeds, seed) {
+				existing.Seeds = append(existing.Seeds, seed)
+			}
+		} else {
+			closuresByHash[hash] = &Closure{
+				Hash:   hash,
+				Nodes:  nodeRefs,
+				Edges:  closureEdges,
+				Events: append([]DriftEvent(nil), events...),
+				Seeds:  []string{seed},
+			}
+		}
+	}
+
+	out := make([]Closure, 0, len(closuresByHash))
+	for _, c := range closuresByHash {
+		out = append(out, *c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Hash < out[j].Hash
+	})
+	return out
+}
+

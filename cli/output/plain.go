@@ -382,17 +382,21 @@ func (p PlainPresenter) DiffClosure(r DiffClosureResult) string {
 			sb.WriteString("\n---\n\n")
 		}
 		if d.Spec != nil {
-			sb.WriteString(p.formatDiffSide("Spec", *d.Spec))
+			sb.WriteString(p.formatDiffSide("Spec", *d.Spec, d.IsSeed))
 		} else if d.Marker != nil {
-			sb.WriteString(p.formatDiffSide("Marker", *d.Marker))
+			sb.WriteString(p.formatDiffSide("Marker", *d.Marker, d.IsSeed))
 		}
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func (p PlainPresenter) formatDiffSide(label string, side orchestrator.DiffSide) string {
+func (p PlainPresenter) formatDiffSide(label string, side orchestrator.DiffSide, isSeed bool) string {
+	roleLabel := "[citer]"
+	if isSeed {
+		roleLabel = "[SEED]"
+	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s: %s", label, side.ID))
+	sb.WriteString(fmt.Sprintf("%s: %s %s", label, side.ID, roleLabel))
 	if side.Filepath != "" {
 		sb.WriteString(fmt.Sprintf(" (%s", side.Filepath))
 		if side.Lines != "" {
@@ -445,9 +449,9 @@ func (p PlainPresenter) DiffAll(r DiffAllResult) string {
 				sb.WriteString("\n---\n\n")
 			}
 			if d.Spec != nil {
-				sb.WriteString(p.formatDiffSide("Spec", *d.Spec))
+				sb.WriteString(p.formatDiffSide("Spec", *d.Spec, d.IsSeed))
 			} else if d.Marker != nil {
-				sb.WriteString(p.formatDiffSide("Marker", *d.Marker))
+				sb.WriteString(p.formatDiffSide("Marker", *d.Marker, d.IsSeed))
 			}
 		}
 	}

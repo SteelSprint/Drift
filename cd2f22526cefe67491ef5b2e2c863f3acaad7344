@@ -1,0 +1,88 @@
+func (p PlainPresenter) DiffClosure(r DiffClosureResult) string {
+	if len(r.Diffs) == 0 {
+		return fmt.Sprintf("Closure %s: no diffable content.", r.Hash)
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("=== Closure %s ===\n\n", r.Hash))
+	for i, d := range r.Diffs {
+		if i > 0 {
+			sb.WriteString("\n---\n\n")
+		}
+		if d.Spec != nil {
+			sb.WriteString(p.formatDiffSide("Spec", *d.Spec, d.IsSeed))
+		} else if d.Marker != nil {
+			sb.WriteString(p.formatDiffSide("Marker", *d.Marker, d.IsSeed))
+		}
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p PlainPresenter) formatDiffSide(label string, side orchestrator.DiffSide, isSeed bool) string {
+	roleLabel := "[citer]"
+	if isSeed {
+		roleLabel = "[SEED]"
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s: %s %s", label, side.ID, roleLabel))
+	if side.Filepath != "" {
+		sb.WriteString(fmt.Sprintf(" (%s", side.Filepath))
+		if side.Lines != "" {
+			sb.WriteString(":" + side.Lines)
+		}
+		sb.WriteString(")")
+	}
+	sb.WriteString("\n")
+
+	if side.Deleted {
+		sb.WriteString("Status: deleted from disk\n")
+	} else if !side.HasBaseline {
+		sb.WriteString(fmt.Sprintf("Status: no baseline snapshot (hash %s)\n", side.BaselineHash))
+	} else if side.BaselineHash == side.CurrentHash && side.CurrentHash != "" {
+		sb.WriteString("Status: in sync\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("Baseline: %s   Current: %s\n", side.BaselineHash, side.CurrentHash))
+	}
+
+	if !side.HasBaseline {
+		return strings.TrimRight(sb.String(), "\n")
+	}
+	if side.Baseline == side.Current {
+		return strings.TrimRight(sb.String(), "\n")
+	}
+
+	sb.WriteString("\n--- baseline\n+++ current\n")
+	patch := diff.UnifiedDiff(side.Baseline, side.Current)
+	if patch != "" {
+		sb.WriteString(patch)
+		sb.WriteString("\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// 
+func (p PlainPresenter) DiffAll(r DiffAllResult) string {
+	if len(r.Closures) == 0 {
+		return "No drift detected."
+	}
+
+	var sb strings.Builder
+	for i, c := range r.Closures {
+		if i > 0 {
+			sb.WriteString("\n\n===\n\n")
+		}
+		sb.WriteString(fmt.Sprintf("=== Closure %s ===\n\n", c.Hash))
+		for j, d := range c.Diffs {
+			if j > 0 {
+				sb.WriteString("\n---\n\n")
+			}
+			if d.Spec != nil {
+				sb.WriteString(p.formatDiffSide("Spec", *d.Spec, d.IsSeed))
+			} else if d.Marker != nil {
+				sb.WriteString(p.formatDiffSide("Marker", *d.Marker, d.IsSeed))
+			}
+		}
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// 

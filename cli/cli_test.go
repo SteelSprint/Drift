@@ -196,3 +196,61 @@ func TestCLI_ListEdgesSorted(t *testing.T) {
 		}
 	}
 }
+
+// TestCLI_DiffSeedLabel verifies that drift diff annotates each node with
+// [SEED] or [citer] based on whether it originated the closure.
+func TestCLI_DiffSeedLabel(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A spec.</spec>
+</module>`)
+	testutil.WriteCodeFile(t, dir, "code.go",
+		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n")
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	if _, code := run("init"); code != 0 {
+		t.Fatal("init failed")
+	}
+	if _, code := run("link", "ca", "m.a"); code != 0 {
+		t.Fatal("link failed")
+	}
+
+	// Drift the spec. Marker ca is a citer of m.a (via the link edge),
+	// so when m.a drifts, m.a is the SEED and ca is the citer.
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A spec that changed.</spec>
+</module>`)
+
+	out, code := run("todo")
+	if code != 1 {
+		t.Fatalf("todo: code=%d out=%s", code, out)
+	}
+	hashLine := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "Closure ") {
+			hashLine = l
+			break
+		}
+	}
+	parts := strings.Fields(hashLine)
+	if len(parts) < 2 {
+		t.Fatalf("could not parse closure hash from: %q", hashLine)
+	}
+	hash := parts[1]
+
+	out, code = run("diff", hash)
+	if code != 0 {
+		t.Fatalf("diff: code=%d out=%s", code, out)
+	}
+	// Expect marker ca labeled as [citer] (it cites spec m.a, was pulled in).
+	// Expect spec m.a labeled as [SEED] (it's the seed of the closure).
+	if !strings.Contains(out, `Spec: m.a [SEED]`) {
+		t.Fatalf("expected 'Spec: m.a [SEED]' in diff output:\n%s", out)
+	}
+	if !strings.Contains(out, `Marker: ca [citer]`) {
+		t.Fatalf("expected 'Marker: ca [citer]' in diff output:\n%s", out)
+	}
+}

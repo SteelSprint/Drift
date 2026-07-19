@@ -119,6 +119,7 @@ type Closure struct {
 	Nodes  []NodeRef    // sorted by ID
 	Edges  []Edge       // sorted by canonicalized undirected key
 	Events []DriftEvent // events with seed in this closure
+	Seeds  []string     // distinct seed node IDs (derived from Events[].Seed)
 }
 
 type EvaluatedState struct {
@@ -665,12 +666,16 @@ func DeriveClosures(specs []Spec, markers []Marker, baselineEdges []Edge, scan S
 
 		if existing, ok := closuresByHash[hash]; ok {
 			existing.Events = append(existing.Events, events...)
+			if !containsString(existing.Seeds, seed) {
+				existing.Seeds = append(existing.Seeds, seed)
+			}
 		} else {
 			closuresByHash[hash] = &Closure{
 				Hash:   hash,
 				Nodes:  nodeRefs,
 				Edges:  closureEdges,
 				Events: append([]DriftEvent(nil), events...),
+				Seeds:  []string{seed},
 			}
 		}
 	}
@@ -767,6 +772,15 @@ func addEdgeIfMissing(edges []Edge, e Edge) []Edge {
 		}
 	}
 	return append(edges, e)
+}
+
+func containsString(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // removeEdge drops any edge matching target in either direction. The

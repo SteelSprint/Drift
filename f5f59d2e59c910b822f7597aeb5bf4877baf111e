@@ -1,0 +1,172 @@
+func (p PlainPresenter) Todo(r TodoResult) string {
+	state := r.State
+	if len(state.Specs) == 0 && len(state.Markers) == 0 {
+		return "Nothing to check: no specs or markers registered.\nCreate spec files (*.drift.xml) and place " + markerSyntax + " markers in your code,\nthen run `drift link <marker> <module.spec>` to connect them."
+	}
+
+	var sb strings.Builder
+
+	if len(state.Closures) == 0 {
+		sb.WriteString(fmt.Sprintf("No changes detected. %d specs, %d markers, %d edges in sync.", len(state.Specs), len(state.Markers), len(state.Edges)))
+	} else {
+		sb.WriteString(fmt.Sprintf("%d closure(s) with drift.\n\n", len(state.Closures)))
+		for _, c := range state.Closures {
+			sb.WriteString(p.formatClosure(c))
+		}
+	}
+
+	if warning := unlinkedMarkerWarning(state); warning != "" {
+		sb.WriteString("\n")
+		sb.WriteString(warning)
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p PlainPresenter) formatClosure(c core.Closure) string {
+	var sb strings.Builder
+	specNodes, markerNodes := 0, 0
+	for _, n := range c.Nodes {
+		if n.IsSpec {
+			specNodes++
+		} else {
+			markerNodes++
+		}
+	}
+	sb.WriteString(fmt.Sprintf("Closure %s  (%d nodes: %d specs, %d markers; %d edges)\n",
+		c.Hash, len(c.Nodes), specNodes, markerNodes, len(c.Edges)))
+	sb.WriteString("  Events:\n")
+	for _, ev := range c.Events {
+		sb.WriteString("    " + p.formatEvent(ev) + "\n")
+	}
+	if len(c.Nodes) > 0 {
+		sb.WriteString("  Members:\n")
+		// Re-sort for display: specs first then markers, alphabetical.
+		var specs, markers []core.NodeRef
+		for _, n := range c.Nodes {
+			if n.IsSpec {
+				specs = append(specs, n)
+			} else {
+				markers = append(markers, n)
+			}
+		}
+		if len(specs) > 0 {
+			sb.WriteString("    specs:   ")
+			names := make([]string, 0, len(specs))
+			for _, n := range specs {
+				names = append(names, n.ID)
+			}
+			sb.WriteString(strings.Join(names, ", ") + "\n")
+		}
+		if len(markers) > 0 {
+			sb.WriteString("    markers: ")
+			names := make([]string, 0, len(markers))
+			for _, n := range markers {
+				names = append(names, n.ID)
+			}
+			sb.WriteString(strings.Join(names, ", ") + "\n")
+		}
+	}
+	sb.WriteString(fmt.Sprintf("  Inspect: drift diff %s\n", c.Hash))
+	sb.WriteString(fmt.Sprintf("  Resolve: drift reset %s\n", c.Hash))
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func (p PlainPresenter) formatEvent(ev core.DriftEvent) string {
+	kindLabel := eventKindLabel(ev.Kind)
+	switch ev.Kind {
+	case core.EventNodeChanged:
+		return fmt.Sprintf("[%s] %s %q  baseline: %s → scan: %s",
+			kindLabel, nodeKindFor(ev.NodeID), ev.NodeID,
+			shortHash(ev.OldHash), shortHash(ev.NewHash))
+	case core.EventNodeAdded:
+		return fmt.Sprintf("[%s] %s %q", kindLabel, nodeKindFor(ev.NodeID), ev.NodeID)
+	case core.EventNodeRemoved:
+		return fmt.Sprintf("[%s] %s %q", kindLabel, nodeKindFor(ev.NodeID), ev.NodeID)
+	case core.EventEdgeAdded:
+		if ev.Edge != nil {
+			return fmt.Sprintf("[%s] new edge declared: %q → %q", kindLabel, ev.Edge.From, ev.Edge.To)
+		}
+	case core.EventEdgeRemoved:
+		if ev.Edge != nil {
+			return fmt.Sprintf("[%s] edge removed: %q → %q", kindLabel, ev.Edge.From, ev.Edge.To)
+		}
+	case core.EventEdgeBroken:
+		if ev.Edge != nil {
+			return fmt.Sprintf("[%s] edge to nonexistent node: %q → %q (fix scan: add missing spec or remove the ref)", kindLabel, ev.Edge.From, ev.Edge.To)
+		}
+	}
+	return fmt.Sprintf("[%s] unknown event", kindLabel)
+}
+
+func eventKindLabel(k core.EventKind) string {
+	switch k {
+	case core.EventNodeChanged:
+		return "NODE-CHANGED"
+	case core.EventNodeAdded:
+		return "NODE-ADDED"
+	case core.EventNodeRemoved:
+		return "NODE-REMOVED"
+	case core.EventEdgeAdded:
+		return "EDGE-ADDED"
+	case core.EventEdgeRemoved:
+		return "EDGE-REMOVED"
+	case core.EventEdgeBroken:
+		return "BROKEN-EDGE"
+	}
+	return "UNKNOWN"
+}
+
+func nodeKindFor(id string) string {
+	if isSpecIDOutput(id) {
+		return "spec"
+	}
+	return "marker"
+}
+
+func shortHash(h string) string {
+	if len(h) <= 8 {
+		return h
+	}
+	return h[:8]
+}
+
+// isSpecIDOutput reports whether id looks like a module-qualified spec ID
+// (contains exactly one dot). Used by presenters to choose wording.
+func isSpecIDOutput(id string) bool {
+	first := strings.Index(id, ".")
+	if first < 0 {
+		return false
+	}
+	return strings.Index(id[first+1:], ".") < 0
+}
+
+// unlinkedMarkerWarning returns the one-line warning summary for non-deleted
+// markers that have no link-style edges, or "" when there are none.
+func unlinkedMarkerWarning(state core.EvaluatedState) string {
+	linkedMarkers := make(map[string]bool)
+	for _, e := range state.Edges {
+		if isSpecIDOutput(e.From) {
+			continue
+		}
+		linkedMarkers[e.From] = true
+	}
+	unlinked := 0
+	for _, m := range state.Markers {
+		if m.Deleted {
+			continue
+		}
+		if !linkedMarkers[m.ID] {
+			unlinked++
+		}
+	}
+	if unlinked == 0 {
+		return ""
+	}
+	if unlinked == 1 {
+		return "1 unlinked marker found — run `drift list` to review."
+	}
+	return fmt.Sprintf("%d unlinked markers found — run `drift list` to review.", unlinked)
+}
+

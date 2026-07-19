@@ -3,6 +3,7 @@ package statestore
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -12,32 +13,26 @@ import (
 // D! id=pnope range-start
 var ErrStateNotFound = errors.New(".drift/state.xml not found, run 'drift init' first")
 
+// ErrStateVersionUnsupported is returned when state.xml carries a version
+// this binary refuses to load. v4 drops <edgeResolutions> entirely; v3 and
+// earlier are refused with a clear error directing the user to re-init.
+var ErrStateVersionUnsupported = errors.New("state.xml version unsupported; delete .drift/ and run 'drift init'")
+
 // D! id=pnope range-end
 
 // State is the in-memory shape of .drift/state.xml. Edges is the unified
-// list of both link-style (marker→spec) and ref-style (spec→spec) edges;
-// Resolutions is the unified list of edge resolutions covering either kind.
+// list of both link-style (marker→spec) and ref-style (spec→spec) edges.
+// State.xml v4 carries baseline only — no per-edge resolutions.
 type State struct {
-	Specs       []core.Spec
-	Markers     []core.Marker
-	Edges       []core.Edge
-	Resolutions []core.EdgeResolution
+	Specs   []core.Spec
+	Markers []core.Marker
+	Edges   []core.Edge
 }
 
 type StateStore interface {
 	Load() (State, error)
 	Save(State) error
-	// Initialized reports whether the project's state.xml already exists on
-	// disk. Returns (true, nil) when state.xml exists (regardless of content);
-	// (false, nil) when it does not exist; (false, err) when the existence
-	// check itself fails (e.g. permission error). Used by Init to make the
-	// init command non-idempotent.
 	Initialized() (bool, error)
-	// Lock acquires an exclusive advisory lock on the state file, blocking
-	// until acquired. The returned function releases the lock and must be
-	// called (typically via defer). All state-mutating operations must hold
-	// the lock for the entire Load→modify→Save window to prevent concurrent
-	// writers from silently overwriting each other's changes.
 	Lock() (func(), error)
 }
 
@@ -53,7 +48,6 @@ func (s *FileStateStore) Dir() string {
 	return s.dir
 }
 
-// Initialized reports whether .drift/state.xml already exists on disk.
 func (s *FileStateStore) Initialized() (bool, error) {
 	_, err := os.Stat(s.statePath())
 	if err == nil {
@@ -73,16 +67,15 @@ func (s *FileStateStore) baselinesDir() string {
 	return filepath.Join(s.dir, ".drift", "baselines")
 }
 
-// stateFileXML serializes .drift/state.xml. version=3 is the post-collapse
-// format with unified <edges> and <edgeResolutions> sections. Earlier
-// versions used separate <links>+<refs> and <resolutions>+<refResolutions>.
+// stateFileXML serializes .drift/state.xml. version=4 is the
+// provenance-closure format: baseline only, no <edgeResolutions>.
+// v3 (with resolutions) and earlier are refused on Load.
 type stateFileXML struct {
-	XMLName       xml.Name            `xml:"drift"`
-	Version       int                 `xml:"version,attr,omitempty"`
-	Specs         []specXML           `xml:"specs>spec"`
-	Markers       []markerXML         `xml:"markers>marker"`
-	Edges         []edgeXML           `xml:"edges>edge"`
-	Resolutions   []edgeResolutionXML `xml:"edgeResolutions>edgeResolution"`
+	XMLName xml.Name    `xml:"drift"`
+	Version int         `xml:"version,attr,omitempty"`
+	Specs   []specXML   `xml:"specs>spec"`
+	Markers []markerXML `xml:"markers>marker"`
+	Edges   []edgeXML   `xml:"edges>edge"`
 }
 
 type specXML struct {
@@ -105,13 +98,6 @@ type edgeXML struct {
 	To   string `xml:"to,attr"`
 }
 
-type edgeResolutionXML struct {
-	From            string `xml:"from,attr"`
-	To              string `xml:"to,attr"`
-	CurrentFromHash string `xml:"currentFromHash,attr"`
-	CurrentToHash   string `xml:"currentToHash,attr"`
-}
-
 // D! id=pload range-start
 func (s *FileStateStore) Load() (State, error) {
 	data, err := os.ReadFile(s.statePath())
@@ -125,6 +111,12 @@ func (s *FileStateStore) Load() (State, error) {
 	var file stateFileXML
 	if err := xml.Unmarshal(data, &file); err != nil {
 		return State{}, err
+	}
+
+	// Refuse pre-v4 state files. v4 dropped <edgeResolutions>; older files
+	// must be deleted and re-initialized.
+	if file.Version > 0 && file.Version < 4 {
+		return State{}, fmt.Errorf("%w: version=%d", ErrStateVersionUnsupported, file.Version)
 	}
 
 	specs := make([]core.Spec, len(file.Specs))
@@ -153,21 +145,10 @@ func (s *FileStateStore) Load() (State, error) {
 		edges[i] = core.Edge{From: e.From, To: e.To}
 	}
 
-	resolutions := make([]core.EdgeResolution, len(file.Resolutions))
-	for i, r := range file.Resolutions {
-		resolutions[i] = core.EdgeResolution{
-			From:            r.From,
-			To:              r.To,
-			CurrentFromHash: r.CurrentFromHash,
-			CurrentToHash:   r.CurrentToHash,
-		}
-	}
-
 	return State{
-		Specs:       specs,
-		Markers:     markers,
-		Edges:       edges,
-		Resolutions: resolutions,
+		Specs:   specs,
+		Markers: markers,
+		Edges:   edges,
 	}, nil
 }
 
@@ -179,11 +160,10 @@ func (s *FileStateStore) Save(state State) error {
 		return err
 	}
 	file := stateFileXML{
-		Version:     3,
-		Specs:       make([]specXML, len(state.Specs)),
-		Markers:     make([]markerXML, len(state.Markers)),
-		Edges:       make([]edgeXML, len(state.Edges)),
-		Resolutions: make([]edgeResolutionXML, len(state.Resolutions)),
+		Version: 4,
+		Specs:   make([]specXML, len(state.Specs)),
+		Markers: make([]markerXML, len(state.Markers)),
+		Edges:   make([]edgeXML, len(state.Edges)),
 	}
 
 	for i, spec := range state.Specs {
@@ -207,15 +187,6 @@ func (s *FileStateStore) Save(state State) error {
 
 	for i, e := range state.Edges {
 		file.Edges[i] = edgeXML{From: e.From, To: e.To}
-	}
-
-	for i, r := range state.Resolutions {
-		file.Resolutions[i] = edgeResolutionXML{
-			From:            r.From,
-			To:              r.To,
-			CurrentFromHash: r.CurrentFromHash,
-			CurrentToHash:   r.CurrentToHash,
-		}
 	}
 
 	data, err := xml.MarshalIndent(file, "", "  ")

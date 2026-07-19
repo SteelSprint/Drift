@@ -7,17 +7,14 @@ Usage:
 
 Commands:
   init                          Initialize: create .drift/ + starter main.drift.xml
-  todo                          Scan specs and markers, report drift
+  todo                          Scan specs and markers, report drift closures
   list [--verbose]              Show all specs, markers, edges, and sync state
   show <marker|spec>            Show current content of a spec or marker
-  diff <marker|spec>            Show what changed (unified diff vs baseline)
-  diff <marker> <module.spec>   Show what changed for a specific edge
-  diff --all                    Show diffs for ALL drifted edges at once (review before reset)
+  diff <hash>                   Show what changed for every node in the closure
+  diff --all                    Show diffs for ALL closures at once (review before reset)
   link <marker> <module.spec>   Connect a marker to a spec (link-style edge)
   unlink <marker> <module.spec>  Remove a link-style edge
-  reset <marker> <module.spec>  Mark a drifted link-style edge as resolved
-  reset <spec> <spec>           Mark a drifted spec-spec edge as resolved (both args have dots)
-  reset <id>                    Remove an orphaned (deleted) spec/marker from state.xml
+  reset <hash>                  Resolve a closure by syncing its seed events to baseline
   config theme <name>           Set theme preference (default, gruvbox, nord, dracula, etc.)
   config theme                  Show current theme preference
   help                          Show this help
@@ -31,8 +28,8 @@ Global flags (accepted by every command):
   --help, -h                    Show command-specific help
 
 Exit codes (all commands):
-  0                             Success / clean (drift todo: all linked + in sync)
-  1                             Drift found / unlinked markers / todo pending
+  0                             Success / clean (drift todo: all linked + no closures)
+  1                             Drift closures found / unlinked markers / todo pending
   2                             Error (bad args, corrupt state, I/O failure)
 
 Themes:
@@ -50,12 +47,18 @@ Spec files:
   Specs are <spec id="...">description</spec> — direct children of root
   Spec IDs are module-qualified: <module>.<specId>
   Refs: <ref spec="module.localid">label</ref> inside spec content
-        declares a spec-spec edge; drift propagates rhizomatically
+        declares a spec-spec edge; drift propagates along the citer chain
 
-Reset dispatch (dots are the discriminator):
-  drift reset <marker> <spec>   no dot, dot — link-style edge reset
-  drift reset <spec> <spec>     dot, dot     — spec-spec edge reset
-  drift reset <id>              single arg    — orphan removal (dot=spec, no dot=marker)
+Closure-driven workflow:
+  drift todo                    List drift closures (each with an 8-char hash)
+  drift diff <hash>             Review every node in the closure
+  drift diff --all              Review all closures in one pass
+  drift reset <hash>            Resolve one closure after reviewing it
+
+Closures are derived per-seed (the node that drifted). Drift propagates
+along the citer chain (cited → citer). Markers cannot be cited, so drift
+through a marker stops there. Closures are addressed by their hash —
+stable across runs as long as membership is unchanged.
 
 Quick start:
   drift init
@@ -67,7 +70,6 @@ Examples:
   drift list
   drift todo
   drift todo --json               # JSON output for LLM consumption
-  drift config theme gruvbox       # set theme preference
-  drift unlink validate_input core.validate_input
-  drift reset validate_input core.validate_input   # link-style reset
-  drift reset output.color_mode output_impl.color_presenter  # spec-spec reset
+  drift diff a3f7b2c1             # inspect closure by hash
+  drift reset a3f7b2c1            # resolve closure by hash
+  drift config theme gruvbox      # set theme preference

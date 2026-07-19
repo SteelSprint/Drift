@@ -1,1 +1,0 @@
-The id attribute in a spec element must not contain a dot. The scanner constructs the fully-qualified spec ID as moduleName + "." + localId. This ensures every qualified spec ID has exactly one dot, separating module from local ID.

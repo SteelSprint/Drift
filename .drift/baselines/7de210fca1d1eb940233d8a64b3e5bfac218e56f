@@ -1,0 +1,9 @@
+func login(w http.ResponseWriter, r *http.Request) {
+    username := r.FormValue("username")
+    password := r.FormValue("password")
+    if username == "" || password == "" {
+        http.Error(w, "missing credentials", http.StatusBadRequest)
+        return
+    }
+    // ...
+}

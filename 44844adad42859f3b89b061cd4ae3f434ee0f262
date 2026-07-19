@@ -1,0 +1,13 @@
+func (algorithm *CoreAlgorithm) evaluateTodoAction(ctx CoreAlgorithmContext, action TodoAction) (EvaluatedState, error) {
+	if err := validateScanCoversAllNodes(action.Scan, ctx.Specs, ctx.Markers); err != nil {
+		return EvaluatedState{}, err
+	}
+	closures := DeriveClosures(ctx.Specs, ctx.Markers, ctx.Edges, action.Scan)
+	return EvaluatedState{
+		Specs:    ctx.Specs,
+		Markers:  ctx.Markers,
+		Edges:    ctx.Edges,
+		Closures: closures,
+	}, nil
+}
+

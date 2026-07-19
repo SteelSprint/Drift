@@ -1,4 +1,0 @@
-func helpText() string {
-	return helpContent
-}
-

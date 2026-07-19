@@ -39,17 +39,6 @@ func NewRef(fromSpec, toSpec string) core.Edge {
 	return core.Edge{From: fromSpec, To: toSpec}
 }
 
-// NewResolutionState constructs an EdgeResolution covering a link-style edge.
-// Argument order preserved from the pre-collapse API.
-func NewResolutionState(specID string, markerID string, currentSpecHash string, currentMarkerHash string) core.EdgeResolution {
-	return core.EdgeResolution{
-		From:            markerID,
-		To:              specID,
-		CurrentFromHash: currentMarkerHash,
-		CurrentToHash:   currentSpecHash,
-	}
-}
-
 func AssertNoError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
@@ -64,34 +53,11 @@ func AssertErrorWraps(t *testing.T, err error, target error) {
 	}
 }
 
-func AssertTodoCount(t *testing.T, state core.EvaluatedState, want int) {
+func AssertClosureCount(t *testing.T, state core.EvaluatedState, want int) {
 	t.Helper()
-	if len(state.Todos) != want {
-		t.Fatalf("todo count = %d, want %d", len(state.Todos), want)
+	if len(state.Closures) != want {
+		t.Fatalf("closure count = %d, want %d", len(state.Closures), want)
 	}
-}
-
-func AssertResolutionStateCount(t *testing.T, state core.EvaluatedState, want int) {
-	t.Helper()
-	if len(state.Resolutions) != want {
-		t.Fatalf("resolution state count = %d, want %d", len(state.Resolutions), want)
-	}
-}
-
-func AssertResolutionStateEntry(t *testing.T, state core.EvaluatedState, markerID string, specID string, currentSpecHash string, currentMarkerHash string) {
-	t.Helper()
-	for _, res := range state.Resolutions {
-		if res.From == markerID && res.To == specID {
-			if res.CurrentToHash != currentSpecHash {
-				t.Fatalf("resolution spec hash = %q, want %q", res.CurrentToHash, currentSpecHash)
-			}
-			if res.CurrentFromHash != currentMarkerHash {
-				t.Fatalf("resolution marker hash = %q, want %q", res.CurrentFromHash, currentMarkerHash)
-			}
-			return
-		}
-	}
-	t.Fatalf("resolution entry for marker=%q spec=%q not found", markerID, specID)
 }
 
 func AssertBaselineHashes(t *testing.T, state core.EvaluatedState, specID string, wantSpecHash string, markerID string, wantMarkerHash string) {
@@ -128,18 +94,6 @@ func AssertBaselineHashes(t *testing.T, state core.EvaluatedState, specID string
 	}
 }
 
-func AssertTodoDriftFlags(t *testing.T, todo core.Todo, wantSpecChanged bool, wantMarkerChanged bool) {
-	t.Helper()
-	// In the post-collapse model, the marker is the From endpoint and the
-	// spec is the To endpoint of a link-style edge. Translate accordingly.
-	if todo.ToChanged != wantSpecChanged {
-		t.Fatalf("todo spec changed = %v, want %v", todo.ToChanged, wantSpecChanged)
-	}
-	if todo.FromChanged != wantMarkerChanged {
-		t.Fatalf("todo marker changed = %v, want %v", todo.FromChanged, wantMarkerChanged)
-	}
-}
-
 func AssertStateEquals(t *testing.T, got, want statestore.State) {
 	t.Helper()
 	if len(got.Specs) != len(want.Specs) {
@@ -164,14 +118,6 @@ func AssertStateEquals(t *testing.T, got, want statestore.State) {
 	for i := range got.Edges {
 		if got.Edges[i] != want.Edges[i] {
 			t.Fatalf("edge[%d] = %+v, want %+v", i, got.Edges[i], want.Edges[i])
-		}
-	}
-	if len(got.Resolutions) != len(want.Resolutions) {
-		t.Fatalf("resolutions length = %d, want %d (got=%v want=%v)", len(got.Resolutions), len(want.Resolutions), got.Resolutions, want.Resolutions)
-	}
-	for i := range got.Resolutions {
-		if got.Resolutions[i] != want.Resolutions[i] {
-			t.Fatalf("resolution[%d] = %+v, want %+v", i, got.Resolutions[i], want.Resolutions[i])
 		}
 	}
 }
@@ -247,9 +193,56 @@ func FindMarkerInEvaluatedState(t *testing.T, state core.EvaluatedState, id stri
 
 func EvaluatedToState(state core.EvaluatedState) statestore.State {
 	return statestore.State{
-		Specs:       state.Specs,
-		Markers:     state.Markers,
-		Edges:       state.Edges,
-		Resolutions: state.Resolutions,
+		Specs:   state.Specs,
+		Markers: state.Markers,
+		Edges:   state.Edges,
+	}
+}
+
+// FindClosureByHash returns the closure with the given hash, or fails the test.
+func FindClosureByHash(t *testing.T, state core.EvaluatedState, hash string) core.Closure {
+	t.Helper()
+	for _, c := range state.Closures {
+		if c.Hash == hash {
+			return c
+		}
+	}
+	t.Fatalf("closure with hash %q not found", hash)
+	return core.Closure{}
+}
+
+// FindClosureContainingNode returns the first closure containing the given
+// node ID, or fails the test.
+func FindClosureContainingNode(t *testing.T, state core.EvaluatedState, nodeID string) core.Closure {
+	t.Helper()
+	for _, c := range state.Closures {
+		for _, n := range c.Nodes {
+			if n.ID == nodeID {
+				return c
+			}
+		}
+	}
+	t.Fatalf("closure containing node %q not found", nodeID)
+	return core.Closure{}
+}
+
+// AssertNodeInClosure asserts the closure has a node with the given ID.
+func AssertNodeInClosure(t *testing.T, c core.Closure, nodeID string) {
+	t.Helper()
+	for _, n := range c.Nodes {
+		if n.ID == nodeID {
+			return
+		}
+	}
+	t.Fatalf("node %q not in closure %q (nodes: %v)", nodeID, c.Hash, c.Nodes)
+}
+
+// AssertNodeNotInClosure asserts the closure does NOT have a node with the given ID.
+func AssertNodeNotInClosure(t *testing.T, c core.Closure, nodeID string) {
+	t.Helper()
+	for _, n := range c.Nodes {
+		if n.ID == nodeID {
+			t.Fatalf("node %q unexpectedly in closure %q", nodeID, c.Hash)
+		}
 	}
 }

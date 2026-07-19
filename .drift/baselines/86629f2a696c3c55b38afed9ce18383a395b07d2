@@ -1,3 +1,0 @@
-		if id == "" {
-			return nil, fmt.Errorf("%s: spec element missing id attribute", absPath)
-		}

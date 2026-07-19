@@ -1,0 +1,7 @@
+var ErrStateNotFound = errors.New(".drift/state.xml not found, run 'drift init' first")
+
+// ErrStateVersionUnsupported is returned when state.xml carries a version
+// this binary refuses to load. v4 drops <edgeResolutions> entirely; v3 and
+// earlier are refused with a clear error directing the user to re-init.
+var ErrStateVersionUnsupported = errors.New("state.xml version unsupported; delete .drift/ and run 'drift init'")
+

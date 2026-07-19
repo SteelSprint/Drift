@@ -1,6 +1,8 @@
 package core
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -32,21 +34,14 @@ type Marker struct {
 }
 
 // Edge is the unified directed relationship between two nodes (specs and/or
-// markers). From declares/stores the edge; To is the target. Two
-// establishment kinds encoded by endpoint types: marker → spec (drift link)
-// and spec → spec (auto-parsed <ref>). Drift propagation is undirected.
+// markers). From declares/stores the edge (citer); To is the target (cited).
+// Two establishment kinds encoded by endpoint types: marker → spec (drift link)
+// and spec → spec (auto-parsed <ref>). Drift propagation follows the citer
+// direction (cited → citer), transitive to fixpoint. Markers cannot be cited,
+// so drift through a marker stops there.
 type Edge struct {
 	From string
 	To   string
-}
-
-// EdgeResolution records that the (From, To) edge was reviewed at the
-// current endpoint hashes.
-type EdgeResolution struct {
-	From            string
-	To              string
-	CurrentFromHash string
-	CurrentToHash   string
 }
 
 type Action interface {
@@ -65,54 +60,72 @@ type TodoAction struct {
 
 func (TodoAction) isAction() {}
 
-type ResetAction struct {
-	From string
-	To   string
+// ResetClosureAction targets a closure by its 8-character hash. The closure
+// is re-derived from scan+baseline, then its seed events are synced into
+// baseline (baseline hash → scan hash, edge added/removed, etc.). Broken-edge
+// events are no-ops on reset and persist until the user fixes the scan.
+type ResetClosureAction struct {
+	Hash string
 	Scan Scan
 }
 
-func (ResetAction) isAction() {}
+func (ResetClosureAction) isAction() {}
 
 type CoreAlgorithmContext struct {
-	Specs       []Spec
-	Markers     []Marker
-	Edges       []Edge
-	Resolutions []EdgeResolution
-	Action      Action
+	Specs   []Spec
+	Markers []Marker
+	Edges   []Edge
+	Action  Action
 }
 
-type TodoKind int
+// EventKind enumerates drift event categories.
+type EventKind int
 
 const (
-	TodoEdgeDrift TodoKind = iota
-	TodoCascade
-	TodoEdgeAdded
-	TodoEdgeRemoved
-	TodoBrokenEdge
+	EventNodeChanged EventKind = iota
+	EventNodeAdded
+	EventNodeRemoved
+	EventEdgeAdded
+	EventEdgeRemoved
+	EventEdgeBroken
 )
 
-type Todo struct {
-	Kind            TodoKind
-	From            string
-	To              string
-	FromFilepath    string
-	FromLineNumber  int
-	ToFilepath      string
-	ToLineNumber    int
-	FromChanged     bool
-	ToChanged       bool
-	FromDeleted     bool
-	ToDeleted       bool
-	SourceSpecID    string
-	SourceFilepath  string
+// DriftEvent is one drift event associated with a seed node. Edge events
+// carry the edge; node events carry the node ID and (for NODE_CHANGED) the
+// old/new hashes.
+type DriftEvent struct {
+	Kind    EventKind
+	NodeID  string // for node events
+	Edge    *Edge  // for edge events
+	OldHash string // for NODE_CHANGED
+	NewHash string // for NODE_CHANGED
+	Seed    string // ID of the seed node that originated this event
+}
+
+// NodeRef is a lightweight reference to a node with location info, for
+// closure display. IsSpec is true for specs, false for markers.
+type NodeRef struct {
+	ID         string
+	IsSpec     bool
+	Filepath   string
+	LineNumber int
+}
+
+// Closure is one drift-impacted connected subgraph derived per-seed. Hash
+// is the first 8 hex chars of SHA1(sorted node IDs + sorted undirected edge
+// keys). Closures with identical hashes are merged with combined events.
+type Closure struct {
+	Hash   string
+	Nodes  []NodeRef    // sorted by ID
+	Edges  []Edge       // sorted by canonicalized undirected key
+	Events []DriftEvent // events with seed in this closure
 }
 
 type EvaluatedState struct {
-	Specs       []Spec
-	Markers     []Marker
-	Edges       []Edge
-	Resolutions []EdgeResolution
-	Todos       []Todo
+	Specs    []Spec
+	Markers  []Marker
+	Edges    []Edge
+	Closures []Closure
 }
 
 var (
@@ -123,14 +136,13 @@ var (
 	ErrDuplicateEdge          = errors.New("duplicate edge")
 	ErrEdgeSelfReference      = errors.New("edge references its own source")
 	ErrEdgeCycle              = errors.New("edge graph contains a directed cycle")
-	ErrResolutionEdgeMissing  = errors.New("resolution references edge not in baseline")
-	ErrDuplicateResolution    = errors.New("duplicate resolution entry")
 	ErrScanMissingSpecHash    = errors.New("scan missing spec hash")
 	ErrScanMissingMarkerHash  = errors.New("scan missing marker hash")
 	ErrScanUnknownSpecHash    = errors.New("scan contains unknown spec hash")
 	ErrScanUnknownMarkerHash  = errors.New("scan contains unknown marker hash")
 	ErrUnknownAction          = errors.New("unknown action")
-	ErrResetEdgeNotInBaseline = errors.New("reset target edge not in baseline")
+	ErrClosureNotFound        = errors.New("closure hash not found in derived closures")
+	ErrBrokenEdgeNotResettable = errors.New("closure contains only broken-edge events, which require scan fix")
 )
 
 // D! id=cval range-start
@@ -171,17 +183,6 @@ func (ctx CoreAlgorithmContext) Validate() error {
 	}
 	if err := detectEdgeCycle(ctx.Edges); err != nil {
 		return err
-	}
-	seenResolutionKeys := make(map[string]bool, len(ctx.Resolutions))
-	for _, res := range ctx.Resolutions {
-		if !seenEdgeKeys[res.From+"\x00"+res.To] && !seenEdgeKeys[res.To+"\x00"+res.From] {
-			return fmt.Errorf("%w: from=%q to=%q", ErrResolutionEdgeMissing, res.From, res.To)
-		}
-		key := res.From + "\x00" + res.To
-		if seenResolutionKeys[key] {
-			return fmt.Errorf("%w: from=%q to=%q", ErrDuplicateResolution, res.From, res.To)
-		}
-		seenResolutionKeys[key] = true
 	}
 	return nil
 }
@@ -327,8 +328,8 @@ func (algorithm *CoreAlgorithm) EvaluateState(ctx CoreAlgorithmContext) (Evaluat
 	switch action := ctx.Action.(type) {
 	case TodoAction:
 		return algorithm.evaluateTodoAction(ctx, action)
-	case ResetAction:
-		return algorithm.evaluateResetAction(ctx, action)
+	case ResetClosureAction:
+		return algorithm.evaluateResetClosureAction(ctx, action)
 	default:
 		return EvaluatedState{}, fmt.Errorf("%w: %T", ErrUnknownAction, ctx.Action)
 	}
@@ -339,233 +340,121 @@ func (algorithm *CoreAlgorithm) evaluateTodoAction(ctx CoreAlgorithmContext, act
 	if err := validateScanCoversAllNodes(action.Scan, ctx.Specs, ctx.Markers); err != nil {
 		return EvaluatedState{}, err
 	}
-	todos := computeEdgeTodos(
-		ctx.Specs, ctx.Markers, ctx.Edges,
-		indexResolutionsByEdge(ctx.Resolutions),
-		action.Scan,
-	)
+	closures := DeriveClosures(ctx.Specs, ctx.Markers, ctx.Edges, action.Scan)
 	return EvaluatedState{
-		Specs:       ctx.Specs,
-		Markers:     ctx.Markers,
-		Edges:       ctx.Edges,
-		Resolutions: ctx.Resolutions,
-		Todos:       todos,
+		Specs:    ctx.Specs,
+		Markers:  ctx.Markers,
+		Edges:    ctx.Edges,
+		Closures: closures,
 	}, nil
 }
 
 // D! id=ctodo range-end
 
 // D! id=crst range-start
-func (algorithm *CoreAlgorithm) evaluateResetAction(ctx CoreAlgorithmContext, action ResetAction) (EvaluatedState, error) {
+// evaluateResetClosureAction locates the closure by hash in the
+// freshly-derived set, then applies each of its events to baseline.
+// Broken-edge-only closures are refused (require scan fix).
+func (algorithm *CoreAlgorithm) evaluateResetClosureAction(ctx CoreAlgorithmContext, action ResetClosureAction) (EvaluatedState, error) {
 	if err := validateScanCoversAllNodes(action.Scan, ctx.Specs, ctx.Markers); err != nil {
 		return EvaluatedState{}, err
 	}
-	edgeFound := false
-	for _, e := range ctx.Edges {
-		if (e.From == action.From && e.To == action.To) ||
-			(e.From == action.To && e.To == action.From) {
-			edgeFound = true
+	closures := DeriveClosures(ctx.Specs, ctx.Markers, ctx.Edges, action.Scan)
+	var target *Closure
+	for i := range closures {
+		if closures[i].Hash == action.Hash {
+			target = &closures[i]
 			break
 		}
 	}
-	if !edgeFound {
-		return EvaluatedState{}, fmt.Errorf("%w: from=%q to=%q", ErrResetEdgeNotInBaseline, action.From, action.To)
+	if target == nil {
+		return EvaluatedState{}, fmt.Errorf("%w: %q", ErrClosureNotFound, action.Hash)
+	}
+	// Refuse if closure has ONLY broken-edge events.
+	allBroken := true
+	for _, ev := range target.Events {
+		if ev.Kind != EventEdgeBroken {
+			allBroken = false
+			break
+		}
+	}
+	if allBroken && len(target.Events) > 0 {
+		return EvaluatedState{}, fmt.Errorf("%w: closure %q", ErrBrokenEdgeNotResettable, action.Hash)
 	}
 
 	specsByID := copySpecsToMutableMap(ctx.Specs)
 	markersByID := copyMarkersToMutableMap(ctx.Markers)
-	resolutionsByEdge := indexResolutionsByEdge(ctx.Resolutions)
+	edges := append([]Edge(nil), ctx.Edges...)
 
-	resolutionsByEdge[action.From+"\x00"+action.To] = EdgeResolution{
-		From:            action.From,
-		To:              action.To,
-		CurrentFromHash: nodeScanHash(action.From, action.Scan, specsByID, markersByID),
-		CurrentToHash:   nodeScanHash(action.To, action.Scan, specsByID, markersByID),
+	for _, ev := range target.Events {
+		switch ev.Kind {
+		case EventNodeChanged:
+			if s, ok := specsByID[ev.NodeID]; ok {
+				s.Hash = ev.NewHash
+			} else if m, ok := markersByID[ev.NodeID]; ok {
+				m.Hash = ev.NewHash
+			}
+		case EventNodeAdded:
+			// New node — should already be in reconciled specs/markers with its scan hash.
+			// Nothing to do; baseline reconciliation already includes it.
+		case EventNodeRemoved:
+			delete(specsByID, ev.NodeID)
+			delete(markersByID, ev.NodeID)
+			// Remove edges touching the removed node.
+			filtered := make([]Edge, 0, len(edges))
+			for _, e := range edges {
+				if e.From == ev.NodeID || e.To == ev.NodeID {
+					continue
+				}
+				filtered = append(filtered, e)
+			}
+			edges = filtered
+		case EventEdgeAdded:
+			if ev.Edge != nil {
+				edges = addEdgeIfMissing(edges, *ev.Edge)
+			}
+		case EventEdgeRemoved:
+			if ev.Edge != nil {
+				edges = removeEdge(edges, *ev.Edge)
+			}
+		case EventEdgeBroken:
+			// No-op: requires scan fix.
+		}
 	}
 
-	collapsedMarkers := map[string]bool{}
-	collapsedSpecs := map[string]bool{}
-	collapseResolvedNodes(ctx.Edges, specsByID, markersByID, resolutionsByEdge, action.Scan, collapsedMarkers, collapsedSpecs)
-
-	filteredEdges := filterEdgesByNodes(ctx.Edges, specsByID, markersByID)
+	// For NODE_ADDED events, ensure the node is in the output (it already is,
+	// via reconciliation). For NODE_CHANGED, the hash has been updated above.
+	// For NODE_REMOVED, the node has been deleted from the maps above.
 
 	return EvaluatedState{
-		Specs:       specsFromMutableMap(specsByID),
-		Markers:     markersFromMutableMap(markersByID),
-		Edges:       filteredEdges,
-		Resolutions: resolutionsFromMutableMap(resolutionsByEdge),
+		Specs:    specsFromMutableMap(specsByID),
+		Markers:  markersFromMutableMap(markersByID),
+		Edges:    edges,
+		Closures: closures,
 	}, nil
 }
 
 // D! id=crst range-end
 
-// D! id=ccol range-start
-func collapseResolvedNodes(
-	edges []Edge,
-	specsByID map[string]*Spec,
-	markersByID map[string]*Marker,
-	resolutionsByEdge map[string]EdgeResolution,
-	scan Scan,
-	collapsedMarkers map[string]bool,
-	collapsedSpecs map[string]bool,
-) {
-	for {
-		anyNodeCollapsed := false
-		for markerID, marker := range markersByID {
-			if collapsedMarkers[markerID] {
-				continue
-			}
-			if nodeHasAllEdgesChecked(markerID, edges, specsByID, markersByID, resolutionsByEdge, scan) {
-				if scan.MarkerHashes[markerID] == "" {
-					delete(markersByID, markerID)
-					collapsedMarkers[markerID] = true
-				} else {
-					marker.Hash = scan.MarkerHashes[markerID]
-					collapsedMarkers[markerID] = true
-				}
-				anyNodeCollapsed = true
-			}
-		}
-		for specID, spec := range specsByID {
-			if collapsedSpecs[specID] {
-				continue
-			}
-			if nodeHasAllEdgesChecked(specID, edges, specsByID, markersByID, resolutionsByEdge, scan) {
-				if scan.SpecHashes[specID] == "" {
-					delete(specsByID, specID)
-					collapsedSpecs[specID] = true
-				} else {
-					spec.Hash = scan.SpecHashes[specID]
-					collapsedSpecs[specID] = true
-				}
-				anyNodeCollapsed = true
-			}
-		}
-		if !anyNodeCollapsed {
-			break
-		}
-	}
-	for nodeID := range collapsedMarkers {
-		pruneResolutionsForCollapsedNode(resolutionsByEdge, nodeID, edges, specsByID, markersByID, scan)
-	}
-	for nodeID := range collapsedSpecs {
-		pruneResolutionsForCollapsedNode(resolutionsByEdge, nodeID, edges, specsByID, markersByID, scan)
-	}
-}
+// D! id=cdrv range-start
+// DeriveClosures implements the provenance-closure algorithm:
+//
+//  1. SEEDS — collect drift events. Each event has a seed node (the citer
+//     side of the change — the node where the change is "from").
+//  2. CLOSURE PER SEED — for each seed, BFS up the citer chain (walk
+//     incoming edges). Markers cannot be cited, so propagation stops there.
+//  3. MERGE same-hash closures (rare: tightly-coupled seed pairs).
+//  4. SORT by hash for deterministic display.
+//
+// Closure membership is per-seed. Two seeds with overlapping citer chains
+// produce two closures that share non-seed citers — that's intentional and
+// the closures remain independently resettable.
+func DeriveClosures(specs []Spec, markers []Marker, baselineEdges []Edge, scan Scan) []Closure {
+	specsByID := copySpecsToMutableMap(specs)
+	markersByID := copyMarkersToMutableMap(markers)
 
-// D! id=ccol range-end
-
-// D! id=nchk range-start
-func nodeHasAllEdgesChecked(
-	nodeID string,
-	edges []Edge,
-	specsByID map[string]*Spec,
-	markersByID map[string]*Marker,
-	resolutionsByEdge map[string]EdgeResolution,
-	scan Scan,
-) bool {
-	for _, e := range edges {
-		if e.From != nodeID && e.To != nodeID {
-			continue
-		}
-		if edgeIsUnchecked(e, specsByID, markersByID, resolutionsByEdge, scan) {
-			return false
-		}
-	}
-	return true
-}
-
-// D! id=nchk range-end
-
-// D! id=cedg range-start
-func edgeIsUnchecked(
-	edge Edge,
-	specsByID map[string]*Spec,
-	markersByID map[string]*Marker,
-	resolutionsByEdge map[string]EdgeResolution,
-	scan Scan,
-) bool {
-	fromCurrent := nodeScanHash(edge.From, scan, specsByID, markersByID)
-	toCurrent := nodeScanHash(edge.To, scan, specsByID, markersByID)
-	fromBaseline := nodeBaselineHash(edge.From, specsByID, markersByID)
-	toBaseline := nodeBaselineHash(edge.To, specsByID, markersByID)
-	if fromBaseline == fromCurrent && toBaseline == toCurrent {
-		return false
-	}
-	if res, ok := resolutionsByEdge[edge.From+"\x00"+edge.To]; ok {
-		if res.CurrentFromHash == fromCurrent && res.CurrentToHash == toCurrent {
-			return false
-		}
-	}
-	if res, ok := resolutionsByEdge[edge.To+"\x00"+edge.From]; ok {
-		if res.CurrentFromHash == toCurrent && res.CurrentToHash == fromCurrent {
-			return false
-		}
-	}
-	return true
-}
-
-// D! id=cedg range-end
-
-// D! id=prune range-start
-func pruneResolutionsForCollapsedNode(
-	resolutionsByEdge map[string]EdgeResolution,
-	collapsedNodeID string,
-	edges []Edge,
-	specsByID map[string]*Spec,
-	markersByID map[string]*Marker,
-	scan Scan,
-) {
-	nodeDeleted := nodeScanHash(collapsedNodeID, scan, specsByID, markersByID) == ""
-	for _, e := range edges {
-		if e.From != collapsedNodeID && e.To != collapsedNodeID {
-			continue
-		}
-		other := e.To
-		if e.To == collapsedNodeID {
-			other = e.From
-		}
-		for _, key := range []string{e.From + "\x00" + e.To, e.To + "\x00" + e.From} {
-			if _, ok := resolutionsByEdge[key]; !ok {
-				continue
-			}
-			if nodeDeleted {
-				delete(resolutionsByEdge, key)
-				continue
-			}
-			otherBaseline := nodeBaselineHash(other, specsByID, markersByID)
-			otherCurrent := nodeScanHash(other, scan, specsByID, markersByID)
-			if otherBaseline == otherCurrent {
-				delete(resolutionsByEdge, key)
-			}
-		}
-	}
-}
-
-// D! id=prune range-end
-
-// D! id=cetd range-start
-func computeEdgeTodos(
-	specs []Spec,
-	markers []Marker,
-	edges []Edge,
-	resolutionsByEdge map[string]EdgeResolution,
-	scan Scan,
-) []Todo {
-	specByID := copySpecsToMutableMap(specs)
-	markerByID := copyMarkersToMutableMap(markers)
-	nodeExists := func(id string) bool {
-		if _, ok := scan.SpecHashes[id]; ok {
-			return scan.SpecHashes[id] != ""
-		}
-		if _, ok := scan.MarkerHashes[id]; ok {
-			return scan.MarkerHashes[id] != ""
-		}
-		return false
-	}
-
-	baselineEdgeSet := make(map[string]bool, len(edges))
-	for _, e := range edges {
+	baselineEdgeSet := make(map[string]bool, len(baselineEdges))
+	for _, e := range baselineEdges {
 		baselineEdgeSet[e.From+"\x00"+e.To] = true
 	}
 	scanEdgeSet := make(map[string]bool, len(scan.Edges))
@@ -573,288 +462,235 @@ func computeEdgeTodos(
 		scanEdgeSet[e.From+"\x00"+e.To] = true
 	}
 
-	var todos []Todo
+	eventsBySeed := map[string][]DriftEvent{}
 
-	for _, e := range edges {
-		fromCurrent := nodeScanHash(e.From, scan, specByID, markerByID)
-		toCurrent := nodeScanHash(e.To, scan, specByID, markerByID)
-		fromBaseline := nodeBaselineHash(e.From, specByID, markerByID)
-		toBaseline := nodeBaselineHash(e.To, specByID, markerByID)
-		fromChanged := fromBaseline != fromCurrent
-		toChanged := toBaseline != toCurrent
-		if !fromChanged && !toChanged {
-			continue
-		}
-		covered := false
-		if res, ok := resolutionsByEdge[e.From+"\x00"+e.To]; ok {
-			if res.CurrentFromHash == fromCurrent && res.CurrentToHash == toCurrent {
-				covered = true
-			}
-		}
-		if !covered {
-			if res, ok := resolutionsByEdge[e.To+"\x00"+e.From]; ok {
-				if res.CurrentFromHash == toCurrent && res.CurrentToHash == fromCurrent {
-					covered = true
-				}
-			}
-		}
-		if covered {
-			continue
-		}
-		todos = append(todos, Todo{
-			Kind:           TodoEdgeDrift,
-			From:           e.From,
-			To:             e.To,
-			FromFilepath:   nodeFilepath(e.From, specByID, markerByID),
-			FromLineNumber: nodeLineNumber(e.From, specByID, markerByID),
-			ToFilepath:     nodeFilepath(e.To, specByID, markerByID),
-			ToLineNumber:   nodeLineNumber(e.To, specByID, markerByID),
-			FromChanged:    fromChanged,
-			ToChanged:      toChanged,
-			FromDeleted:    fromCurrent == "" && fromChanged,
-			ToDeleted:      toCurrent == "" && toChanged,
-		})
+	addEvent := func(seed string, ev DriftEvent) {
+		ev.Seed = seed
+		eventsBySeed[seed] = append(eventsBySeed[seed], ev)
 	}
 
-	for _, e := range scan.Edges {
-		if !isSpecID(e.From) || !isSpecID(e.To) {
-			continue
+	// Node hash changes.
+	for _, s := range specs {
+		current := scan.SpecHashes[s.ID]
+		if s.Hash != current {
+			addEvent(s.ID, DriftEvent{
+				Kind:    EventNodeChanged,
+				NodeID:  s.ID,
+				OldHash: s.Hash,
+				NewHash: current,
+			})
 		}
+	}
+	for _, m := range markers {
+		current := scan.MarkerHashes[m.ID]
+		if m.Hash != current {
+			addEvent(m.ID, DriftEvent{
+				Kind:    EventNodeChanged,
+				NodeID:  m.ID,
+				OldHash: m.Hash,
+				NewHash: current,
+			})
+		}
+	}
+
+	// New edges (in scan, not baseline). Skip edges whose To doesn't exist
+	// in scan — those are EDGE_BROKEN events, not EDGE_ADDED.
+	for _, e := range scan.Edges {
 		if baselineEdgeSet[e.From+"\x00"+e.To] {
 			continue
 		}
-		todos = append(todos, Todo{
-			Kind:         TodoEdgeAdded,
-			From:         e.From,
-			To:           e.To,
-			FromFilepath: nodeFilepath(e.From, specByID, markerByID),
-		})
-	}
-	for _, e := range edges {
-		if !isSpecID(e.From) || !isSpecID(e.To) {
+		toExists := false
+		if h, ok := scan.SpecHashes[e.To]; ok && h != "" {
+			toExists = true
+		}
+		if !toExists {
+			if h, ok := scan.MarkerHashes[e.To]; ok && h != "" {
+				toExists = true
+			}
+		}
+		if !toExists {
 			continue
 		}
+		edgeCopy := e
+		addEvent(e.From, DriftEvent{Kind: EventEdgeAdded, Edge: &edgeCopy})
+	}
+	// Removed edges (in baseline, not scan). Only applies to spec-spec
+	// ref edges — link edges (marker-spec) are user-curated and never
+	// appear in scan, so they're never "removed" by scan-side state.
+	for _, e := range baselineEdges {
 		if scanEdgeSet[e.From+"\x00"+e.To] {
 			continue
 		}
-		todos = append(todos, Todo{
-			Kind:         TodoEdgeRemoved,
-			From:         e.From,
-			To:           e.To,
-			FromFilepath: nodeFilepath(e.From, specByID, markerByID),
-		})
+		if !isSpecID(e.From) || !isSpecID(e.To) {
+			continue
+		}
+		edgeCopy := e
+		addEvent(e.From, DriftEvent{Kind: EventEdgeRemoved, Edge: &edgeCopy})
 	}
-
+	// Broken edges (scan edge whose To endpoint doesn't exist in scan).
 	for _, e := range scan.Edges {
-		if nodeExists(e.To) {
-			continue
+		toExists := false
+		if _, ok := scan.SpecHashes[e.To]; ok && scan.SpecHashes[e.To] != "" {
+			toExists = true
 		}
-		todos = append(todos, Todo{
-			Kind:         TodoBrokenEdge,
-			From:         e.From,
-			To:           e.To,
-			FromFilepath: nodeFilepath(e.From, specByID, markerByID),
-		})
-	}
-
-	closureTodos := computeRhizomaticClosureTodos(
-		specs, markers, edges, scan.Edges, resolutionsByEdge, scan,
-		specByID, markerByID,
-	)
-	todos = append(todos, closureTodos...)
-
-	return todos
-}
-
-// D! id=cetd range-end
-
-// D! id=crhiz range-start
-func computeRhizomaticClosureTodos(
-	specs []Spec,
-	markers []Marker,
-	edges []Edge,
-	scanEdges []Edge,
-	resolutionsByEdge map[string]EdgeResolution,
-	scan Scan,
-	specByID map[string]*Spec,
-	markerByID map[string]*Marker,
-) []Todo {
-	changedSpecs := make(map[string]bool)
-	for _, s := range specs {
-		current, ok := scan.SpecHashes[s.ID]
-		if !ok || current == "" {
-			continue
+		if !toExists {
+			if _, ok := scan.MarkerHashes[e.To]; ok && scan.MarkerHashes[e.To] != "" {
+				toExists = true
+			}
 		}
-		if s.Hash != current {
-			changedSpecs[s.ID] = true
-		}
-	}
-	if len(changedSpecs) == 0 {
-		return nil
-	}
-
-	baselineSpecSpec := make(map[string]bool)
-	for _, e := range edges {
-		if isSpecID(e.From) && isSpecID(e.To) {
-			baselineSpecSpec[e.From+"\x00"+e.To] = true
-			baselineSpecSpec[e.To+"\x00"+e.From] = true
+		if !toExists {
+			edgeCopy := e
+			addEvent(e.From, DriftEvent{Kind: EventEdgeBroken, Edge: &edgeCopy})
 		}
 	}
 
-	neighbors := make(map[string]map[string]bool)
-	addNeighbor := func(a, b string) {
-		if !isSpecID(a) || !isSpecID(b) {
-			return
-		}
-		if neighbors[a] == nil {
-			neighbors[a] = make(map[string]bool)
-		}
-		if neighbors[b] == nil {
-			neighbors[b] = make(map[string]bool)
-		}
-		neighbors[a][b] = true
-		neighbors[b][a] = true
+	// Build incoming-edge map: incoming[T] = set of nodes that have an edge T-ward.
+	// Specifically, for edge (F, T), F is a citer of T. incoming[T] += F.
+	// We union baseline and scan edges.
+	allEdgesSet := make(map[string]Edge)
+	for _, e := range baselineEdges {
+		allEdgesSet[e.From+"\x00"+e.To] = e
 	}
-	for _, e := range scanEdges {
-		addNeighbor(e.From, e.To)
+	for _, e := range scan.Edges {
+		allEdgesSet[e.From+"\x00"+e.To] = e
 	}
-
-	markersBySpec := make(map[string][]Marker)
-	for _, e := range edges {
-		if isSpecID(e.From) {
-			continue
+	incoming := map[string]map[string]bool{}
+	for _, e := range allEdgesSet {
+		if incoming[e.To] == nil {
+			incoming[e.To] = map[string]bool{}
 		}
-		if m, ok := markerByID[e.From]; ok {
-			markersBySpec[e.To] = append(markersBySpec[e.To], *m)
-		}
+		incoming[e.To][e.From] = true
 	}
 
-	var todos []Todo
-	for sourceID := range changedSpecs {
-		sourceHash := scan.SpecHashes[sourceID]
-		sourceSpec := specByID[sourceID]
-		visited := map[string]bool{sourceID: true}
-		queue := []string{sourceID}
+	// Derive closure per seed.
+	closuresByHash := map[string]*Closure{}
+	for seed, events := range eventsBySeed {
+		nodes := map[string]bool{seed: true}
+		// Marker seeds include their linked specs (outgoing edge targets)
+		// so the reviewer can see the specs the marker implements. Spec
+		// seeds do NOT include their cited specs (those specs' text is
+		// independent of the seed's drift).
+		if !isSpecID(seed) {
+			for _, e := range allEdgesSet {
+				if e.From == seed {
+					nodes[e.To] = true
+				}
+			}
+		}
+		queue := []string{}
+		for n := range nodes {
+			queue = append(queue, n)
+		}
 		for len(queue) > 0 {
 			curr := queue[0]
 			queue = queue[1:]
-			for n := range neighbors[curr] {
-				if visited[n] {
+			for citer := range incoming[curr] {
+				if nodes[citer] {
 					continue
 				}
-				visited[n] = true
-				queue = append(queue, n)
+				nodes[citer] = true
+				queue = append(queue, citer)
+			}
+		}
 
-				if changedSpecs[n] {
-					continue
-				}
+		// Collect edges among closure nodes (undirected canonicalization).
+		edgeKeySet := map[string]Edge{}
+		for _, e := range allEdgesSet {
+			if !nodes[e.From] || !nodes[e.To] {
+				continue
+			}
+			key := canonicalEdgeKey(e.From, e.To)
+			edgeKeySet[key] = e
+		}
 
-				fromCurrent := sourceHash
-				toCurrent := scan.SpecHashes[n]
-				covered := false
-				if res, ok := resolutionsByEdge[n+"\x00"+sourceID]; ok {
-					if res.CurrentFromHash == toCurrent && res.CurrentToHash == fromCurrent {
-						covered = true
-					}
-				}
-				if !covered {
-					if res, ok := resolutionsByEdge[sourceID+"\x00"+n]; ok {
-						if res.CurrentFromHash == fromCurrent && res.CurrentToHash == toCurrent {
-							covered = true
-						}
-					}
-				}
-				if covered {
-					continue
-				}
+		nodeIDs := make([]string, 0, len(nodes))
+		for id := range nodes {
+			nodeIDs = append(nodeIDs, id)
+		}
+		sort.Strings(nodeIDs)
 
-				spec := specByID[n]
-				if !baselineSpecSpec[n+"\x00"+sourceID] {
-					todos = append(todos, Todo{
-						Kind:           TodoEdgeDrift,
-						From:           n,
-						To:             sourceID,
-						FromFilepath:   spec.Filepath,
-						ToFilepath:     sourceSpec.Filepath,
-						ToChanged:      true,
-						SourceSpecID:   sourceID,
-						SourceFilepath: sourceSpec.Filepath,
-					})
-				}
+		edgeKeys := make([]string, 0, len(edgeKeySet))
+		for k := range edgeKeySet {
+			edgeKeys = append(edgeKeys, k)
+		}
+		sort.Strings(edgeKeys)
 
-				for _, m := range markersBySpec[n] {
-					todos = append(todos, Todo{
-						Kind:           TodoCascade,
-						From:           m.ID,
-						To:             n,
-						FromFilepath:   m.Filepath,
-						FromLineNumber: m.LineNumber,
-						ToFilepath:     spec.Filepath,
-						SourceSpecID:   sourceID,
-						SourceFilepath: sourceSpec.Filepath,
-					})
-				}
+		hash := closureHash(nodeIDs, edgeKeys)
+
+		// Build NodeRefs.
+		nodeRefs := make([]NodeRef, 0, len(nodeIDs))
+		for _, id := range nodeIDs {
+			nodeRefs = append(nodeRefs, makeNodeRef(id, specsByID, markersByID))
+		}
+
+		// Build edge list (canonicalized).
+		closureEdges := make([]Edge, 0, len(edgeKeys))
+		for _, k := range edgeKeys {
+			closureEdges = append(closureEdges, edgeKeySet[k])
+		}
+
+		if existing, ok := closuresByHash[hash]; ok {
+			existing.Events = append(existing.Events, events...)
+		} else {
+			closuresByHash[hash] = &Closure{
+				Hash:   hash,
+				Nodes:  nodeRefs,
+				Edges:  closureEdges,
+				Events: append([]DriftEvent(nil), events...),
 			}
 		}
 	}
 
-	return todos
-}
-
-// D! id=crhiz range-end
-
-// --- helpers ---
-
-func nodeScanHash(id string, scan Scan, specsByID map[string]*Spec, markersByID map[string]*Marker) string {
-	if _, ok := specsByID[id]; ok {
-		return scan.SpecHashes[id]
+	out := make([]Closure, 0, len(closuresByHash))
+	for _, c := range closuresByHash {
+		out = append(out, *c)
 	}
-	if _, ok := markersByID[id]; ok {
-		return scan.MarkerHashes[id]
-	}
-	if isSpecID(id) {
-		return scan.SpecHashes[id]
-	}
-	return scan.MarkerHashes[id]
-}
-
-func nodeBaselineHash(id string, specsByID map[string]*Spec, markersByID map[string]*Marker) string {
-	if s := specsByID[id]; s != nil {
-		return s.Hash
-	}
-	if m := markersByID[id]; m != nil {
-		return m.Hash
-	}
-	return ""
-}
-
-func nodeFilepath(id string, specsByID map[string]*Spec, markersByID map[string]*Marker) string {
-	if s := specsByID[id]; s != nil {
-		return s.Filepath
-	}
-	if m := markersByID[id]; m != nil {
-		return m.Filepath
-	}
-	return ""
-}
-
-func nodeLineNumber(id string, specsByID map[string]*Spec, markersByID map[string]*Marker) int {
-	if s := specsByID[id]; s != nil {
-		return s.LineNumber
-	}
-	if m := markersByID[id]; m != nil {
-		return m.LineNumber
-	}
-	return 0
-}
-
-func indexResolutionsByEdge(resolutions []EdgeResolution) map[string]EdgeResolution {
-	out := make(map[string]EdgeResolution, len(resolutions))
-	for _, r := range resolutions {
-		out[r.From+"\x00"+r.To] = r
-	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Hash < out[j].Hash
+	})
 	return out
 }
+
+// D! id=cdrv range-end
+
+// canonicalEdgeKey returns an undirected canonicalization of an edge's
+// endpoints: min(from,to) + separator + max(from,to). Two edges that
+// differ only in direction produce the same key.
+func canonicalEdgeKey(a, b string) string {
+	if a < b {
+		return a + "\x00" + b
+	}
+	return b + "\x00" + a
+}
+
+func closureHash(sortedNodeIDs, sortedEdgeKeys []string) string {
+	h := sha1.New()
+	for _, id := range sortedNodeIDs {
+		h.Write([]byte(id))
+		h.Write([]byte{0})
+	}
+	for _, k := range sortedEdgeKeys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+	}
+	full := hex.EncodeToString(h.Sum(nil))
+	if len(full) >= 8 {
+		return full[:8]
+	}
+	return full
+}
+
+func makeNodeRef(id string, specsByID map[string]*Spec, markersByID map[string]*Marker) NodeRef {
+	if s, ok := specsByID[id]; ok {
+		return NodeRef{ID: id, IsSpec: true, Filepath: s.Filepath, LineNumber: s.LineNumber}
+	}
+	if m, ok := markersByID[id]; ok {
+		return NodeRef{ID: id, IsSpec: false, Filepath: m.Filepath, LineNumber: m.LineNumber}
+	}
+	return NodeRef{ID: id}
+}
+
+// --- helpers ---
 
 func copySpecsToMutableMap(specs []Spec) map[string]*Spec {
 	specsByID := make(map[string]*Spec, len(specs))
@@ -890,22 +726,23 @@ func markersFromMutableMap(markersByID map[string]*Marker) []Marker {
 	return out
 }
 
-func resolutionsFromMutableMap(resolutionsByEdge map[string]EdgeResolution) []EdgeResolution {
-	out := make([]EdgeResolution, 0, len(resolutionsByEdge))
-	for _, r := range resolutionsByEdge {
-		out = append(out, r)
+func addEdgeIfMissing(edges []Edge, e Edge) []Edge {
+	for _, existing := range edges {
+		if existing == e {
+			return edges
+		}
 	}
-	return out
+	return append(edges, e)
 }
 
-func filterEdgesByNodes(edges []Edge, specsByID map[string]*Spec, markersByID map[string]*Marker) []Edge {
-	var out []Edge
+func removeEdge(edges []Edge, target Edge) []Edge {
+	out := make([]Edge, 0, len(edges))
 	for _, e := range edges {
-		fromOK := specsByID[e.From] != nil || markersByID[e.From] != nil
-		toOK := specsByID[e.To] != nil || markersByID[e.To] != nil
-		if fromOK && toOK {
-			out = append(out, e)
+		if (e.From == target.From && e.To == target.To) ||
+			(e.From == target.To && e.To == target.From) {
+			continue
 		}
+		out = append(out, e)
 	}
 	return out
 }

@@ -1,3 +1,0 @@
-		if l.seenIDs[qualifiedID] {
-			return nil, nil, fmt.Errorf("duplicate spec id %q", qualifiedID)
-		}

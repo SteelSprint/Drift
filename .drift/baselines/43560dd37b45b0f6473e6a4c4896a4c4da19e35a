@@ -1,1 +1,0 @@
-FilePinStore.Save marshals PinState to indented XML and writes it to .driftpin/state.xml, truncating any existing file. It also ensures .driftpin/baselines/ exists. The XML root element is drift with nested specs, markers, links, and resolutions sections.

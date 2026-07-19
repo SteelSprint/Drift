@@ -1,0 +1,43 @@
+THESIS — This document describes the problem of drift, and the design that makes it tractable.
+
+THE MEANING OF DRIFT. Drift is what happens when a spec and the code that implements it disagree with each other. A spec says what the code should do. The code does what it does. But when the spec describes behavior the code no longer has, or the code does something the spec never claimed: that is drift.
+
+The problem with drift is that it multiplies. For example, consider a codebase that is in pristine state. The spec and the code match each other precisely. Then someone edits a spec. Every piece of code that implements that spec is now possibly drifted. Every other spec that depends on the edited spec, either implicitly or explicitly, is also possibly in conflict with it. The person fixes some of the code and updates some of the other specs. But, no matter how thorough the person is, the fixes themselves introduce changes which could trigger more drift on everything they touch. We realize that drift grows faster than it shrinks. Without a systematic way to track it, drift eventually takes over the codebase. The spec and the code no longer agree, there are internal errors and omissions in the specs themselves, and the project is in a state of semantic chaos.
+
+THE PROBLEM. How do we keep specs and code in sync across a real codebase?
+
+Two simple answers fail.
+
+Let's say we write code using something like Cucumber/Gherkin. Writing specs in a deterministic subset of English lets code check alignment mechanically. But deterministic code cannot understand real English. A spec should have the full expressiveness of language: English, other human languages, mathematical notation when useful. Forcing specs into a structured subset destroys what makes specs valuable.
+
+On the other hand, let's say we we write code in Markdown files and use an LLM to check for internal contradictions. Running an LLM over the whole project to check alignment is unreliable, expensive, and slow. It inevitably misses corners — a spec buried in a subdirectory, a marker in a file the LLM skipped, a transitive dependency the LLM didn't trace. What you basically have is a combinatorial explosion, where every atom of meaning in every file must be compared to every atom of meaning in every other file. LLMs alone are not cost-effective or time-effective when the surface area to be covered is so large, and because they are non-deterministic, they are likely to miss some internal contradictions anyway.
+
+So: Deterministic code alone fails at understanding, expressiveness, and semantics. LLMs alone fail at comprehension, cost, and scalability. The drift problem is unsolvable by either alone.
+
+THE SOLUTION. Combine them. Use each for what it is good at.
+
+Deterministic code cannot read English or judge semantics, but it can provide structure and track content changes. We track every spec and every piece of code by hashing its content and saving that hash as a baseline; when the hash of the current content no longer matches its baseline, we have a proxy signal that a specific piece has changed and needs to be checked by a human or LLM. The deterministic code also tracks which specs cite which others (through refs) and which markers link to which specs, so when a node's hash changes, the code walks the citation web and produces a complete list of every place that might have drifted. 
+
+Now, this list is a precise map across every connected node, but it cannot say whether drift actually exists, or where it exists. LLMs resolve drift within that map. They walk the list the code produced, read the spec and the code at each flagged site, and decide whether the two still agree. They don't have to rove the entire codebase; they only have to look where the deterministic map pointed them.
+
+LINKING SPECS AND CODE. Specs are written in English, in a file format that allows for deep linking across spec documents. This file format gives machine-readable structure (so deterministic code can parse specs and track references) without taking away the expressiveness of language. A spec can say anything, in any words, in any language.
+
+Specs cite other specs through refs. A ref is a declared citation: "this spec depends on that one." Refs cannot form cycles — if A cites B and B cites A, neither is well-founded. Refs form the citation web that deterministic code walks to map drift propagation.
+
+Meanwhile, code also needs to be organized so that it can be linked to specs. For this purpose, we wrap passages of code inside markers which are defined inside comments. Markers have start and end positions, which define which range they will track. This is convenient because as the code gets modified, markers move along with the code that they are tracking. Markers link back to the specs that they implement.
+
+Specs and code have a natural many-to-many relationship, and this is reflected in the citation graph between specs and markers. A spec can be referred to by many other specs and implemented by code that is managed by many markers.
+
+It's worth noting that this is a directed acyclic graph, because markers are leaves in the citation graph. A marker can point to a spec, but a spec cannot point to a marker. This is important because it naturally prevents cycles in the citation graph, and ensures that the direction of drift propagation is well-defined, which makes it easier to manage and understand for humans and LLMs.
+
+ANCESTRAL PROVENANCE. When a spec changes, the system flags every spec transitively connected through refs, and every marker linked to those specs. When a marker changes, the system flags only the spec the marker implements — drift does not propagate upwards from markers, because markers are leaves in the citation graph.
+
+The system tells the LLM to inspect the entire ancestral provenance chain: the changed node, every spec transitively connected, every marker linked to those specs. The LLM walks the chain and verifies alignment at each step. Once verified, the developer updates the baselines to acknowledge the new state. Drift clears.
+
+WHY THIS WORKS. Two properties make the design tractable.
+
+First, it makes the LLM more deterministic. Given the same map and the same changed node, the LLM is asked to inspect the same chain every time. Its conclusions may vary, but its scope does not.
+
+Second, it moves the locus of control for spec structure into the developer's hands. The developer decides what cites what, which markers wrap which code regions, which specs depend on which. Drift discoverability becomes a problem solved by human ingenuity — by careful spec design, by thoughtful citation graphs — rather than by unreliable, expensive, slow LLM mechanisms.
+
+The design plays on the strengths of both. Deterministic code handles scale, precision, and reliability. LLMs handle language, semantics, and judgment. Drift is the seam where they meet.

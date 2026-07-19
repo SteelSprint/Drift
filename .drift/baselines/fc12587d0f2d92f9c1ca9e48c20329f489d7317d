@@ -1,3 +1,0 @@
-		if strings.Contains(id, ".") {
-			return nil, fmt.Errorf("%s: spec id %q must not contain a dot (dots are reserved for module qualification)", absPath, id)
-		}

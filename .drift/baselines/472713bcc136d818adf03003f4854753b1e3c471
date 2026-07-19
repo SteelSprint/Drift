@@ -1,1 +1,0 @@
-When .driftpin/state.xml does not exist on disk, Load returns ErrPinNotFound, prompting the user to run drift init first.

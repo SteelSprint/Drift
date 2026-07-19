@@ -1,7 +1,0 @@
-	markerExists := false
-	for _, m := range reconciledMarkers {
-		if m.ID == markerID {
-			markerExists = true
-			break
-		}
-	}

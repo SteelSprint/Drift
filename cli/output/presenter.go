@@ -10,8 +10,7 @@ type Presenter interface {
 	Todo(TodoResult) string
 	List(ListResult) string
 	Show(ShowResult) string
-	DiffEdge(DiffEdgeResult) string
-	DiffExpanded(DiffExpandedResult) string
+	DiffClosure(DiffClosureResult) string
 	DiffAll(DiffAllResult) string
 	Ok(OkResult) string
 	Error(ErrorResult) string
@@ -19,9 +18,7 @@ type Presenter interface {
 	Version(VersionResult) string
 }
 
-// Render dispatches a Result to the matching Presenter method. This is the
-// single type-switch that every Presenter implementation benefits from; each
-// Presenter only implements the per-type methods, not the dispatch.
+// Render dispatches a Result to the matching Presenter method.
 func Render(p Presenter, r Result) string {
 	switch v := r.(type) {
 	case TodoResult:
@@ -30,10 +27,8 @@ func Render(p Presenter, r Result) string {
 		return p.List(v)
 	case ShowResult:
 		return p.Show(v)
-	case DiffEdgeResult:
-		return p.DiffEdge(v)
-	case DiffExpandedResult:
-		return p.DiffExpanded(v)
+	case DiffClosureResult:
+		return p.DiffClosure(v)
 	case DiffAllResult:
 		return p.DiffAll(v)
 	case OkResult:

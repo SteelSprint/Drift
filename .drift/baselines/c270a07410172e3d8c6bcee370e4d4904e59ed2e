@@ -1,2 +1,0 @@
-	case "skill":
-		return skillContent, 0

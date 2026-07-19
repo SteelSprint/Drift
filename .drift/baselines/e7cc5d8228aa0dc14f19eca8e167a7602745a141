@@ -1,1 +1,0 @@
-Only files with recognized code extensions are scanned for markers: .go, .py, .js, .ts, .jsx, .tsx, .java, .c, .cpp, .h, .hpp, .rs, .rb, .php, .swift, .kt, .cs, .scala, .sh, .bash, .lua, .dart, .vue, .svelte.

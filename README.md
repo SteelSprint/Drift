@@ -4,7 +4,7 @@
 
 # Drift
 
-**Drift** links your requirements to the exact code that makes them real. Specs cite each other via `<ref>` tags, so the spec graph is tracked too — editing a foundational spec surfaces drift on every spec transitively connected to it. When the code, the requirements, or the citations change, the tool tells you exactly what is affected — not "something in this file," but which lines, which function, which rule. One rule can point to many places in the code, so you can trace any requirement to every spot that carries it out. `drift todo` tells you what fell out of sync. `drift diff` shows you what changed. `drift show` walks you through every piece of code behind a rule. This lets AI agents check their own work against the rules before saying "done" — not just "the tests passed," but "every rule still matches its code."
+**Drift** links your requirements to the exact code that makes them real. Specs cite each other via `<ref>` tags, so the spec graph is tracked too — editing a foundational spec surfaces drift on every spec transitively connected to it. When the code, the requirements, or the citations change, the tool tells you exactly what is affected — not "something in this file," but which lines, which function, which rule. One rule can point to many places in the code, so you can trace any requirement to every spot that carries it out. `drift todo` derives **closures** (per-seed drift sets, each with an 8-character hash) telling you what fell out of sync. `drift diff <hash>` shows you what changed. `drift show` walks you through every piece of code behind a rule. This lets AI agents check their own work against the rules before saying "done" — not just "the tests passed," but "every rule still matches its code."
 
 ## Zero dependencies
 
@@ -67,28 +67,31 @@ That's it. The tool is self-documenting. `drift skill` prints a complete guide t
 
 You have a TODO app in Python. You wrote a rule: *"The title must not be empty."* You asked an AI agent to add a feature. It changed the code — but it also snuck in a new rule you didn't ask for. Drift catches this.
 
-**Step 1 — Check for drift.** `drift todo` scans your rules and your code. If anything fell out of sync, it tells you exactly where:
+**Step 1 — Check for drift.** `drift todo` scans your rules and your code. If anything fell out of sync, it derives closures (per-seed drift sets, each with an 8-character hash):
 
 ```bash
 $ drift todo
 
-1 marker has unchecked changes.
+1 closure(s) with drift.
 
-1. [TODO] Edge between marker "add_func" in "app.py:5" and spec term
-   "main.add_todo" in "main.drift.xml:0". The marker has changed but not
-   the spec term. Check whether the changed code still complies with
-   the spec term and make any modifications necessary. Once you are
-   satisfied, run `drift reset add_func main.add_todo` to mark this
-   todo item as complete.
-  → Run 'drift diff add_func main.add_todo' to see what changed.
+Closure a3f7b2c1  (2 nodes: 1 specs, 1 markers; 1 edge)
+  Events:
+    [NODE-CHANGED] marker "add_func"  baseline: a1b2c3d4 → scan: e5f6g7h8
+  Members:
+    specs:   main.add_todo
+    markers: add_func
+  Inspect: drift diff a3f7b2c1
+  Resolve: drift reset a3f7b2c1
 ```
 
-Something changed. The tool doesn't just say "file changed" — it says **which rule** is affected and **which code** implements it.
+Something changed. The tool doesn't just say "file changed" — it derives a closure naming **which rule** is affected and **which code** implements it, then groups every transitively-connected drift into one review unit.
 
-**Step 2 — See what changed.** The hint above says to run `drift diff`. This shows you a side-by-side comparison of the code before and after the change:
+**Step 2 — See what changed.** The hint above says to run `drift diff <hash>`. This shows you a side-by-side comparison of the code before and after the change:
 
 ```bash
-$ drift diff add_func main.add_todo
+$ drift diff a3f7b2c1
+
+=== Closure a3f7b2c1 ===
 
 Spec: main.add_todo (main.drift.xml)
 Status: in sync
@@ -135,7 +138,7 @@ def add_todo(title):
     todos.append({"title": title})
 ```
 
-Now you see both sides. The rule says one thing; the code does two. You decide the 3-character minimum is a good idea, so you update the rule to say *"The title must not be empty and must be at least 3 characters."* Then you run `drift reset add_func main.add_todo` to tell the tool: **I've checked this, accept the new version.**
+Now you see both sides. The rule says one thing; the code does two. You decide the 3-character minimum is a good idea, so you update the rule to say *"The title must not be empty and must be at least 3 characters."* Then you run `drift reset a3f7b2c1` to tell the tool: **I've checked this closure, accept the new state.**
 
 That's the whole loop: **detect → see what changed → review → resolve.** The tool makes sure no AI-generated code sneaks past your rules unnoticed.
 
@@ -156,11 +159,12 @@ Bugs are fixed test-first. Write the test that reproduces the bug, confirm it fa
 
 ## Anatomy
 
-- **Specs** — `*.drift.xml` files containing `<spec id="...">` elements under `<main>` or `<module name="...">` roots. Specs cite each other via `<ref spec="module.localid">label</ref>` tags inside spec content; refs are tracked as spec-spec edges and propagate drift rhizomatically.
+- **Specs** — `*.drift.xml` files containing `<spec id="...">` elements under `<main>` or `<module name="...">` roots. Specs cite each other via `<ref spec="module.localid">label</ref>` tags inside spec content; refs are tracked as spec-spec edges and propagate drift along the citer chain.
 - **Markers** — `// D! id=<shortcode> range-start` and `// D! id=<shortcode> range-end` comment lines in code files, wrapping the code that implements a spec. Marker-spec connections (link edges) are created via `drift link`.
-- **Edges** — unified storage for both link edges (marker → spec) and ref edges (spec → spec). Stored in a single `<edges>` section in `.drift/state.xml`. Direction records who-declared-who (used for cycle detection); drift propagation is undirected (rhizomatic).
-- **`.drift/`** — state directory at project root containing `state.xml` v3 (baseline hashes, unified edges, resolution state), `baselines/` (content-addressed baseline snapshots), optional `theme.xml` (project-level custom theme), and `user-settings.xml` (per-user theme preference, gitignored). Tool-managed — do not edit by hand. Commit to git (except user-settings.xml).
-- **CLI** — `drift init`, `drift todo`, `drift list`, `drift show`, `drift diff`, `drift link`, `drift unlink`, `drift reset`, `drift config theme`, `drift help`, `drift skill`, `drift version`. `drift reset` dispatches on dots: `<marker> <spec>` for link edges, `<spec> <spec>` for ref edges. Global flags: `--json`, `--no-color`, `--color={auto,always,never}`.
+- **Edges** — unified storage for both link edges (marker → spec) and ref edges (spec → spec). Stored in a single `<edges>` section in `.drift/state.xml`. Direction records who-cited-whom (used for cycle detection); drift propagation is along the citer chain (cited → citer).
+- **Closures** — derived per-seed drift sets. Each drift event has a seed node; closure membership = seed + transitive citers (plus, for marker seeds, the linked specs). Identity is the first 8 hex chars of SHA1(sorted node IDs + sorted undirected edge keys). Closures are ephemeral — not stored in state.xml — and strictly disjoint across seeds.
+- **`.drift/`** — state directory at project root containing `state.xml` v4 (baseline hashes + edges only — no resolution table), `baselines/` (content-addressed baseline snapshots), optional `theme.xml` (project-level custom theme), and `user-settings.xml` (per-user theme preference, gitignored). Tool-managed — do not edit by hand. Commit to git (except user-settings.xml).
+- **CLI** — `drift init`, `drift todo`, `drift list`, `drift show`, `drift diff <hash>`, `drift diff --all`, `drift link`, `drift unlink`, `drift reset <hash>`, `drift config theme`, `drift help`, `drift skill`, `drift version`. Global flags: `--json`, `--no-color`, `--color={auto,always,never}`.
 - **Build gate** — `make build` runs `drift todo` before declaring the build complete. The build fails if any drift is detected. Prior binary backed up to `bak/drift-<UTC-timestamp>` on each successful rebuild (gitignored).
 
 See [DOCUMENTATION.md](DOCUMENTATION.md) for the full documentation.

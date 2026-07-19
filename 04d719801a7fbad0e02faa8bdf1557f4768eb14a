@@ -1,0 +1,63 @@
+CONCEPTUAL SPEC — the main idea of the product. Lives above all implementation specs; changes here have far-reaching consequences.
+
+PROBLEM STATEMENT. Drift detects divergence between specifications and code. Specifications ("specs") declare intended behavior; code markers wrap the lines that implement each spec. Each spec and each marker has a content hash. When a hash changes on either side, the edge between them is "drifted" and a human or LLM agent must review before the baseline is re-established.
+
+Specs themselves cite other specs ("See spec T for the rule this derives from"). Those citations are meaningful: if T's content changes, every spec that cites T may need re-verification. Tracking citations as first-class edges lets drift propagate correctly through the spec graph — without them, edits to a foundational spec silently invalidate every downstream spec without any signal.
+
+THE UNIFIED EDGE. The post-collapse model has ONE edge type. An Edge is a directed relationship between two nodes (specs and/or markers). The From endpoint declares/stores the edge (the citer); the To endpoint is the target (the cited). Two establishment kinds are encoded by endpoint types:
+  - marker → spec (created by `drift link`): the marker stores the edge to the spec it implements.
+  - spec → spec (auto-parsed from &lt;ref spec="…"&gt; in spec text): the source spec stores the edge to the spec it references.
+The establishment ceremony differs (explicit command vs ambient parse), but the storage and the drift semantics are identical. There is no separate "link" or "ref" type — they are unified under Edge.
+
+NOTATION. We adopt a uniform notation for nodes and edges:
+  $ — a spec. $1, $2, $3 are distinct specs.
+  # — a marker. #A, #B are distinct markers.
+  &lt; , &gt; — directed storage edges. "X &gt; Y" reads: X stores an edge pointing to Y (X is the citer, Y is the cited). "X &lt; Y" is the same edge mirrored — Y stores the edge to X.
+Worked examples:
+  $1 &lt; $2                 — $2 stores an edge to $1. ($2 contains &lt;ref spec="$1"&gt;.)
+  $1 &lt; $2 &lt; #A           — equivalent to ($1 &lt; $2)($2 &lt; #A): $2 has an edge to $1; #A has an edge to $2.
+  ($1 &lt; $2)($2 &lt; #A)($2 &lt; $300)($300 &lt; $400) — a citation cluster: $2 has one outbound edge, two inbound edges (#A via link, $300 via ref); $300 is itself pointed at by $400.
+
+AXIOMS.
+  (A1) DAG over spec-spec edges. The directed graph contains no directed cycles among spec-spec edges: $1 &gt; $2 &gt; $1 is forbidden. Cycles would make the "citer chain" notion ambiguous and break topological reasoning. Marker endpoints cannot participate in cycles because markers are always citers, never the cited (axiom A2).
+  (A2) Cite asymmetry. Markers cannot be cited. A marker #A may cite a spec (#A &gt; $S) but no node may cite a marker. The single retained asymmetry between specs and markers is this: specs can be cited by both specs and markers; markers cannot be cited by anything.
+  (A3) Provenance-directed propagation. Drift propagates along edges in the CITER direction (cited → citer), transitive to fixpoint. If $S changes, every node that transitively cites $S becomes drift-impacted, because each citer's alignment with $S is now suspect. Propagation does NOT flow in the cited direction: a citer's change does not invalidate the cited node's text, which is independent. Worked examples:
+        - $2 &gt; $1, $1 drifts → $2 is drift-impacted (citer of $1).
+        - $2 &gt; $1, $2 drifts → $1 NOT drift-impacted (cited by $2; $1's text didn't change).
+        - #A &gt; $1, $1 drifts → #A is drift-impacted (citer of $1).
+        - #A &gt; $1, #A drifts → $1 NOT drift-impacted via citer walk. But the marker's outgoing edge targets are added to the marker's closure so the reviewer can verify the marker still implements the linked spec.
+  (A4) Marker seeds include their linked specs. When a marker #A drifts, its closure includes #A's outgoing-edge targets (the specs #A links to), so the reviewer can verify #A still implements each linked spec. From those specs, propagation walks the citer chain (cited → citer) as usual. This is the only special-case expansion; it exists because marker drift means "the implementation of these specs changed," and reviewers need the specs in scope.
+
+ALGORITHM. Given baseline state B (hashes + edge set at last review) and scan S (hashes + edge set now):
+  (i) Seed collection. Register drift events:
+        - NODE_CHANGED for each baseline node whose scan hash differs from baseline hash.
+        - EDGE_ADDED for each spec-spec edge in S but not in B (link edges are user-curated and never appear in scan).
+        - EDGE_REMOVED for each spec-spec edge in B but not in S.
+        - EDGE_BROKEN for each scan edge whose To endpoint doesn't exist as a node.
+        - NODE_ADDED is implied by reconciler baseline-hash sentinel "" for new scan nodes; NODE_REMOVED by reconciler Deleted=true.
+      Each event has a seed = the citer-side node where the change is observable (the changed node itself for node events; the From endpoint for edge events).
+  (ii) Closure derivation. For each seed S:
+         - closure_nodes = {S}.
+         - If S is a marker (A4): for each baseline or scan edge where S is the From endpoint, add the To endpoint to closure_nodes.
+         - BFS from every node in closure_nodes over INCOMING edges (citer walk). For each (citer, node) edge where node ∈ closure_nodes, add citer. Repeat to fixpoint.
+         - closure_edges = edges among closure_nodes (undirected canonicalization: min(from,to) + separator + max(from,to)).
+         - closure_hash = first 8 hex chars of SHA1(sorted node IDs + sorted undirected edge keys).
+      Multiple seeds may produce closures with the same hash (rare: tightly-coupled seed pair). Such closures merge with combined events. Otherwise closures are strictly disjoint: a non-seed citer can appear in multiple closures (e.g., S3 cites both S1 and S2 — when both drift, S3 is in each closure independently).
+  (iii) Cycle safety. The BFS uses a visited set; the spec-spec edge graph is a DAG by (A1), so the citer walk terminates. Cycle detection in Validate rejects directed cycles at state-load time.
+
+CLOSURE PROPERTIES.
+  - Identity = membership (8-char hash of nodes + edges). Stable across drift-state changes within the same membership; changes only when nodes/edges are added or removed.
+  - Ephemeral: closures exist for the current `drift todo` run; they are not stored in state.xml.
+  - Per-seed events: a closure's events are those whose seed is the closure's seed. Reset syncs only the closure's events; non-seed citers' state is unchanged.
+  - Overlap on non-seed citers: a non-seed citer can be a member of multiple closures; resetting one closure does not affect another.
+
+RESOLUTION. Each closure resolves with `drift reset &lt;hash&gt;`:
+  - NODE_CHANGED on N  → baseline hash of N set to scan hash.
+  - EDGE_ADDED(X, Y)   → edge added to baseline.
+  - EDGE_REMOVED(X, Y) → edge removed from baseline.
+  - NODE_ADDED on N    → N is already in the reconciled baseline with empty hash; reset establishes the baseline.
+  - NODE_REMOVED on N  → N removed from baseline; its edges filtered out.
+  - EDGE_BROKEN(X, Y)  → no-op (user must fix the scan: add the missing spec or remove the ref).
+Closures containing ONLY broken-edge events are refused — the user must fix the scan first.
+
+This spec is the contract. Implementation specs (core.validate, core.provenance_closure, scanner.ref_parsing, orch.reset_closure, pinstore.baselines) describe how the contract is realized; they may be refactored freely as long as the behavior here is preserved.

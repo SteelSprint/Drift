@@ -1,4 +1,0 @@
-			if seenIDs[marker.ID] {
-				return fmt.Errorf("duplicate marker shortcode %q", marker.ID)
-			}
-			seenIDs[marker.ID] = true

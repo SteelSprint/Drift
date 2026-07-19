@@ -1,9 +1,0 @@
-	case "list":
-		verbose := len(args) >= 2 && args[1] == "--verbose"
-		state, err := orch.Todo()
-		if err != nil {
-			return presenter.Error(output.ErrorResult{Command: "list", Message: err.Error(), Exit: 1}), 1
-		}
-		result := output.BuildListResult(state, dir, verbose)
-		return presenter.List(result), 0
-

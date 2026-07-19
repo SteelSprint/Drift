@@ -1,0 +1,8 @@
+	_, err := ctx.Orch.ResetClosure(hash)
+	if err != nil {
+		return output.ErrorResult{Command: "reset", Message: err.Error(), Exit: 1}, 1
+	}
+	return output.OkResult{
+		Command: "reset",
+		Message: fmt.Sprintf("Closure %s resolved. Baseline updated.", hash),
+	}, 0

@@ -1,1 +1,0 @@
-var ErrPinNotFound = errors.New(".driftpin/state.xml not found, run 'drift init' first")

@@ -1,3 +1,0 @@
-	if len(file.Wrapped) > 0 {
-		return nil, fmt.Errorf("%s: found <spec> elements nested inside a <specs> wrapper — specs must be direct children of <%s>, not inside <specs>", absPath, file.XMLName.Local)
-	}

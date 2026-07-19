@@ -2,7 +2,6 @@ package output
 
 import (
 	"encoding/json"
-	"strconv"
 	"strings"
 
 	"drift/core"
@@ -29,88 +28,122 @@ func marshal(v interface{}) string {
 // --- Todo ---
 
 type jsonTodo struct {
-	Ok              bool           `json:"ok"`
-	Specs           int            `json:"specs"`
-	Markers         int            `json:"markers"`
-	Edges           int            `json:"edges"`
-	Todos           []jsonTodoItem `json:"todos"`
-	UnlinkedMarkers int            `json:"unlinkedMarkers"`
+	Ok              bool            `json:"ok"`
+	Specs           int             `json:"specs"`
+	Markers         int             `json:"markers"`
+	Edges           int             `json:"edges"`
+	Closures        []jsonClosure   `json:"closures"`
+	UnlinkedMarkers int             `json:"unlinkedMarkers"`
 }
 
-type jsonTodoItem struct {
-	Kind           string `json:"kind"`
-	From           string `json:"from,omitempty"`
-	To             string `json:"to,omitempty"`
-	SourceSpec     string `json:"sourceSpec,omitempty"`
-	FromLocation   string `json:"fromLocation,omitempty"`
-	ToLocation     string `json:"toLocation,omitempty"`
-	SourceLocation string `json:"sourceLocation,omitempty"`
-	FromChanged    bool   `json:"fromChanged,omitempty"`
-	ToChanged      bool   `json:"toChanged,omitempty"`
-	FromDeleted    bool   `json:"fromDeleted,omitempty"`
-	ToDeleted      bool   `json:"toDeleted,omitempty"`
+type jsonClosure struct {
+	Hash   string          `json:"hash"`
+	Nodes  []jsonNodeRef   `json:"nodes"`
+	Edges  []jsonClosureEdge `json:"edges"`
+	Events []jsonEvent     `json:"events"`
 }
 
-func todoKindString(k core.TodoKind) string {
+type jsonNodeRef struct {
+	ID       string `json:"id"`
+	Kind     string `json:"kind"`
+	Filepath string `json:"filepath,omitempty"`
+	Line     int    `json:"line,omitempty"`
+}
+
+type jsonClosureEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type jsonEvent struct {
+	Kind     string          `json:"kind"`
+	NodeID   string          `json:"nodeId,omitempty"`
+	Edge     *jsonClosureEdge `json:"edge,omitempty"`
+	OldHash  string          `json:"oldHash,omitempty"`
+	NewHash  string          `json:"newHash,omitempty"`
+	Seed     string          `json:"seed"`
+}
+
+func eventKindString(k core.EventKind) string {
 	switch k {
-	case core.TodoEdgeDrift:
-		return "edgeDrift"
-	case core.TodoCascade:
-		return "cascade"
-	case core.TodoEdgeAdded:
+	case core.EventNodeChanged:
+		return "nodeChanged"
+	case core.EventNodeAdded:
+		return "nodeAdded"
+	case core.EventNodeRemoved:
+		return "nodeRemoved"
+	case core.EventEdgeAdded:
 		return "edgeAdded"
-	case core.TodoEdgeRemoved:
+	case core.EventEdgeRemoved:
 		return "edgeRemoved"
-	case core.TodoBrokenEdge:
+	case core.EventEdgeBroken:
 		return "brokenEdge"
 	default:
 		return "unknown"
 	}
 }
 
-func locationOrEmpty(filepath string, line int) string {
-	if filepath == "" && line == 0 {
-		return ""
-	}
-	if filepath == "" {
-		return ":" + strconv.Itoa(line)
-	}
-	return filepath + ":" + strconv.Itoa(line)
-}
-
 func (p JSONPresenter) Todo(r TodoResult) string {
 	state := r.State
-	items := make([]jsonTodoItem, 0, len(state.Todos))
-	for _, t := range state.Todos {
-		items = append(items, jsonTodoItem{
-			Kind:           todoKindString(t.Kind),
-			From:           t.From,
-			To:             t.To,
-			SourceSpec:     t.SourceSpecID,
-			FromLocation:   locationOrEmpty(t.FromFilepath, t.FromLineNumber),
-			ToLocation:     locationOrEmpty(t.ToFilepath, t.ToLineNumber),
-			SourceLocation: locationOrEmpty(t.SourceFilepath, 0),
-			FromChanged:    t.FromChanged,
-			ToChanged:      t.ToChanged,
-			FromDeleted:    t.FromDeleted,
-			ToDeleted:      t.ToDeleted,
-		})
+	closures := make([]jsonClosure, 0, len(state.Closures))
+	for _, c := range state.Closures {
+		closures = append(closures, closureToJSON(c))
 	}
 	out := jsonTodo{
-		Ok:              len(state.Todos) == 0 && (len(state.Specs) > 0 || len(state.Markers) > 0),
+		Ok:              len(state.Closures) == 0 && (len(state.Specs) > 0 || len(state.Markers) > 0),
 		Specs:           len(state.Specs),
 		Markers:         len(state.Markers),
 		Edges:           len(state.Edges),
-		Todos:           items,
+		Closures:        closures,
 		UnlinkedMarkers: countUnlinkedMarkers(state),
 	}
 	return marshal(out)
 }
 
+func closureToJSON(c core.Closure) jsonClosure {
+	nodes := make([]jsonNodeRef, 0, len(c.Nodes))
+	for _, n := range c.Nodes {
+		kind := "marker"
+		if n.IsSpec {
+			kind = "spec"
+		}
+		nodes = append(nodes, jsonNodeRef{
+			ID:       n.ID,
+			Kind:     kind,
+			Filepath: n.Filepath,
+			Line:     n.LineNumber,
+		})
+	}
+	edges := make([]jsonClosureEdge, 0, len(c.Edges))
+	for _, e := range c.Edges {
+		edges = append(edges, jsonClosureEdge{From: e.From, To: e.To})
+	}
+	events := make([]jsonEvent, 0, len(c.Events))
+	for _, ev := range c.Events {
+		je := jsonEvent{
+			Kind:    eventKindString(ev.Kind),
+			NodeID:  ev.NodeID,
+			OldHash: ev.OldHash,
+			NewHash: ev.NewHash,
+			Seed:    ev.Seed,
+		}
+		if ev.Edge != nil {
+			je.Edge = &jsonClosureEdge{From: ev.Edge.From, To: ev.Edge.To}
+		}
+		events = append(events, je)
+	}
+	return jsonClosure{
+		Hash:   c.Hash,
+		Nodes:  nodes,
+		Edges:  edges,
+		Events: events,
+	}
+}
+
 func countUnlinkedMarkers(state core.EvaluatedState) int {
 	linked := make(map[string]bool)
 	for _, e := range state.Edges {
-		if isSpecID(e.From) {
+		if isSpecIDOutput(e.From) {
 			continue
 		}
 		linked[e.From] = true
@@ -137,17 +170,19 @@ type jsonListSpec struct {
 	Filepath string `json:"filepath"`
 	Deleted  bool   `json:"deleted"`
 	Unlinked bool   `json:"unlinked"`
+	Drifted  bool   `json:"drifted"`
 	Text     string `json:"text,omitempty"`
 }
 
 type jsonListMarker struct {
-	ID       string `json:"id"`
-	Filepath string `json:"filepath"`
-	StartLine int   `json:"startLine"`
-	EndLine   int   `json:"endLine"`
-	Deleted  bool   `json:"deleted"`
-	Unlinked bool   `json:"unlinked"`
-	Preview  string `json:"preview,omitempty"`
+	ID        string `json:"id"`
+	Filepath  string `json:"filepath"`
+	StartLine int    `json:"startLine"`
+	EndLine   int    `json:"endLine"`
+	Deleted   bool   `json:"deleted"`
+	Unlinked  bool   `json:"unlinked"`
+	Drifted   bool   `json:"drifted"`
+	Preview   string `json:"preview,omitempty"`
 }
 
 type jsonListEdge struct {
@@ -158,16 +193,16 @@ type jsonListEdge struct {
 
 func (p JSONPresenter) List(r ListResult) string {
 	state := r.State
-	drifted := make(map[string]bool)
-	for _, t := range state.Todos {
-		if t.Kind == core.TodoEdgeDrift && t.SourceSpecID == "" {
-			drifted[t.From+"\x00"+t.To] = true
+	driftedNodes := make(map[string]bool)
+	for _, c := range state.Closures {
+		for _, n := range c.Nodes {
+			driftedNodes[n.ID] = true
 		}
 	}
 	linkedSpecs := make(map[string]bool)
 	linkedMarkers := make(map[string]bool)
 	for _, e := range state.Edges {
-		if isSpecID(e.From) {
+		if isSpecIDOutput(e.From) {
 			continue
 		}
 		linkedMarkers[e.From] = true
@@ -181,6 +216,7 @@ func (p JSONPresenter) List(r ListResult) string {
 			Filepath: s.Filepath,
 			Deleted:  s.Deleted,
 			Unlinked: !s.Deleted && !linkedSpecs[s.ID],
+			Drifted:  driftedNodes[s.ID],
 		}
 		if r.Verbose && !s.Deleted {
 			if content, ok := r.SpecContents[s.ID]; ok {
@@ -199,6 +235,7 @@ func (p JSONPresenter) List(r ListResult) string {
 			EndLine:   m.EndLineNumber,
 			Deleted:   m.Deleted,
 			Unlinked:  !m.Deleted && !linkedMarkers[m.ID],
+			Drifted:   driftedNodes[m.ID],
 		}
 		if r.Verbose && !m.Deleted {
 			if content, ok := r.MarkerContents[m.ID]; ok {
@@ -215,7 +252,7 @@ func (p JSONPresenter) List(r ListResult) string {
 	edges := make([]jsonListEdge, 0, len(state.Edges))
 	for _, e := range state.Edges {
 		status := "synced"
-		if drifted[e.From+"\x00"+e.To] || drifted[e.To+"\x00"+e.From] {
+		if driftedNodes[e.From] || driftedNodes[e.To] {
 			status = "drifted"
 		}
 		edges = append(edges, jsonListEdge{From: e.From, To: e.To, Status: status})
@@ -241,7 +278,7 @@ func (p JSONPresenter) Show(r ShowResult) string {
 				Kind:     "marker",
 				ID:       m.Marker.ID,
 				Filepath: m.Marker.Filepath,
-				Lines:    strconv.Itoa(m.Marker.LineNumber) + "-" + strconv.Itoa(m.Marker.EndLineNumber),
+				Lines:    itoa(m.Marker.LineNumber) + "-" + itoa(m.Marker.EndLineNumber),
 				Hash:     m.Marker.Hash,
 				Content:  m.Content,
 			})
@@ -264,21 +301,43 @@ func (p JSONPresenter) Show(r ShowResult) string {
 	}
 	return marshal(jsonShow{
 		Kind: "marker", ID: r.ID, Filepath: r.Marker.Filepath,
-		Lines:   strconv.Itoa(r.Marker.LineNumber) + "-" + strconv.Itoa(r.Marker.EndLineNumber),
+		Lines:   itoa(r.Marker.LineNumber) + "-" + itoa(r.Marker.EndLineNumber),
 		Hash:    r.Marker.Hash,
 		Content: r.Content,
 		Linked:  linked,
 	})
 }
 
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
+}
+
 type jsonShow struct {
-	Kind    string       `json:"kind"`
-	ID      string       `json:"id"`
-	Filepath string      `json:"filepath"`
-	Lines   string       `json:"lines,omitempty"`
-	Hash    string       `json:"hash"`
-	Content string       `json:"content"`
-	Linked  []jsonLinked `json:"linked"`
+	Kind     string       `json:"kind"`
+	ID       string       `json:"id"`
+	Filepath string       `json:"filepath"`
+	Lines    string       `json:"lines,omitempty"`
+	Hash     string       `json:"hash"`
+	Content  string       `json:"content"`
+	Linked   []jsonLinked `json:"linked"`
 }
 
 type jsonLinked struct {
@@ -292,11 +351,6 @@ type jsonLinked struct {
 
 // --- Diff ---
 
-type jsonDiffEdge struct {
-	Spec   jsonDiffSide `json:"spec"`
-	Marker jsonDiffSide `json:"marker"`
-}
-
 type jsonDiffSide struct {
 	ID           string `json:"id"`
 	Filepath     string `json:"filepath,omitempty"`
@@ -308,6 +362,12 @@ type jsonDiffSide struct {
 	Baseline     string `json:"baseline,omitempty"`
 	Current      string `json:"current,omitempty"`
 	Patch        string `json:"patch,omitempty"`
+}
+
+type jsonDiffEntry struct {
+	Kind   string       `json:"kind"`
+	Spec   *jsonDiffSide `json:"spec,omitempty"`
+	Marker *jsonDiffSide `json:"marker,omitempty"`
 }
 
 func diffSideToJSON(side orchestrator.DiffSide) jsonDiffSide {
@@ -328,35 +388,60 @@ func diffSideToJSON(side orchestrator.DiffSide) jsonDiffSide {
 	return out
 }
 
-func (p JSONPresenter) DiffEdge(r DiffEdgeResult) string {
-	return marshal(jsonDiffEdge{
-		Spec:   diffSideToJSON(r.Result.Spec),
-		Marker: diffSideToJSON(r.Result.Marker),
-	})
-}
-
-type jsonDiffExpanded struct {
-	ID    string        `json:"id,omitempty"`
-	Edges []jsonDiffEdge `json:"edges"`
-}
-
-func edgesToJSON(edges []orchestrator.DiffResult) []jsonDiffEdge {
-	out := make([]jsonDiffEdge, 0, len(edges))
-	for _, e := range edges {
-		out = append(out, jsonDiffEdge{
-			Spec:   diffSideToJSON(e.Spec),
-			Marker: diffSideToJSON(e.Marker),
-		})
+func diffEntryToJSON(d orchestrator.DiffResult) jsonDiffEntry {
+	out := jsonDiffEntry{}
+	if d.Spec != nil {
+		out.Kind = "spec"
+		s := diffSideToJSON(*d.Spec)
+		out.Spec = &s
+	} else if d.Marker != nil {
+		out.Kind = "marker"
+		s := diffSideToJSON(*d.Marker)
+		out.Marker = &s
 	}
 	return out
 }
 
-func (p JSONPresenter) DiffExpanded(r DiffExpandedResult) string {
-	return marshal(jsonDiffExpanded{ID: r.ID, Edges: edgesToJSON(r.Edges)})
+type jsonDiffClosure struct {
+	Hash   string          `json:"hash"`
+	Events []jsonEvent     `json:"events"`
+	Diffs  []jsonDiffEntry `json:"diffs"`
+}
+
+func (p JSONPresenter) DiffClosure(r DiffClosureResult) string {
+	diffs := make([]jsonDiffEntry, 0, len(r.Diffs))
+	for _, d := range r.Diffs {
+		diffs = append(diffs, diffEntryToJSON(d))
+	}
+	return marshal(jsonDiffClosure{Hash: r.Hash, Diffs: diffs})
 }
 
 func (p JSONPresenter) DiffAll(r DiffAllResult) string {
-	return marshal(jsonDiffExpanded{Edges: edgesToJSON(r.Edges)})
+	out := make([]jsonDiffClosure, 0, len(r.Closures))
+	for _, c := range r.Closures {
+		events := make([]jsonEvent, 0, len(c.Events))
+		for _, ev := range c.Events {
+			je := jsonEvent{
+				Kind:    eventKindString(ev.Kind),
+				NodeID:  ev.NodeID,
+				OldHash: ev.OldHash,
+				NewHash: ev.NewHash,
+				Seed:    ev.Seed,
+			}
+			if ev.Edge != nil {
+				je.Edge = &jsonClosureEdge{From: ev.Edge.From, To: ev.Edge.To}
+			}
+			events = append(events, je)
+		}
+		diffs := make([]jsonDiffEntry, 0, len(c.Diffs))
+		for _, d := range c.Diffs {
+			diffs = append(diffs, diffEntryToJSON(d))
+		}
+		out = append(out, jsonDiffClosure{Hash: c.Hash, Events: events, Diffs: diffs})
+	}
+	return marshal(struct {
+		Closures []jsonDiffClosure `json:"closures"`
+	}{Closures: out})
 }
 
 // --- Ok / Error / Text / Version ---
@@ -397,4 +482,5 @@ type jsonVersion struct {
 func (p JSONPresenter) Version(r VersionResult) string {
 	return marshal(jsonVersion{Version: r.Version})
 }
+
 // D! id=ojson range-end

@@ -1,4 +1,0 @@
-func (o *Orchestrator) Init() error {
-	return o.pin.Save(pinstore.PinState{})
-}
-

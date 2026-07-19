@@ -25,14 +25,13 @@ type TodoResult struct {
 type ListResult struct {
 	State          core.EvaluatedState
 	Verbose        bool
-	SpecContents   map[string]string // spec ID -> raw content (verbose only)
-	MarkerContents map[string]string // marker ID -> raw content (verbose only)
+	SpecContents   map[string]string
+	MarkerContents map[string]string
 }
 
 // ShowResult carries the resolved entity (spec or marker), its content, and
 // any linked counterparts with their content. Outbound/Inbound refs are
-// computed from baseline spec-spec edges for the spec view; both directions
-// are shown because the ref graph is rhizomatic.
+// computed from baseline spec-spec edges for the spec view.
 type ShowResult struct {
 	IsSpec        bool
 	ID            string
@@ -41,8 +40,8 @@ type ShowResult struct {
 	Content       string
 	LinkedSpecs   []LinkedSpec
 	LinkedMarkers []LinkedMarker
-	OutboundRefs  []string // specs referenced by this spec
-	InboundRefs   []string // specs that reference this spec
+	OutboundRefs  []string
+	InboundRefs   []string
 }
 
 // LinkedSpec carries a spec linked to the primary marker plus its content.
@@ -57,34 +56,26 @@ type LinkedMarker struct {
 	Content string
 }
 
-// DiffEdgeResult carries a single edge diff (one spec ↔ one marker).
-type DiffEdgeResult struct {
-	Result orchestrator.DiffResult
+// DiffClosureResult carries the diff results for all nodes in one closure.
+type DiffClosureResult struct {
+	Hash string
+	Diffs []orchestrator.DiffResult
 }
 
-// DiffExpandedResult carries all linked edges for a single ID (marker or spec).
-type DiffExpandedResult struct {
-	ID    string
-	Edges []orchestrator.DiffResult
-}
-
-// DiffAllResult carries every drifted edge in state.Todos.
+// DiffAllResult carries per-closure diff results alongside the evaluated state.
 type DiffAllResult struct {
-	State core.EvaluatedState
-	Edges []orchestrator.DiffResult
+	State    core.EvaluatedState
+	Closures []orchestrator.ClosureDiff
 }
 
 // OkResult is a generic success message for commands that don't produce
-// structured data (init, link, unlink, reset). PlainPresenter.Ok returns
-// Message verbatim.
+// structured data (init, link, unlink, reset).
 type OkResult struct {
 	Command string
 	Message string
 }
 
-// ErrorResult carries a structured error. PlainPresenter.Error returns Message
-// verbatim (followed by Hint if non-empty). JSONPresenter emits
-// {"ok":false, "error":..., "hint"?:..., "exit":N}.
+// ErrorResult carries a structured error.
 type ErrorResult struct {
 	Command string
 	Message string
@@ -93,13 +84,11 @@ type ErrorResult struct {
 }
 
 // TextResult is a passthrough for embedded prose (help, skill).
-// PlainPresenter.Text returns Text verbatim.
 type TextResult struct {
 	Text string
 }
 
-// VersionResult carries the version string for `drift version`. PlainPresenter
-// returns "drift version <X>"; JSONPresenter emits {"version":"<X>"}.
+// VersionResult carries the version string for `drift version`.
 type VersionResult struct {
 	Version string
 }
@@ -107,8 +96,7 @@ type VersionResult struct {
 func (TodoResult) isResult()         {}
 func (ListResult) isResult()         {}
 func (ShowResult) isResult()         {}
-func (DiffEdgeResult) isResult()     {}
-func (DiffExpandedResult) isResult() {}
+func (DiffClosureResult) isResult()  {}
 func (DiffAllResult) isResult()      {}
 func (OkResult) isResult()           {}
 func (ErrorResult) isResult()        {}

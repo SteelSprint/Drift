@@ -1,1 +1,0 @@
-Before hashing a marker's range, every line within the range that matches the marker pattern has its D! declaration stripped (from D! to end of line), leaving only the comment prefix. This makes markers invisible to each other's hashes, enabling nested and overlapping ranges without interference.

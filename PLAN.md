@@ -1,385 +1,360 @@
-# Three-Mode Output Layer + Command Dispatcher
+# Provenance Closures — Consolidated Execution Plan
 
-Status: planned, awaiting implementation.
-Scope: refactor `cli.Run` into a dispatcher-driven pipeline producing typed `Result`s, rendered by one of three `Presenter` implementations (Plain / Color / JSON). Add `--json`, `--no-color`, `--color={auto,always,never}` as global flags on every command. Collapse three sources of command metadata into a single Registry.
+## End state (one paragraph)
 
-This plan is drift-tracked. Implementation phases add markers linking code to the new specs in `cli/output/`.
+Specs and markers are symmetric nodes in a directed citation graph (`A →s B` = spec A declares a ref to spec B; `M →m S` = marker M links to spec S). Both specs and markers can drift. Drift propagates **in the citer direction only** (cited → citer), transitive to fixpoint. Markers cannot be cited, so drift through a marker stops there. Each drift event seeds a **closure**: the seed node plus all transitively-reachable citers, plus edges among them. Closures are strictly disjoint across seeds (no merging); non-seed citers may appear in multiple closures. Closure identity is the first 8 hex chars of `SHA1(sorted nodes + sorted edges)`, stable across drift-state changes. `drift todo` outputs closures. `drift reset <hash>` syncs the closure's seed events from scan into baseline. State.xml v4 stores baseline only — no `EdgeResolution` table.
 
----
+## Conceptual model
 
-## 1. Surface
+- **Nodes**: specs and markers, treated symmetrically. Both can drift; both propagate.
+- **Edges**: `marker → spec` (link, user-declared via `drift link`) and `spec → spec` (ref, auto-parsed from `<ref>`). Both are full propagation edges.
+- **The single retained asymmetry**: `<ref>` cannot target a marker. Only specs are ref-targets. (Already true; remains true.)
+- **Closure**: per-seed derivation — seed + transitive citers. Identified by hash of its membership. No source attribution.
+- **State.xml**: baseline only. No `EdgeResolution` table. `drift reset <hash>` syncs baseline to scan for every event the closure's seed originated.
 
-Every command — `init`, `todo`, `list`, `show`, `diff`, `link`, `unlink`, `reset`, `help`, `skill`, `version` — accepts three global flags:
+## Algorithm specification
 
-| Flag | Effect |
+```
+DeriveClosures(scan, baseline) []Closure:
+
+  STEP 1 — SEEDS
+    For each baseline node N with scan_hash(N) != baseline_hash(N):
+      register event {NODE_CHANGED, seed: N}
+    For each scan edge (X, Y) not in baseline:
+      register event {EDGE_ADDED, seed: X}; register event {EDGE_ADDED, seed: Y}
+    For each baseline edge (X, Y) not in scan:
+      register event {EDGE_REMOVED, seed: X}; register event {EDGE_REMOVED, seed: Y}
+    For each scan edge (X, Y) where Y not in scan:
+      register event {EDGE_BROKEN, seed: X}
+    For each scan node N not in baseline:
+      register event {NODE_ADDED, seed: N}
+    For each baseline node N not in scan:
+      register event {NODE_REMOVED, seed: N}
+
+  STEP 2 — CLOSURE PER SEED
+    Build incoming-edge map: for each edge (F, T) in (baseline ∪ scan),
+    incoming[T] += F.
+
+    For each seed S:
+      closure_nodes = {S}
+      BFS from S over incoming edges:
+        For each C in incoming[S']: add C; recurse from C.
+      closure_edges = undirected edges among closure_nodes
+      closure_events = all events registered with seed == S
+      closure_hash = first 8 hex chars of SHA1(
+        sort(closure_nodes) ++ sort(closure_edges)
+      )
+
+  STEP 3 — MERGE SAME-HASH CLOSURES
+    Distinct seeds producing identical hashes (rare: tightly-coupled seed pair
+    where each cites the other) → merge into one closure with combined events.
+
+  STEP 4 — RETURN
+    Closures sorted by hash for deterministic display.
+```
+
+### Propagation rule (directed)
+
+When node X becomes drift-impacted, find all nodes Y such that `Y → X` is an edge (in either baseline or scan). Y becomes drift-impacted. Recurse to fixpoint.
+
+- Drift on node X propagates to nodes that cite X.
+- "Cite" includes: spec→spec refs and marker→spec links (markers cite specs).
+- Specs can be cited (by specs and markers).
+- Markers cannot be cited.
+- Consequence: marker drift stays local (no citers); spec drift walks the citer chain.
+
+### Closure grouping rule (strictly disjoint)
+
+Each seed produces its own closure. Closures can share non-seed citers (overlap on intermediate nodes), but each closure's events belong only to its seed. Two seeds never produce one merged closure unless their membership is identical (same hash → merge events).
+
+### Reset semantics
+
+`drift reset <hash>` walks the closure's events and applies per-event sync rules:
+
+| Event kind | Reset action |
 |---|---|
-| `--json` | Output a single JSON object per command (schema per command). |
-| `--no-color` | Force Plain output. |
-| `--color={auto,always,never}` | Explicit color control. `auto` = default. |
+| `NODE_CHANGED` | Set baseline hash = scan hash for that node |
+| `NODE_ADDED` | Add node (with scan hash) to baseline |
+| `NODE_REMOVED` | Remove node from baseline |
+| `EDGE_ADDED` | Add edge to baseline |
+| `EDGE_REMOVED` | Remove edge from baseline |
+| `EDGE_BROKEN` | No-op (requires scan fix — add missing target or remove the ref) |
 
-Default mode = **Color** when stdout is a TTY and `NO_COLOR` is unset; otherwise Plain. Piped/redirected output is always Plain.
+Reset is per-seed-events: only the closure's seed's events sync. Non-seed citers' state unchanged. Other closures' events untouched.
 
-`version` moves out of the `main.go` pre-check (`cmd/drift/main.go:14`) into the dispatch pipeline as `VersionCommand`, uniform with every other command.
+## Truth tables
 
----
-
-## 2. Architecture
-
-```
-cmd/drift/main.go
-    │  selectOutput(args, stdout, env) → (Options, Presenter)
-    │  RunWithRender(args, ".", opts, presenter) → (string, int)
-    │  fmt.Println(output)
-    ▼
-cli.RunWithRender
-    │  1. stripGlobalFlags(args)         → (--json/--no-color/--color= removed)
-    │  2. uniform pre-checks:            help_flag, unknown_flag_rejection
-    │  3. dispatcher.Lookup(args[0])     → Command
-    │  4. ctx := CommandContext{Args, Dir, Orch}
-    │  5. result, code := recoverWrap(cmd, ctx)   ← enforces ErrorResult on panic
-    │  6. return presenter.Render(result), code
-    ▼
-cli/commands/*.go           ← one struct per command, implements Command interface
-cli/output/                 ← Result types, Presenter interface, 3 presenter impls
-cli/registry.go             ← map[string]Command — single source of truth
-cli/help_template.go        ← drift help generator (replaces help.txt)
-cli/fragments.go            ← shared prose constants used by all presenters + help
-```
-
-Three strict layers, one direction of dependency. Commands produce data, never strings. Presenters own all presentation.
-
----
-
-## 3. Locked decisions
-
-| Decision | Choice |
-|---|---|
-| Output modes | `default` (color) / `--no-color` (plain) / `--json` |
-| Command→formatter boundary | Design Y — `RunWithRender` returns typed `Result`; `main.go` picks presenter and calls `presenter.Render(result)` |
-| Presenter count | 3 visitor implementations (Plain, Color, JSON), each with one method per command |
-| `Run(args, dir) (string, int)` | Unchanged signature; thin wrapper over new `RunWithRender(args, dir, opts, presenter)` — keeps ~50 test sites green |
-| Color strategy | Independent from raw Result data; shares prose via `cli/fragments.go` constants. NOT a wrapper over Plain |
-| Guardrail invariant | `stripANSI(ColorPresenter.X(r)) == PlainPresenter.X(r)` for every Result `r` and method `X`, enforced by battery test |
-| Plain fidelity | Byte-identical to today — keeps existing `cli.drift.xml` specs and CLI tests valid through Landings 1–2 |
-| Dispatcher | W1 — `Command` interface, one struct per command in `cli/commands/`; `Registry` collapses `help.txt` + `subcommandHelpTexts` + `recognizedFlags` into one source |
-| `version` command | Moves into dispatch as `VersionCommand` → `VersionResult` |
-| Flag precedence | `--json` > `--no-color` > `--color=never` > `NO_COLOR` > non-TTY > default (Color). `--color=always` overrides NO_COLOR and non-TTY |
-| Help/skill under `--json` | Pass-through as `{"text": "..."}` |
-| Execution | Landings 1–2 (behavior-identical structural refactor) ship before any new mode. Then JSON (3), Color (4), spec hygiene (5) |
-| Zero-dependency | Preserved — ANSI codes, TTY detection, JSON via Go stdlib only |
-
----
-
-## 4. Spec organization (multi-level, drift-tracked)
-
-Five levels, each citing the level above via `<ref spec="...">`. The top two levels (L0, L0.5) belong to the broader business/product hierarchy; the bottom three (L1, L2, L3) belong to the output-layer feature itself.
-
-```
-main.drift.xml
-  └── business/goals/
-        goals.drift.xml                                    module: business_goals           L0   — org mission (5 goals)
-        build_open_source_tools/
-          drift/
-            open_source_tools.drift.xml                    module: open_source_tools_drift  L0.5 — Drift product definition (6 specs, stubbed)
-        explore_and_discover/                              (stubbed directory — placeholder)
-        create_best_practices/                             (stubbed directory — placeholder)
-        communicate/                                       (stubbed directory — placeholder)
-  └── cli/output/
-        output_intent.drift.xml                            module: output_intent            L1   — feature intent (WHY)
-        output.drift.xml                                   module: output                   L2   — behaviors (WHAT)
-        output_impl.drift.xml                              module: output_impl              L3   — code units (WHERE/HOW)
-  └── cli/cli.drift.xml                                    updates in place                 L2 & L3 mixed (existing)
-```
-
-**Trace chain** for any output-layer feature-intent spec, e.g. `output_intent.machine_readable`:
-
-```
-output_intent.machine_readable
-  → <ref spec="open_source_tools_drift.llm_agent_persona">
-    → <ref spec="open_source_tools_drift.purpose">
-      → <ref spec="business_goals.build_open_source_tools">
-```
-
-The directory structure encodes the goal hierarchy. `business_goals.*` is now properly imported (previously orphaned). The four goal-directories under `business/goals/` are the "four buckets" model — one per actionable goal (premise is framing, not actionable). Only `build_open_source_tools` is populated; the other three are empty stubs awaiting future content.
-
-**Level discipline:**
-- **L0 (`business_goals.*`)** — Org-wide mission. Not product-specific. The 5 goals (premise + 4 actionable).
-- **L0.5 (`open_source_tools_drift.*`)** — Drift's product definition: purpose, methodology, personas, cross-cutting constraints. Reusable parent for every drift feature's `*_intent` module.
-- **L1 (`output_intent.*`)** — Feature-level outcomes and commitments. No code, no flags, no JSON shapes. Readable by a product stakeholder.
-- **L2 (`output.*`)** — Observable behaviors. Modes, flag precedence, palettes, JSON schemas, invariants. Readable by an integration tester writing behavior tests.
-- **L3 (`output_impl.*`)** — Code-unit organization. Package layout, interface signatures, file responsibilities. Readable by a maintainer navigating the codebase.
-
-Cross-refs flow downward: L0 → L0.5 → L1 → L2 → L3. Lower levels never cite higher levels for behavior; lower levels cite the level immediately above for "implementation of". A spec may skip a level when the commitment is broader (e.g., `output_intent.zero_dependency_preserved` cites `business_goals.build_open_source_tools` directly because zero-dep is a project-wide commitment, not drift-product-specific).
-
-### Spec inventory
-
-**`output_intent` (Level 1) — 11 specs**
-
-| ID | One-liner |
-|---|---|
-| `audiences` | Three distinct consumers (interactive human, piping human, software); one format can't serve all. |
-| `interactive_default` | Default in a terminal is color — drift must be legible at a glance. |
-| `machine_readable` | LLMs/scripts need structured JSON, not regex over human prose. |
-| `pipe_safe` | Piped/redirected output must never contain ANSI — enforced by TTY detection, not opt-in. |
-| `user_override` | `--no-color`/`--json`/`--color=always` let users override auto-selection. |
-| `explicit_contract` | Every mode of every command is specified; no "implementation-defined" outputs. |
-| `error_uniformity` | Errors are first-class output with defined shape in every mode, never bare strings. |
-| `metadata_single_source` | Command metadata lives in one place (Registry), not three. |
-| `uniform_dispatch` | Every command flows through the same pipeline; no command bypasses it (incl. `version`). |
-| `zero_dependency_preserved` | Output layer adds no deps; ANSI/TTY/JSON all stdlib. |
-| `self_hosting_preserved` | Output layer is drift-tracked like everything else; `drift todo` clean before commit. |
-
-**`output` (Level 2) — 20 specs**
-
-| Group | Specs |
-|---|---|
-| Mode selection (6) | `modes`, `color_default`, `tty_detection`, `global_flags`, `global_flag_stripping`, `flag_precedence` |
-| Plain (1) | `plain_mode` |
-| Color (3) | `color_mode`, `color_palette`, `guardrail_property` |
-| JSON (3) | `json_mode`, `json_schema`, `json_field_ordering` |
-| Result & errors (3) | `result_types`, `error_result_invariant`, `error_hint_convention` |
-| Dispatch (4) | `dispatch_pipeline`, `command_interface`, `uniform_prechecks`, `version_in_dispatch` |
-
-**`output_impl` (Level 3) — 9 specs**
-
-| ID | One-liner |
-|---|---|
-| `package_layout` | New `cli/output/` + `cli/commands/` packages; `cli/command.go`, `registry.go`, `help_template.go`, `fragments.go`. |
-| `presenter_interface` | Presenter interface in `cli/output/presenter.go`; one method per Result type; three implementations. |
-| `result_types` | Sealed Result interface in `cli/output/result.go`; ~10 concrete types wrapping orchestrator/core data. |
-| `plain_presenter` | `cli/output/plain.go` — byte-identical migration of today's `format*` functions. |
-| `color_presenter` | `cli/output/color.go` — independent impl from Result data; uses `fragments.go`; ANSI per palette. |
-| `json_presenter` | `cli/output/json.go` — `encoding/json` with struct-driven field ordering; per-command schema. |
-| `command_interface_impl` | `cli/command.go` — `Command`/`CommandContext`/`CommandMeta`/`recoverWrap` signatures. |
-| `registry` | `cli/registry.go` — `var Registry = map[string]Command{...}`; derived helpers; replaces `help.txt` + two maps. |
-| `help_generator` | `cli/help_template.go` — `GenerateHelp(registry)`; static prose from `fragments.go`; deletes `help.txt`. |
-| `fragments` | `cli/fragments.go` — shared prose constants (tags, statuses, templates, helpers). |
-| `guardrail_test` | `cli/output/color_test.go` — battery asserting `stripANSI(Color.X(r)) == Plain.X(r)`. |
-
-**Updates to existing `cli/cli.drift.xml` — 9 specs touched**
-
-| Spec | Change |
-|---|---|
-| `dispatch` | Note `version` now dispatched; add global_flag_stripping as third uniform pre-check. |
-| `unknown_flag_rejection` | Note `--json`/`--no-color`/`--color=` stripped before this check; never rejected. |
-| `format_todo` | Cross-ref: Plain-specific; Color via `output.color_palette`; JSON via `output.json_schema`. |
-| `reset_format`, `link_format`, `unlink_format`, `list_format` | Same cross-ref clause as `format_todo`. |
-| `show_command`, `diff_command` | Same cross-ref clause. |
-| `help` | Note help text generated from Registry (`output_impl.help_generator`); byte-identical to current. |
-
-**New spec in `cli/cli.drift.xml` — 1 added**
-
-| Spec | Content |
-|---|---|
-| `version_command` | `drift version` returns VersionResult; plain = `"drift version <X>"`, JSON = `{"version":"<X>"}`, exit 0. |
-
-### Sample spec text (one per level, representative)
-
-**L1 — `output_intent.pipe_safe`:**
-> When drift output is piped, redirected, or consumed by another process, color codes MUST NOT appear in the output. ANSI escape sequences corrupt pipelines, files, and structured parsers. This is non-negotiable: pipe-safety is enforced by automatic TTY detection, not by user opt-in. A user should never have to remember `--no-color` when running `drift todo | grep marker` — drift detects the non-TTY stdout and emits plain. See `output.tty_detection` for the mechanism and `output.flag_precedence` for the override precedence.
-
-**L2 — `output.guardrail_property`:**
-> For every Result `r` and every Presenter method `X`, `stripANSI(ColorPresenter.X(r))` MUST equal `PlainPresenter.X(r)` byte-for-byte. This is the correctness invariant that permits Color to be implemented independently from Plain (see `output.color_mode`) rather than as a wrapper. It is enforced by a battery test in `cli/output/color_test.go` covering: synced case, drifted marker, drifted spec, both-changed, deleted spec, deleted marker, no-baseline, multi-edge expanded, `--all` with multiple edges, empty state, unlinked warning, and every OkResult/ErrorResult/TextResult/VersionResult shape. If Color and Plain ever diverge in layout (not just ANSI), this test fails. See `output_impl.guardrail_test` for the test contract.
-
-**L3 — `output_impl.registry`:**
-> `cli/registry.go` exports `var Registry = map[string]Command{...}` mapping command names to Command instances (one entry per command in `cli/commands/`). Provides derived helpers `subcommandHelp(name string) (string, bool)` returning `cmd.Meta().Usage`, and `recognizedFlagsFor(cmd string) map[string]bool` built from `cmd.Meta().Flags`. The Registry is the SINGLE source of truth for command metadata; `cli/help.txt`, `subcommandHelpTexts` (cli/cli.go:197), and `recognizedFlags` (cli/cli.go:216) are deleted. See `output_intent.metadata_single_source` for the commitment and `output_impl.command_interface_impl` for the Command interface shape.
-
----
-
-## 5. Result types & Presenter interface
-
-```go
-// cli/output/result.go
-type Result interface{ isResult() }
-
-type TodoResult         struct{ State core.EvaluatedState }
-type ListResult         struct{ State core.EvaluatedState; Verbose bool }
-type ShowResult         struct{ IsSpec bool; Spec *core.Spec; Marker *core.Marker; Linked []LinkedEntity; Contents map[string]string }
-type DiffEdgeResult     struct{ Result orchestrator.DiffResult }
-type DiffExpandedResult struct{ ID string; Edges []orchestrator.DiffResult }
-type DiffAllResult      struct{ State core.EvaluatedState; Edges []orchestrator.DiffResult }
-type OkResult           struct{ Command, Message string }
-type ErrorResult        struct{ Command, Message, Hint string; Exit int }
-type TextResult         struct{ Text string }   // help/skill passthrough
-type VersionResult      struct{ Version string }
-```
-
-```go
-// cli/output/presenter.go
-type Presenter interface {
-    Todo(TodoResult)         string
-    List(ListResult)         string
-    Show(ShowResult)         string
-    DiffEdge(DiffEdgeResult) string
-    DiffExpanded(DiffExpandedResult) string
-    DiffAll(DiffAllResult)   string
-    Ok(OkResult)             string
-    Error(ErrorResult)       string
-    Text(TextResult)         string
-    Version(VersionResult)   string
-}
-```
-
-Three implementations: `PlainPresenter`, `ColorPresenter`, `JSONPresenter`. `main.go` does a type switch on the returned `Result` and dispatches to the matching Presenter method.
-
----
-
-## 6. JSON schema (per command)
-
-```jsonc
-// todo
-{ "ok": true, "specs": N, "markers": N, "links": N,
-  "todos": [{ "marker": "id", "spec": "mod.id",
-              "markerLocation": "file:line", "specLocation": "file:line",
-              "markerChanged": bool, "specChanged": bool,
-              "markerDeleted": bool, "specDeleted": bool }],
-  "unlinkedMarkers": N }
-
-// list
-{ "specs":   [{ "id": "...", "filepath": "...", "deleted": bool, "unlinked": bool, "text"?: "..." }],
-  "markers": [{ "id": "...", "filepath": "...", "startLine": N, "endLine": N,
-                "deleted": bool, "unlinked": bool, "preview"?: "..." }],
-  "links":   [{ "marker": "...", "spec": "...", "status": "synced"|"drifted" }] }
-
-// show
-{ "kind": "spec"|"marker", "id": "...", "filepath": "...", "hash": "...",
-  "lines"?: "start-end", "content": "...", "linked": [ {...entity...} ] }
-
-// diff (single edge — matches orchestrator.DiffResult shape)
-{ "spec":   { "id", "filepath", "lines", "baselineHash", "currentHash",
-              "hasBaseline": bool, "deleted": bool,
-              "baseline": "...", "current": "...", "patch": "..." },
-  "marker": { ...same shape... } }
-
-// diff expanded / --all
-{ "id"?: "...", "edges": [ {...single-edge...} ] }
-
-// init / link / unlink / reset
-{ "ok": true, "command": "...", "message": "..." }
-
-// help / skill
-{ "text": "..." }
-
-// version
-{ "version": "..." }
-
-// errors
-{ "ok": false, "error": "...", "hint"?: "...", "exit": N }
-```
-
----
-
-## 7. Color palette
-
-| Pattern | ANSI | Code |
+| # | Use case | Closure shape |
 |---|---|---|
-| diff `+` lines | green | 32 |
-| diff `-` lines | red | 31 |
-| hunk `@@` headers | cyan | 36 |
-| `[DRIFTED]`, `[deleted]`, error messages | red | 31 |
-| `[TODO]`, `[unlinked]`, drift status lines | yellow | 33 |
-| `[synced]`, `Status: in sync`, `No changes detected` | green | 32 |
-| section headers `=== Spec/Marker: ... ===` | bold | 1 |
-| `→ Run 'drift ...'` hints | cyan | 36 |
+| 1 | Spec S edited, isolated (no refs in or out, no markers) | `{S}`, 1 node, 0 edges |
+| 2 | Spec S edited, S cites S' (S →s S') | `{S}` — S' is cited BY S; not the citer direction. S' not included. |
+| 3 | Spec S edited, marker M links to S (M →m S) | `{S, M}` — M cites S, so M is in closure |
+| 4 | Spec S edited, S' cites S (S' →s S) | `{S, S'}` plus transitive citers of S' |
+| 5 | Spec S edited, complex citation graph | `{S}` ∪ {transitive citers of S} ∪ {markers linked to those specs transitively reached via citer chain} |
+| 6 | Marker M edited, linked to S | `{M, S}` — edge (M, S) drifted; both endpoints drift-impacted. Plus citers of S. |
+| 7 | Marker M edited, multi-linked to S1 and S2 | `{M, S1, S2}` plus citers of S1, citers of S2. Both edges drifted. |
+| 8 | Spec S edited AND marker M linked to S also edited independently | Two closures: `closure_S` = {S, M, citers of S}; `closure_M` = {M, S, citers of S}. Same membership if no other drift — merge to single closure with both events. |
+| 9 | Specs S1 and S2 both edited, S2 cites S1 | Two closures: `closure_S1` = {S1, S2, citers of S2, …}; `closure_S2` = {S2, citers of S2, …}. Same membership → merge to one closure with both events. |
+| 10 | Specs S1 and S2 both edited, no citation relationship | Two closures, disjoint: `closure_S1` and `closure_S2`. |
+| 11 | Specs S1 and S2 both edited, both cited by S3 | Two closures: `closure_S1` = {S1, S3, citers of S3, …}; `closure_S2` = {S2, S3, citers of S3, …}. S3 in both. Strict disjoint. |
+| 12 | New ref `(A →s B)` declared in scan | Closure seeded by A: {A, citers of A}. Closure seeded by B: {B, A's transitive citers, citers of B}. May merge if same membership. |
+| 13 | Ref `(A →s B)` removed from scan | Closure seeded by A: {A, citers of A}. Closure seeded by B: {B, citers of B}. |
+| 14 | Broken ref `(A →s B)` where B doesn't exist in scan | Closure seeded by A: {A, citers of A}. B not a node. Reset no-ops on broken event. |
+| 15 | Spec S added in scan, no refs/links | `{S}`, 1 node, 0 edges. Event NODE_ADDED. |
+| 16 | Spec S deleted from scan, no refs/links | `{S}`, 1 node, 0 edges. Event NODE_REMOVED. |
+| 17 | Marker M linked to S1 and S2; S1 drifts | `closure_S1` = {S1, M (because M cites S1)} + citers of S1 + citers of M (none). S2 NOT in closure. |
+| 18 | Marker M linked to S1 and S2; M drifts | `closure_M` = {M, S1, S2} + citers of S1 + citers of S2. Both edges drifted (M is endpoint). |
 
-Bold = `\x1b[1m`; colors use `\x1b[Nm`; reset = `\x1b[0m`. Defined in `cli/output/ansi.go`.
+Closure identity is membership-based. Adding drift inside an existing closure doesn't change its hash. Only membership changes (added/removed nodes or edges) change the hash.
 
----
+## Type definitions
 
-## 8. Implementation phases (five landings)
+```go
+// core/core.go — new types
 
-Each landing is independently reviewable and revertable. Each ends with `go test ./...` green and `drift todo` clean.
+type Closure struct {
+    Hash   string       // 8 hex chars
+    Nodes  []NodeRef    // sorted by ID
+    Edges  []Edge       // sorted by undirected key (min(from,to) + \x00 + max(from,to))
+    Events []DriftEvent // all events with seed in this closure
+}
 
-### Landing 1 — Plain refactor (switch intact, behavior-identical)
+type DriftEvent struct {
+    Kind    EventKind
+    NodeID  string  // for node events
+    Edge    *Edge   // for edge events
+    OldHash string  // for NODE_CHANGED
+    NewHash string  // for NODE_CHANGED
+    Seed    string  // ID of originating seed node
+}
 
-- Create `cli/output/` package
-- Define `Result` sealed interface + concrete types (incl. `VersionResult`)
-- Define `Presenter` interface
-- Extract `cli/fragments.go` with shared prose constants
-- Implement `PlainPresenter` by migrating `format*` verbatim from `cli/cli.go`
-- Add `RunWithRender(args, dir, opts, presenter) (string, int)`
-- Convert `Run` into thin wrapper: `return RunWithRender(args, dir, DefaultOptions(), PlainPresenter{})`
-- Convert every `return str, code` to typed `Result`; every `return err.Error(), N` to `ErrorResult{...}`
-- Add `cli/output/plain_test.go` with golden assertions lifted from existing test cases
+type EventKind int
+const (
+    EventNodeChanged EventKind = iota
+    EventNodeAdded
+    EventNodeRemoved
+    EventEdgeAdded
+    EventEdgeRemoved
+    EventEdgeBroken
+)
+```
 
-**Exit:** Plain byte-identical; existing CLI tests untouched.
+Retired types/fields: `Todo`, `TodoKind`, `SourceSpecID`, `EdgeResolution`, all rhizomatic-closure language.
 
-### Landing 2 — Command interface + Registry collapse (behavior-identical)
+## State.xml v4 schema
 
-- Define `Command`/`CommandContext`/`CommandMeta`/`recoverWrap` in `cli/command.go`
-- Create `cli/commands/*.go` — one struct per command (`InitCommand`, `TodoCommand`, …, `VersionCommand`)
-- Move each case body from `RunWithRender`'s switch into the corresponding command's `Run` method
-- Each command's `Meta()` returns name/short/usage/flags (migrating `subcommandHelpTexts` content)
-- Replace `subcommandHelpTexts` map with `subcommandHelp(name)` derived from Registry
-- Replace `recognizedFlags` map with `recognizedFlagsFor(cmd)` derived from `cmd.Meta().Flags`
-- Replace `cli/help.txt` with `cli/help_template.go` generator; static prose in `fragments.go`
-- Move `version` from `main.go` pre-check into `VersionCommand` in dispatch
-- Verify behavior-identical (existing tests still green)
+```xml
+<driftState version="4">
+  <specs>
+    <spec id="..." hash="..." filepath="..." />
+  </specs>
+  <markers>
+    <marker id="..." hash="..." filepath="..." line="..." endLine="..." />
+  </markers>
+  <edges>
+    <edge from="..." to="..." />
+  </edges>
+</driftState>
+```
 
-**Exit:** metadata duplication eliminated; switch replaced by Registry lookup.
+Changes from v3: dropped `<edgeResolutions>` entirely. No migration path (clean break). State version constant bumps to 4. Refuse to load v3 files with a clear error message: *"state.xml v3 is unsupported; delete .drift/ and run drift init"*.
 
-### Landing 3 — JSONPresenter + `--json`
+## CLI surface change
 
-- Implement `JSONPresenter` in `cli/output/json.go` per §6 schema
-- Global flag pre-pass: `stripGlobalFlags(args)` for `--json` only at this stage
-- `main.go`: parse `--json`, select `JSONPresenter` when set
-- Add `cli/output/json_test.go`: parse via `encoding/json`; assert required keys per command; verify `patch` field matches `internal/diff.UnifiedDiff`; verify error shape has `ok:false` + `exit`
-
-**Exit:** `--json` works on every command; plain/color paths unchanged.
-
-### Landing 4 — ColorPresenter + TTY + remaining global flags
-
-- Implement `ColorPresenter` independently in `cli/output/color.go` (uses `fragments.go`)
-- `cli/output/ansi.go` — ANSI code constants + helper `Style(text string, codes ...string) string`
-- `cli/output/tty.go` — `IsTerminal(f *os.File) bool` (via `os.File.Stat` + `os.ModeCharDevice`); `ColorEnabled(stdout, env, override) bool` implementing §3 precedence
-- Add guardrail test in `cli/output/color_test.go`: `stripANSI(ColorPresenter.X(r)) == PlainPresenter.X(r)` battery
-- Extend `stripGlobalFlags` to handle `--no-color`, `--color={auto,always,never}`
-- `main.go`: `selectOutput` with full precedence — `--json` > `--no-color` > `--color=never` > `NO_COLOR` > non-TTY > Color
-- Default mode flips from Plain to Color (TTY-gated)
-- Update `unknown_flag_rejection` spec
-
-**Exit:** default output becomes color; round-trip guardrail green for full battery.
-
-### Landing 5 — Spec hygiene + markers
-
-- Add the three new spec modules: `output_intent`, `output`, `output_impl`
-- Update `main.drift.xml` to import them
-- Update `cli/cli.drift.xml` specs per §4 (`dispatch`, `unknown_flag_rejection`, `format_*`, `show_command`, `diff_command`, `help`)
-- Add new `cli.version_command` spec
-- Place markers in new code files for each new spec
-- `drift link` every new marker to its spec
-- Run `drift todo` clean
-
-**Exit:** `drift todo` clean; all new specs linked to implementing code.
-
----
-
-## 9. Sizing
-
-| Component | Rough LOC |
+| Old | New |
 |---|---|
-| Result types + Presenter interface | ~150 |
-| PlainPresenter (migrated `format*`) | ~400 moved |
-| ColorPresenter (independent impl) | ~450 |
-| JSONPresenter | ~350 |
-| ANSI + TTY helpers | ~80 |
-| Command interface + dispatcher + recoverWrap | ~150 |
-| Per-command files (×11) | ~600 |
-| Registry + help_template + fragments | ~250 |
-| Tests (plain/color/json/registry) | ~800 |
-| Spec files (3 new modules + cli.drift.xml edits) | ~600 |
-| **Total** | **~3,800 added/moved** |
+| `drift todo` (flat todos) | `drift todo` (closures list) |
+| `drift diff <marker>` | `drift diff <hash>` |
+| `drift diff <marker> <spec>` | Removed |
+| `drift diff <spec>` | Removed |
+| `drift diff --all` | `drift diff --all` (iterates closures) |
+| `drift reset <marker> <spec>` | Removed |
+| `drift reset <spec> <spec>` | Removed |
+| `drift reset <id>` (orphan) | Removed — folded into `reset <hash>` |
+| (new) | `drift reset <hash>` |
+| `drift link`, `unlink`, `show`, `list`, `config theme` | Unchanged |
 
----
+Dots-discrimination dispatch table deleted entirely.
 
-## 10. Self-hosting
+## Presenter shape (Plain / Color)
 
-This plan follows `principles.self_hosting` (README:133): the output layer is itself drift-tracked. Specs land before code; code is linked to specs; `drift todo` is a hard commit gate throughout.
+```
+N closures with drift.
 
-Adding ~40 new specs in three new modules changes `drift list` output (many new unlinked specs visible) but does NOT trigger `drift todo` drift (specs without markers don't produce todos). As landings ship, markers get placed and linked. By end of Landing 5, all specs are linked.
+Closure a3f7b2c1  (5 nodes, 4 edges)
+  Events:
+    [NODE_CHANGED] spec "core.validate" (core.drift.xml:12)
+      baseline: abc12345 → scan: def67890
+    [EDGE_ADDED]   spec "core.validate" → spec "utils.hash"
+  Members:
+    specs:   core.validate, utils.hash, main.boot
+    markers: cval, m2
+  Inspect: drift diff a3f7b2c1
+  Resolve: drift reset a3f7b2c1
 
-`principles.red_before_green` applies: bugs found during the refactor are fixed test-first.
+Closure e1d4f8a9  (2 nodes, 1 edge)
+  Events:
+    [NODE_CHANGED] marker "cval" (core.go:42)
+      ...
 
-`principles.zero_dependency_portable` is preserved: TTY detection, ANSI emission, and JSON serialization all use Go stdlib only. No `golang.org/x/term`, no `fatih/color`.
+Closure 7c2b9e5f  (1 node, 0 edges)  [orphan]
+  Events:
+    [NODE_ADDED] spec "main.newspec" (main.drift.xml:8)
+```
 
-`principles.specs_are_truth` applies: if implementation and spec disagree during development, the spec is truth — fix the code, not the spec.
+JSON shape: `{ "closures": [{ "hash", "nodes", "edges", "events" }] }`. Clean break — no `todos` array.
+
+## File-by-file change list
+
+### Core algorithm (`core/`)
+- **`core.go`**: define `Closure`, `DriftEvent`, `EventKind`. Implement `DeriveClosures`. Delete `computeEdgeTodos`, `computeRhizomaticClosureTodos`, `Todo`, `TodoKind`, `SourceSpecID`.
+- **`core_test.go`**: replace existing todo tests with truth-table-driven closure tests (one test per row in truth tables above).
+- **`core.drift.xml`**: rewrite specs — `todo_action`, `reset_action`, `edge_todo_algorithm`, `rhizomatic_closure` → `provenance_closure`. Remove source-of-truth asymmetry language.
+
+### Scanner (`scanner/`)
+- **`scanner.go`**: no structural change (already produces what we need). Optional: pre-compute incoming-edge map for closure algorithm.
+- **`scanner.drift.xml`**: minor wording updates only.
+
+### State store (`statestore/`)
+- **`pin_file.go`**: state.xml v4 schema. Drop `<edgeResolutions>` parsing/serialization. Drop `EdgeResolution` type, `RecordEdgeResolution`, `LookupEdgeResolution`. Add `SyncClosure(Closure, scan)` that applies the per-event sync rules.
+- **`pin_file_test.go`**: update for v4. Drop resolution-related tests.
+- **State version constant**: bump to 4. Refuse to load v3 files with clear error.
+
+### Orchestrator (`orchestrator/`)
+- **`orchestrator.go`**: replace `Reset(from, to string)` with `ResetClosure(hash string)`. Look up closure by hash from current scan+baseline, walk its events, call `statestore.SyncClosure`. Lock semantics unchanged.
+- **`orchestrator.drift.xml`**: rewrite method specs.
+
+### Model (`model.drift.xml`)
+- Rewrite `model.rhizomatic` as **`model.provenance`**. New axioms:
+  - Citation graph is directed (citer → cited).
+  - Drift propagates in citer direction (cited → citer), transitive to fixpoint.
+  - Markers cannot be cited; drift through markers stops.
+  - No directed cycles among spec-spec edges (cycle detection unchanged).
+  - State is baseline-only; reset = sync to scan.
+
+### CLI commands (`cli/commands/`)
+- **`todo.go`**: call `DeriveClosures`, pass to presenter.
+- **`diff.go`**: accept single hash arg or `--all`. Drop `<marker>`, `<spec>`, `<marker> <spec>` forms.
+- **`reset.go`**: accept single hash arg. Drop dots-discrimination dispatch entirely.
+- **`link.go`, `unlink.go`**: unchanged.
+- **`show.go`**: unchanged.
+- **`list.go`**: unchanged (optional: closure grouping when drift active — defer if nontrivial).
+- **`cli.drift.xml`**: rewrite `todo_command`, `diff_command`, `reset_command` specs.
+
+### Output layer (`cli/output/`)
+- **`presenters_plain.go`**: closure-grouped output.
+- **`presenters_color.go`**: closure-grouped with theme colors.
+- **`presenters_json.go`**: `{ closures: [...] }` schema.
+- **`themes.go`**: add closure-level elements (closure header, event-kind colors).
+- **`tokenizer.go`**: minor vocabulary updates.
+- **`output.drift.xml`, `output_impl.drift.xml`**: rewrite presenter specs.
+
+### Eval (`eval/`)
+- Fixture updates: every fixture that asserts todo shape needs updating to closure shape. May require prompt rewrites too. Defer to end of implementation.
+
+### Docs
+- **`AGENTS.md`**: rewrite workflow section around closures. Update reset dispatch table (deleted), replace with closure-reset description. Update counts (specs/markers/closures).
+- **`DOCUMENTATION.md`**: rewrite state.xml section (v4), drift-kinds section (events), reset semantics, propagation algorithm description. Drop "rhizomatic" everywhere; replace with "provenance."
+- **`README.md`**: update anatomy section. Drop "links/refs" framing in favor of "edges in the citation graph."
+- **`cli/skill.md`**: rewrite LLM workflow around closures.
+- **`cli/help.txt`**: update command reference (diff/reset take hashes, no dots dispatch).
+
+## Re-baselining sequence (drift is self-hosting)
+
+Because drift tracks its own specs, the refactor triggers drift on drift. Sequence:
+
+1. Make all code changes (don't touch specs yet). Build may fail at the `make build` gate.
+2. Update all `*.drift.xml` specs to reflect new behavior.
+3. Run `drift todo` — should show closures seeded by every spec we edited.
+4. Walk each closure via `drift diff <hash>`. Verify spec text matches new code behavior.
+5. `drift reset <hash>` per closure.
+6. Run `make build` — should pass clean.
+7. Run `go test -race -count=1 ./...`.
+8. Update docs (AGENTS.md, etc.).
+9. Run `drift todo` — doc-affecting markers may drift. Review and reset.
+10. Final test pass + Windows build check.
+11. Update eval fixtures. Run eval battery last.
+
+## Test plan (truth-table driven)
+
+Tests live in `core/core_test.go`. One test function per row, all using a small fixture workspace:
+
+| # | Test name | Setup | Assertion |
+|---|---|---|---|
+| 1 | `TestClosure_SingletonSpec` | Baseline: spec S, no edges. Edit S. | Closure = {S}, 1 node, 0 edges, 1 event NODE_CHANGED. |
+| 2 | `TestClosure_CiterDirection` | Baseline: S, S' with S →s S'. Edit S. | Closure = {S}; S' NOT in closure. |
+| 3 | `TestClosure_MarkerAsCiter` | Baseline: S, M with M →m S. Edit S. | Closure = {S, M}. |
+| 4 | `TestClosure_MultiLinkMarkerDrift` | Baseline: M →m S1, M →m S2. Edit M. | Closure = {M, S1, S2, citers of S1, citers of S2}. |
+| 5 | `TestClosure_MultiLinkSpecDrift` | Baseline: M →m S1, M →m S2. Edit S1. | Closure = {S1, M, citers of S1}. S2 NOT in closure. |
+| 6 | `TestClosure_StrictDisjoint` | Baseline: S1, S2 both cited by S3. Edit S1 and S2 independently. | TWO closures. S3 in both. |
+| 7 | `TestClosure_NewEdgeMerges` | Baseline: S1 alone. Scan: S1 + new edge S1 →s S2 (S2 exists). | Closure includes S1 and S2; events EDGE_ADDED on both seeds. |
+| 8 | `TestClosure_RemovedEdge` | Baseline: S1 →s S2. Scan: edge gone. | Closure includes both endpoints; events EDGE_REMOVED. |
+| 9 | `TestClosure_BrokenEdge` | Baseline: S1 alone. Scan: S1 + broken ref to nonexistent S2. | Closure = {S1}, events EDGE_BROKEN. Reset no-ops on broken event. |
+| 10 | `TestClosure_OrphanAdded` | Baseline: empty. Scan: S (no edges). | Closure = {S}, events NODE_ADDED. |
+| 11 | `TestClosure_OrphanRemoved` | Baseline: S (no edges). Scan: empty. | Closure = {S}, events NODE_REMOVED. |
+| 12 | `TestClosure_HashStability` | Same setup as #3; reset; edit S again. | Closure hash is the same as first time. |
+| 13 | `TestClosure_HashChangesOnMembership` | Add a citer to S between runs. | Hash differs. |
+| 14 | `TestClosure_PerSeedReset` | Setup as #6. Reset closure_S1 only. | closure_S2 still present in next todo. |
+| 15 | `TestClosure_BrokenEdgePersists` | Closure has NODE_CHANGED + EDGE_BROKEN. Reset. | NODE_CHANGED syncs; EDGE_BROKEN remains as event in next todo. |
+| 16 | `TestClosure_CycleStillRejected` | Baseline: S1 →s S2, S2 →s S1. | Scanner/validation rejects. |
+
+Plus:
+- `cli/race_test.go`: update for closure API. Confirm concurrent `DeriveClosures` (read-only) and `ResetClosure` (write under lock) are race-free.
+- `statestore/pin_file_test.go`: v4 schema round-trip; refuse v3 files.
+- Determinism: same scan+baseline → same closures, same order.
+
+## Implementation sequence
+
+Order matters for keeping the build working at each step where possible.
+
+1. **State.xml v4 schema** — `statestore/pin_file.go`, drop `<edgeResolutions>`. Bump version. Refuse v3. Drift will fail to load its own state — note this and proceed.
+2. **Core types** — define `Closure`, `DriftEvent`, `EventKind` in `core/core.go`. Don't delete old types yet.
+3. **Implement `DeriveClosures`** alongside old functions. Add truth-table tests. Get all passing.
+4. **Delete old algorithm** — remove `computeEdgeTodos`, `computeRhizomaticClosureTodos`, `Todo`, `TodoKind`, `SourceSpecID`. Update everything that referenced them.
+5. **Orchestrator** — `ResetClosure(hash)` replaces `Reset(from, to)`.
+6. **Presenters** — rewrite Plain/Color/JSON for closures.
+7. **CLI commands** — update todo/diff/reset to new signatures.
+8. **First compile-and-run** — expect compile errors throughout `cli/commands/`, `cli/output/`. Fix iteratively.
+9. **Spec rewrites** — model.drift.xml, core.drift.xml, scanner.drift.xml, orchestrator.drift.xml, cli.drift.xml, output.drift.xml, output_impl.drift.xml. Business/ if needed.
+10. **First drift run** — `drift todo` will show many closures from the spec edits.
+11. **Re-baseline** — review and reset each closure.
+12. **Test pass** — `go test -race -count=1 ./...` clean. `make build` clean.
+13. **Doc rewrites** — AGENTS.md, DOCUMENTATION.md, README.md, skill.md, help.txt.
+14. **Second re-baseline** — doc-marker drift.
+15. **Windows build check** — `GOOS=windows go build -o /dev/null ./statestore/`.
+16. **Eval fixture updates** — eval/*.md and eval helpers.
+17. **Eval run** — `go run ./eval --battery ...` last.
+18. **Commit and push** — likely split across 2-3 commits (algorithm/state, specs+rebaseline, docs+rebaseline, eval).
+
+## Checkpoints (pause for review)
+
+- After step 4 (old algorithm deleted, new path compiles, truth-table tests pass).
+- After step 11 (specs rewritten, drift re-baselined, `make build` clean).
+- After step 14 (docs rewritten, second re-baseline clean).
+
+Each checkpoint = a commit (or commit group) so we can roll back if anything goes sideways. Final commit only after eval passes.
+
+## Open risks / things to watch during execution
+
+1. **State.xml migration**: clean break means existing `.drift/state.xml` files become unloadable. Anyone (including the drift repo itself) must `rm -rf .drift && drift init` once. This is acceptable per design call but worth a note in the commit message.
+
+2. **`DeriveClosures` performance**: for highly-connected spec graphs, the closure-per-seed walk is O(seeds × graph size). Should be fine for typical projects; flag if profiling shows issues.
+
+3. **Closure hash display in TTY**: 8 hex chars in a colored presenter — make sure themes render it distinctly (e.g., bold cyan, like git short SHAs). Theme update needed.
+
+4. **The `business/` spec hierarchy** uses spec-spec refs heavily. Under directed propagation + strict disjoint, changes to a high-level goal spec may produce many closures (one per downstream path). Worth confirming this matches expectation when we re-baseline.
+
+5. **Eval harness shape change**: eval fixtures describe expected agent behavior. The closure-based output is substantially different from the old todo list. The eval prompts themselves may need rewriting (not just fixture updates). Budget extra time here.
+
+6. **`drift list` and `drift show`**: under strict disjoint, `drift show <id>` could optionally list closures containing that node. Useful for navigation but adds presenter work. Defer if scope balloons.
+
+## Terminology lock
+
+- **`rhizomatic` → `provenance`** everywhere.
+- `computeRhizomaticClosureTodos` → `DeriveClosures` (or `ComputeProvenanceClosures`).
+- `model.rhizomatic` spec → `model.provenance` (rewritten).
+- All doc references to "rhizomatic" → "provenance".
+- The conceptual axiom becomes: **"Drift propagation follows the citer direction. A node's drift flags every node that transitively cites it. Markers cannot be cited, so drift through a marker stops there."**
+- `SourceSpecID` field → deleted.
+- `Todo` / `TodoKind` → replaced by `Closure` + `DriftEvent` + `EventKind`.
+- `EdgeResolution` → deleted.

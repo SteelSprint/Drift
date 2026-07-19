@@ -1,1 +1,0 @@
-Spot-check tests assert stripANSI(ColorPresenter.X(r)) == PlainPresenter.X(r) for representative Result values, confirming the guardrail property holds for the closure-driven output shapes.

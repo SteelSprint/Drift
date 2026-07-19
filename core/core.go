@@ -395,8 +395,14 @@ func (algorithm *CoreAlgorithm) evaluateResetClosureAction(ctx CoreAlgorithmCont
 				m.Hash = ev.NewHash
 			}
 		case EventNodeAdded:
-			// New node — should already be in reconciled specs/markers with its scan hash.
-			// Nothing to do; baseline reconciliation already includes it.
+			// New node — establish baseline hash from scan. The reconciler
+			// put the node in the baseline list with Hash=""; reset persists
+			// the scan hash so the next todo is clean.
+			if s, ok := specsByID[ev.NodeID]; ok {
+				s.Hash = ev.NewHash
+			} else if m, ok := markersByID[ev.NodeID]; ok {
+				m.Hash = ev.NewHash
+			}
 		case EventNodeRemoved:
 			delete(specsByID, ev.NodeID)
 			delete(markersByID, ev.NodeID)
@@ -469,10 +475,26 @@ func DeriveClosures(specs []Spec, markers []Marker, baselineEdges []Edge, scan S
 		eventsBySeed[seed] = append(eventsBySeed[seed], ev)
 	}
 
-	// Node hash changes.
+	// Node drift events. Branch on the reconciler's sentinel state so
+	// reviewers see the right event kind:
+	//   - Deleted==true    → NODE_REMOVED (baseline has it, scan doesn't)
+	//   - Hash=="" && current != "" → NODE_ADDED (scan has it, baseline doesn't)
+	//   - Hash != current  → NODE_CHANGED (both sides have it, content differs)
 	for _, s := range specs {
 		current := scan.SpecHashes[s.ID]
-		if s.Hash != current {
+		switch {
+		case s.Deleted:
+			addEvent(s.ID, DriftEvent{
+				Kind:   EventNodeRemoved,
+				NodeID: s.ID,
+			})
+		case s.Hash == "" && current != "":
+			addEvent(s.ID, DriftEvent{
+				Kind:    EventNodeAdded,
+				NodeID:  s.ID,
+				NewHash: current,
+			})
+		case s.Hash != current:
 			addEvent(s.ID, DriftEvent{
 				Kind:    EventNodeChanged,
 				NodeID:  s.ID,
@@ -483,7 +505,19 @@ func DeriveClosures(specs []Spec, markers []Marker, baselineEdges []Edge, scan S
 	}
 	for _, m := range markers {
 		current := scan.MarkerHashes[m.ID]
-		if m.Hash != current {
+		switch {
+		case m.Deleted:
+			addEvent(m.ID, DriftEvent{
+				Kind:   EventNodeRemoved,
+				NodeID: m.ID,
+			})
+		case m.Hash == "" && current != "":
+			addEvent(m.ID, DriftEvent{
+				Kind:    EventNodeAdded,
+				NodeID:  m.ID,
+				NewHash: current,
+			})
+		case m.Hash != current:
 			addEvent(m.ID, DriftEvent{
 				Kind:    EventNodeChanged,
 				NodeID:  m.ID,
@@ -735,6 +769,11 @@ func addEdgeIfMissing(edges []Edge, e Edge) []Edge {
 	return append(edges, e)
 }
 
+// removeEdge drops any edge matching target in either direction. The
+// undirected match is safe because Validate rejects directed cycles among
+// spec-spec edges, so a baseline edge and its reverse can never coexist.
+// If the cycle-rejection invariant is ever relaxed, this function must
+// restrict itself to forward-only matching.
 func removeEdge(edges []Edge, target Edge) []Edge {
 	out := make([]Edge, 0, len(edges))
 	for _, e := range edges {

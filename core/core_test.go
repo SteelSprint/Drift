@@ -220,15 +220,91 @@ func TestClosure_BrokenEdge(t *testing.T) {
 }
 
 // TestClosure_OrphanAdded: new spec in scan, no edges. The reconciler would
-// set baseline Hash="" so DeriveClosures sees a NODE_CHANGED event (baseline
-// empty vs scan hash).
+// set baseline Hash="" so DeriveClosures emits NODE_ADDED.
 func TestClosure_OrphanAdded(t *testing.T) {
 	specs := []core.Spec{testutil.NewSpec("m.s", "")}
 	scan := makeScan(map[string]string{"m.s": hash("new")}, nil, nil)
 	closures := core.DeriveClosures(specs, nil, nil, scan)
 	testutil.AssertClosureCount(t, core.EvaluatedState{Closures: closures}, 1)
-	if len(closures[0].Events) != 1 || closures[0].Events[0].Kind != core.EventNodeChanged {
-		t.Fatalf("want 1 NODE_CHANGED event (orphan with empty baseline), got %+v", closures[0].Events)
+	if len(closures[0].Events) != 1 || closures[0].Events[0].Kind != core.EventNodeAdded {
+		t.Fatalf("want 1 NODE_ADDED event (orphan with empty baseline), got %+v", closures[0].Events)
+	}
+}
+
+// TestClosure_SpecRemoved: spec deleted from scan → NODE_REMOVED event.
+func TestClosure_SpecRemoved(t *testing.T) {
+	specs := []core.Spec{{ID: "m.s", Hash: "old", Filepath: "m.xml", Deleted: true}}
+	scan := makeScan(map[string]string{"m.s": ""}, nil, nil)
+	closures := core.DeriveClosures(specs, nil, nil, scan)
+	testutil.AssertClosureCount(t, core.EvaluatedState{Closures: closures}, 1)
+	if len(closures[0].Events) != 1 || closures[0].Events[0].Kind != core.EventNodeRemoved {
+		t.Fatalf("want 1 NODE_REMOVED event, got %+v", closures[0].Events)
+	}
+	if closures[0].Events[0].NodeID != "m.s" {
+		t.Fatalf("event NodeID = %q, want %q", closures[0].Events[0].NodeID, "m.s")
+	}
+}
+
+// TestClosure_MarkerRemoved: marker deleted from scan → NODE_REMOVED event.
+func TestClosure_MarkerRemoved(t *testing.T) {
+	markers := []core.Marker{{ID: "cval", Hash: "old", Filepath: "c.go", Deleted: true}}
+	scan := makeScan(nil, map[string]string{"cval": ""}, nil)
+	closures := core.DeriveClosures(nil, markers, nil, scan)
+	testutil.AssertClosureCount(t, core.EvaluatedState{Closures: closures}, 1)
+	if len(closures[0].Events) != 1 || closures[0].Events[0].Kind != core.EventNodeRemoved {
+		t.Fatalf("want 1 NODE_REMOVED event, got %+v", closures[0].Events)
+	}
+}
+
+// TestResetClosure_NodeAdded: reset a NODE_ADDED closure → baseline hash established.
+func TestResetClosure_NodeAdded(t *testing.T) {
+	specs := []core.Spec{testutil.NewSpec("m.s", "")} // empty baseline hash
+	scan := makeScan(map[string]string{"m.s": hash("new")}, nil, nil)
+	closures := core.DeriveClosures(specs, nil, nil, scan)
+	if len(closures) != 1 || closures[0].Events[0].Kind != core.EventNodeAdded {
+		t.Fatalf("expected 1 NODE_ADDED closure, got %+v", closures)
+	}
+	ctx := core.CoreAlgorithmContext{
+		Specs:  specs,
+		Action: core.ResetClosureAction{Hash: closures[0].Hash, Scan: scan},
+	}
+	alg := core.NewCoreAlgorithm()
+	evaluated, err := alg.EvaluateState(ctx)
+	if err != nil {
+		t.Fatalf("reset failed: %v", err)
+	}
+	if len(evaluated.Specs) != 1 || evaluated.Specs[0].Hash != hash("new") {
+		t.Fatalf("baseline not established: %+v", evaluated.Specs)
+	}
+}
+
+// TestResetClosure_NodeRemoved: reset a NODE_REMOVED closure → node gone from baseline.
+func TestResetClosure_NodeRemoved(t *testing.T) {
+	specs := []core.Spec{{ID: "m.s", Hash: "old", Filepath: "m.xml", Deleted: true}}
+	markers := []core.Marker{testutil.NewMarker("cval", hash("m"))}
+	baselineEdges := []core.Edge{testutil.NewLink("m.s", "cval")}
+	scan := makeScan(map[string]string{"m.s": ""}, map[string]string{"cval": hash("m")}, baselineEdges)
+	closures := core.DeriveClosures(specs, markers, baselineEdges, scan)
+	if len(closures) != 1 || closures[0].Events[0].Kind != core.EventNodeRemoved {
+		t.Fatalf("expected 1 NODE_REMOVED closure, got %+v", closures)
+	}
+	// Edges touching the removed node should also be filtered.
+	ctx := core.CoreAlgorithmContext{
+		Specs:   specs,
+		Markers: markers,
+		Edges:   baselineEdges,
+		Action:  core.ResetClosureAction{Hash: closures[0].Hash, Scan: scan},
+	}
+	alg := core.NewCoreAlgorithm()
+	evaluated, err := alg.EvaluateState(ctx)
+	if err != nil {
+		t.Fatalf("reset failed: %v", err)
+	}
+	if len(evaluated.Specs) != 0 {
+		t.Fatalf("removed spec still in baseline: %+v", evaluated.Specs)
+	}
+	if len(evaluated.Edges) != 0 {
+		t.Fatalf("edges touching removed spec still present: %+v", evaluated.Edges)
 	}
 }
 

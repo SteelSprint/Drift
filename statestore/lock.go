@@ -11,8 +11,8 @@ import (
 // closes the lock file handle; it must be called exactly once (typically via
 // defer). The lock is auto-released if the process exits or crashes.
 //
-// All state-mutating orchestrator methods (Link, Unlink, Reset, ResetOrphan)
-// must call Lock before Load→modify→Save to prevent concurrent writers from
+// All state-mutating orchestrator methods (Link, Unlink, ResetClosure) must
+// call Lock before Load→modify→Save to prevent concurrent writers from
 // silently overwriting each other's changes.
 func (s *FileStateStore) Lock() (func(), error) {
 	lockPath := filepath.Join(s.dir, ".drift", "state.lock")

@@ -1,6 +1,9 @@
 package cli_test
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -9,9 +12,14 @@ import (
 	"drift/internal/testutil"
 )
 
-// TestConcurrentResetClosures: run N concurrent resets against the same
-// fixture workspace. Regression guard for state-file locking.
-func TestConcurrentResetClosures(t *testing.T) {
+// TestConcurrentResetClosureRace sets up a workspace with 3 distinct drift
+// closures (3 drifted markers), then resets all 3 concurrently. The state
+// file lock must serialize the Load→modify→Save windows; without the lock,
+// concurrent resets would silently overwrite each other and lose work.
+//
+// Regression guard: this test FAILS if locking is removed or broken, because
+// some closures would remain unresolved after the parallel burst.
+func TestConcurrentResetClosureRace(t *testing.T) {
 	dir := t.TempDir()
 	testutil.WriteSpecFile(t, dir, "main.drift.xml",
 		`<module name="m">
@@ -19,59 +27,83 @@ func TestConcurrentResetClosures(t *testing.T) {
 <spec id="b">B spec.</spec>
 <spec id="c">C spec.</spec>
 </module>`)
-	testutil.WriteCodeFile(t, dir, "code.go",
-		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n"+
-			"// D! id=cb range-start\nvar x = 1\n// D! id=cb range-end\n"+
-			"// D! id=cc range-start\nvar y = 2\n// D! id=cc range-end\n")
-
-	runCLI := func(args ...string) (string, int) {
-		out, code := cli.RunWithRender(args, dir, output.PlainPresenter{})
-		return out, code
+	// Three markers, each in its own code file so we can mutate independently.
+	for _, id := range []string{"ca", "cb", "cc"} {
+		testutil.WriteCodeFile(t, dir, id+".go",
+			"// D! id="+id+" range-start\npackage main\n// D! id="+id+" range-end\n")
 	}
 
-	// Initialize + link 3 markers.
-	if _, code := runCLI("init"); code != 0 {
-		t.Fatalf("init failed: code=%d dir=%s", code, dir)
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	runJSON := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.JSONPresenter{})
+	}
+
+	if _, code := run("init"); code != 0 {
+		t.Fatalf("init failed")
 	}
 	for _, pair := range [][2]string{{"ca", "m.a"}, {"cb", "m.b"}, {"cc", "m.c"}} {
-		if out, code := runCLI("link", pair[0], pair[1]); code != 0 {
+		if out, code := run("link", pair[0], pair[1]); code != 0 {
 			t.Fatalf("link %v failed: %d\n%s", pair, code, out)
 		}
 	}
 
-	// Mutate all markers' code so they all drift.
-	testutil.WriteCodeFile(t, dir, "code.go",
-		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n"+
-			"// D! id=cb range-start\nvar x = 100\n// D! id=cb range-end\n"+
-			"// D! id=cc range-start\nvar y = 200\n// D! id=cc range-end\n")
-
-	// todo to populate closures.
-	out, code := runCLI("todo")
-	if code != 1 {
-		t.Fatalf("todo: expected code 1, got %d\n%s", code, out)
+	// Mutate all 3 markers' code so all 3 drift independently.
+	for _, id := range []string{"ca", "cb", "cc"} {
+		testutil.WriteCodeFile(t, dir, id+".go",
+			"// D! id="+id+" range-start\npackage main\nvar _ = 1\n// D! id="+id+" range-end\n")
 	}
 
-	// Collect closure hashes by running todo --json.
-	// Simpler: just reset each closure concurrently by re-running todo to
-	// find hashes. Since we don't have hash parsing here, we'll just reset
-	// each marker's closure by deriving its hash deterministically.
-	// For this test, just call reset with the same hash 3 times in parallel;
-	// the second and third should error (closure already reset) but not
-	// corrupt state.
-	hash := "anyclosurehash"
+	// Parse closure hashes from todo --json.
+	out, code := runJSON("todo", "--json")
+	if code != 1 {
+		t.Fatalf("todo --json: expected code 1, got %d\n%s", code, out)
+	}
+	var parsed struct {
+		Closures []struct {
+			Hash string `json:"hash"`
+		} `json:"closures"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("json parse: %v\n%s", err, out)
+	}
+	if len(parsed.Closures) != 3 {
+		t.Fatalf("expected 3 closures, got %d\n%s", len(parsed.Closures), out)
+	}
+	hashes := make([]string, 3)
+	for i, c := range parsed.Closures {
+		hashes[i] = c.Hash
+	}
+
+	// Snapshot baseline marker hashes for later comparison.
+	baselineStatePath := filepath.Join(dir, ".drift", "state.xml")
+	baselineSnapshot, err := os.ReadFile(baselineStatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reset all 3 closures concurrently. Without the lock, two of the three
+	// Save calls would clobber each other and some resets would be lost.
 	var wg sync.WaitGroup
-	for i := 0; i < 3; i++ {
+	for _, h := range hashes {
 		wg.Add(1)
-		go func() {
+		go func(hash string) {
 			defer wg.Done()
-			runCLI("reset", hash)
-		}()
+			run("reset", hash)
+		}(h)
 	}
 	wg.Wait()
 
-	// Final state should be loadable.
-	out, _ = runCLI("todo")
-	if out == "" {
-		t.Fatalf("post-reset todo produced empty output")
+	// After all resets, the state file must reflect ALL 3 baseline updates.
+	// If any reset was silently overwritten, the next todo will report drift.
+	out, code = run("todo")
+	if code != 0 {
+		postResetState, _ := os.ReadFile(baselineStatePath)
+		t.Fatalf("post-reset todo not clean (code=%d). Some reset was lost to a race.\nbaseline before resets:\n%s\nstate after resets:\n%s\ntodo output:\n%s",
+			code,
+			string(baselineSnapshot),
+			string(postResetState),
+			out)
 	}
 }

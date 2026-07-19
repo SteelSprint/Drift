@@ -70,7 +70,7 @@ The drift codebase is self-hosting on drift. Specs live in `*.drift.xml` files n
 - `statestore/statestore.drift.xml` — state.xml v4 + baseline store
 - `business/` — product-level goal hierarchy
 
-Current state: 132 specs, 70 markers, 152 edges. `drift todo` should report clean on a resting tree.
+Current state: 132 specs, 71 markers, 153 edges. `drift todo` should report clean on a resting tree.
 
 ## Editing code that drift tracks
 

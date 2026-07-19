@@ -139,6 +139,28 @@ Every command supports three modes:
 
 The one-closure-at-a-time reset is the enforcement point. See `principles.friction`.
 
+## Decision tree (cheat sheet)
+
+Drift is a deterministic signal — it reports that a hash changed but does not judge whether the change is semantically consistent with the spec. Apply this rubric before resetting:
+
+| Event kind                | Question to ask                                                       | If yes                                   | If no                                              |
+| ------------------------- | -------------------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------- |
+| `NODE_CHANGED` on marker  | Does the code still implement the spec?                              | Reset the closure                        | Fix the code so it does, then reset              |
+| `NODE_CHANGED` on spec    | Does the spec still describe what the code does?                      | Reset the closure                        | Fix the spec text (or the code, whichever is wrong), then reset |
+| `NODE_ADDED`              | Is this node supposed to be tracked here?                             | Reset the closure                        | Delete or relink the file/entity, then reset      |
+| `NODE_REMOVED`            | Was this deletion intentional?                                       | Reset the closure                        | Restore the file, then reset                      |
+| `EDGE_ADDED`              | Is the new ref intentional?                                          | Reset the closure                        | Remove the ref from the spec text, then reset     |
+| `EDGE_REMOVED`            | Was the removal intentional?                                         | Reset the closure                        | Restore the ref in the spec text, then reset      |
+| `EDGE_BROKEN`             | (always — drift can't auto-fix)                                       | Fix the scan: add the missing spec, or remove the ref | — |
+
+## Marker placement during refactors
+
+When you extract helpers or move code across a marker boundary, keep the marker on the public entry-point function that the spec describes. Helpers stay outside the marked range unless they warrant their own spec + marker. Drift is content-addressed — a marker reports changes to the bytes inside its range, so refactors that move code across a marker boundary without changing behavior still produce `NODE_CHANGED` events. There is no "this was just a refactor" annotation; the reviewer's job is to confirm the move didn't change semantics, then reset.
+
+## Dry-run and change summaries
+
+`drift reset`, `drift link`, and `drift unlink` accept `--dry-run`. The dry-run prints the same per-event change summary it would print after applying (node hash changes truncated to 8 chars, edge add/remove), prefixed by a "Preview — no changes written" banner, and exits with code `3` instead of `0` so LLM consumers can distinguish a successful preview from a successful mutation. The post-apply path prints the same change summary without the banner and exits with `0`. JSON mode includes a `preview: true` flag and a structured `summary` field; hashes are truncated to 8 chars in all presenters.
+
 ## Build gate
 
 `make build` runs `drift todo` before declaring the build complete. The build fails if any drift is detected. On each successful rebuild the prior binary is backed up to `bak/drift-<UTC-timestamp>` (gitignored). Roll back with `cp bak/drift-<ts> drift`.

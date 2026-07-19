@@ -13,6 +13,12 @@ Drift is a spec-drift detection tool for LLM coding agents. Specs describe behav
 
 **`drift todo` exit 1 means unfinished work.** Exit 0 requires both (a) all markers linked and (b) no closures derived. Unlinked markers are actionable drift.
 
+**Exit codes** (apply to every command):
+- `0` — clean success.
+- `1` — drift present / unlinked markers / todo pending.
+- `2` — error (bad args, corrupt state, I/O failure).
+- `3` — dry-run preview (no state mutation). Used by `drift reset --dry-run`, `drift link --dry-run`, `drift unlink --dry-run`. LLMs should treat exit 3 as "I haven't changed anything yet" — a successful preview, not a no-op.
+
 ## Critical rules
 
 - **Specs and markers are symmetric nodes** in a directed citation graph. Both can drift; drift propagates along the citer chain (cited → citer), transitive to fixpoint. Markers cannot be cited, so drift through a marker stops there — the single retained asymmetry.

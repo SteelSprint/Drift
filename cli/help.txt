@@ -13,8 +13,11 @@ Commands:
   diff <hash>                   Show what changed for every node in the closure
   diff --all                    Show diffs for ALL closures at once (review before reset)
   link <marker> <module.spec>   Connect a marker to a spec (link-style edge)
+  link --dry-run <marker> <spec>   Preview the link without writing (exit 3)
   unlink <marker> <module.spec>  Remove a link-style edge
+  unlink --dry-run <marker> <spec> Preview the unlink without writing (exit 3)
   reset <hash>                  Resolve a closure by syncing its seed events to baseline
+  reset --dry-run <hash>        Preview the reset change summary without writing (exit 3)
   config theme <name>           Set theme preference (default, gruvbox, nord, dracula, etc.)
   config theme                  Show current theme preference
   help                          Show this help
@@ -31,6 +34,7 @@ Exit codes (all commands):
   0                             Success / clean (drift todo: all linked + no closures)
   1                             Drift closures found / unlinked markers / todo pending
   2                             Error (bad args, corrupt state, I/O failure)
+  3                             Dry-run preview (no changes written) — exit 3 alerts LLM consumers that no state mutation occurred
 
 Themes:
   12 built-in: default, minimal, monochrome, high-contrast, dark, light,

@@ -1,5 +1,4 @@
-<module name="thesis">
-<spec id="conceptual_core">THESIS — This document describes the problem of drift, and the design that makes it tractable.
+THESIS — This document describes the problem of drift, and the design that makes it tractable.
 
 THE MEANING OF DRIFT. Drift is what happens when a spec and the code that implements it disagree with each other. A spec says what the code should do. The code does what it does. But when the spec describes behavior the code no longer has, or the code does something the spec never claimed: that is drift.
 
@@ -43,5 +42,4 @@ First, it makes the LLM more deterministic. Given the same closure and the same 
 
 Second, it moves the locus of control for spec structure into the developer's hands. The developer decides what cites what, which markers wrap which code regions, which specs depend on which. Drift discoverability becomes a problem solved by human ingenuity — by careful spec design, by thoughtful citation graphs — rather than by unreliable, expensive, slow LLM mechanisms.
 
-The design plays on the strengths of both. Deterministic code handles scale, precision, and reliability. LLMs handle language, semantics, and judgment. Drift is the seam where they meet.</spec>
-</module>
+The design plays on the strengths of both. Deterministic code handles scale, precision, and reliability. LLMs handle language, semantics, and judgment. Drift is the seam where they meet.

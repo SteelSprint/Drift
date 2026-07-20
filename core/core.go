@@ -682,12 +682,59 @@ func DeriveClosures(specs []Spec, markers []Marker, baselineEdges []Edge, scan S
 
 	out := make([]Closure, 0, len(closuresByHash))
 	for _, c := range closuresByHash {
+		// Deterministic ordering within a closure: events and seeds are
+		// appended in map-iteration order during seed walking, which is
+		// non-deterministic in Go. Sort both so closure display, hash
+		// derivation downstream, and tests are stable across runs.
+		sort.Slice(c.Events, func(i, j int) bool {
+			return eventLess(c.Events[i], c.Events[j])
+		})
+		sort.Strings(c.Seeds)
 		out = append(out, *c)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Hash < out[j].Hash
 	})
 	return out
+}
+
+// eventLess defines a deterministic total order over DriftEvent values:
+// primary key Kind (numeric — groups node events before edge events),
+// then NodeID for node events, then Edge.From/Edge.To for edge events.
+// OldHash/NewHash are tie-breakers for the rare case of two NODE_CHANGED
+// events on the same node within one closure (shouldn't occur in practice
+// since baseline stores one hash per node, but defends against regressions).
+func eventLess(a, b DriftEvent) bool {
+	if a.Kind != b.Kind {
+		return a.Kind < b.Kind
+	}
+	switch a.Kind {
+	case EventNodeChanged, EventNodeAdded, EventNodeRemoved:
+		if a.NodeID != b.NodeID {
+			return a.NodeID < b.NodeID
+		}
+		// Fall through to hash tie-break.
+	default:
+		// Edge events: order by From, then To.
+		af, at, bf, bt := "", "", "", ""
+		if a.Edge != nil {
+			af, at = a.Edge.From, a.Edge.To
+		}
+		if b.Edge != nil {
+			bf, bt = b.Edge.From, b.Edge.To
+		}
+		if af != bf {
+			return af < bf
+		}
+		if at != bt {
+			return at < bt
+		}
+		return false
+	}
+	if a.OldHash != b.OldHash {
+		return a.OldHash < b.OldHash
+	}
+	return a.NewHash < b.NewHash
 }
 
 // D! id=cdrv range-end

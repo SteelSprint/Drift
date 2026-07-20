@@ -1,5 +1,62 @@
 <module name="fileio">
-<spec id="session">Session is the sole gateway for reads and writes to files under .drift/. Begin acquires an exclusive advisory lock on .drift/state.lock (creating the file if needed) using flock on Unix and LockFileEx on Windows; it blocks until the lock is acquired and auto-releases on process exit. Close releases the lock and is idempotent. There is no public Lock() method: callers must route all .drift/ I/O through a Session begun at the transaction boundary (typically the lifetime of a single CLI invocation). Concurrent Begin calls from different processes serialize; concurrent Begin calls within the same process block on each other (flock is not reentrant across separate file descriptors of the same file). See pinstore.load and pinstore.save for the transactional callers.</spec>
-<spec id="read">Session.Read(name) returns the bytes of .drift/&lt;name&gt;. A missing file returns an error for which os.IsNotExist reports true (callers use this to distinguish "fresh project" from "corrupt state"). Read does not take the lock per-call; it relies on the lock held since Begin. Read is safe for any file under .drift/ — state.xml, baselines.bin, user-settings.xml, theme.xml, .gitignore.</spec>
-<spec id="write_atomicity">Session.Write(name, data) writes .drift/&lt;name&gt; atomically: it writes to a temp file in the same directory (so os.Rename never crosses a filesystem boundary) and then renames it over the target. POSIX rename is atomic, so a crash at any point leaves either the old content or the new content at the target path — never a partial write. Write creates .drift/ if it does not exist (MkdirAll on the directory before writing the temp file). The temp file is named &lt;name&gt;.tmp and is left in place if rename fails (caller can clean up). Write does not take the lock per-call; it relies on the lock held since Begin.</spec>
+<spec id="session">
+Overview: Session is the sole gateway for reads and writes to files under .drift/. A Session holds an exclusive advisory lock acquired at construction and released at Close. The Session abstraction structurally enforces "all .drift/ I/O through one locked handle."
+
+Defined terms:
+  Session — see glossary.session
+  Begin   — the constructor function; acquires the lock and returns a *Session
+  Close   — the release function; idempotent
+  Caller  — the function that invokes Begin and is responsible for calling Close
+
+Requirements:
+  R1. Begin(dir) MUST acquire an exclusive advisory lock on .drift/state.lock before returning. The lock file MUST be created if it does not exist, and .drift/ MUST be created if it does not exist.
+  R2. Begin MUST block until the lock is acquired. There MUST be no implicit timeout; callers needing bounded wait MUST wrap in a context-with-deadline at the call site.
+  R3. The lock MUST be released when (a) Close is called, OR (b) the process exits (crash or normal termination).
+  R4. Concurrent Begin calls from distinct processes MUST serialize. The implementation MUST NOT silently corrupt state under concurrent invocation.
+  R5. Concurrent Begin calls within the same process MUST block on each other. The implementation MUST NOT attempt reentrancy across separate file descriptors of the same lock file.
+  R6. Close MUST be idempotent: a second call MUST NOT return an error and MUST NOT release a lock not held by this Session.
+  R7. There MUST be no public Lock() method on Session or any other type in package fileio. Lock acquisition is exclusively via Begin. This enforces "all I/O through Session" at the API surface.
+  R8. Read and Write operations invoked after Close MUST return an error.
+
+Platform behavior:
+  Unix:    lock acquired via unix.Flock(fd, unix.LOCK_EX) on .drift/state.lock
+  Windows: lock acquired via windows.LockFileEx with LOCKFILE_EXCLUSIVE_LOCK flag on .drift/state.lock (1-byte range lock)
+
+See also: fileio.read, fileio.write_atomicity, glossary.session, pinstore.load, pinstore.save.
+</spec>
+
+<spec id="read">
+Overview: Session.Read returns the bytes of a file under .drift/.
+
+Defined terms:
+  name — the relative path of the file within .drift/ (e.g. "state.xml", "baselines.bin"). MUST be a direct child of .drift/, not a nested subpath.
+
+Requirements:
+  R1. Read MUST NOT take a lock per-call; it MUST rely on the lock held since Begin (see fileio.session.R1).
+  R2. Read MUST return an error for which os.IsNotExist reports true when the file is absent. Callers use this to distinguish "fresh project" from "corrupt state" (see pinstore.not_found).
+  R3. Read MUST reject the following name inputs with a descriptive error: empty string, ".", "..", any name containing a path separator (os.PathSeparator or '/'), any absolute path.
+  R4. Read invoked on a closed Session MUST return an error (see fileio.session.R8).
+
+See also: fileio.session, fileio.write_atomicity.
+</spec>
+
+<spec id="write_atomicity">
+Overview: Session.Write atomically writes a file under .drift/ via temp-file plus rename. The atomicity property guarantees that a crash at any point leaves either the prior content or the new content at the target path — never a partial write.
+
+Defined terms:
+  atomic   — a write is atomic if a crash at any point leaves either the prior content or the new content at the target path, never a partial write
+  temp file — the staging file named &lt;target&gt;.tmp in the same directory as the target, written before the rename
+
+Requirements:
+  R1. Write MUST NOT take a lock per-call; it MUST rely on the lock held since Begin (see fileio.session.R1).
+  R2. Write MUST create .drift/ if it does not exist (via os.MkdirAll on the directory before writing the temp file).
+  R3. Write MUST stage the new content at &lt;target&gt;.tmp in the same directory as the target, then invoke os.Rename to atomically replace the target.
+  R4. The temp file MUST live in the same directory as the target. Write MUST NOT cross filesystem boundaries (POSIX rename is only atomic within a filesystem).
+  R5. If rename fails, Write MUST attempt to remove the temp file (best-effort, errors suppressed) and MUST return the rename error to the caller.
+  R6. Write MUST reject names with the same restrictions as Read (see fileio.read.R3).
+  R7. Write invoked on a closed Session MUST return an error (see fileio.session.R8).
+  R8. Write MUST overwrite any existing file at the target path. There is no append mode.
+
+See also: fileio.session, fileio.read.
+</spec>
 </module>

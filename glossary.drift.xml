@@ -1,0 +1,21 @@
+<module name="glossary">
+<spec id="spec">Spec: a unit of intended behavior. A spec is an XML element of the form &lt;spec id="module.localid"&gt;description&lt;/spec&gt; residing in a *.drift.xml module file. The spec ID has exactly one dot separating the module name from the local ID (e.g. "fileio.session"). Spec content is hashed canonically with &lt;ref&gt; tags stripped (see scanner.spec_discovery). Specs are the truth side of the spec/code duality — they describe what the code should do. See principles.specs_are_truth.</spec>
+
+<spec id="marker">Marker: a code region tagged with drift range markers. A marker is a pair of code lines "// D! id=&lt;shortcode&gt; range-start" and "// D! id=&lt;shortcode&gt; range-end" wrapping the implementing region. The shortcode contains no dot. The scanner hashes the lines between the markers (see scanner.marker_discovery, scanner.range_markers). Markers are the implementation side of the spec/code duality. Markers cannot be cited (see model.provenance A2).</spec>
+
+<spec id="session">Session: an opaque value of type *fileio.Session returned by fileio.Begin. A Session is the exclusive owner of the advisory lock on .drift/state.lock for the duration of a CLI invocation (see fileio.session). All reads and writes to .drift/ files MUST route through a Session.</spec>
+
+<spec id="baseline">Baseline: the last-reviewed state of the drift citation graph, persisted in .drift/state.xml. Concretely: the set of specs (with hashes), markers (with hashes), and edges at the time of the most recent drift reset. Baseline content snapshots are stored separately in .drift/baselines.bin. A baseline hash that matches the current scan hash means "this node has not changed since last review."</spec>
+
+<spec id="scan">Scan: the current state of specs, markers, and edges discovered by scanning the workspace files (*.drift.xml for specs/refs; *.go and other text files for markers). A scan is computed fresh on every drift todo invocation. The comparison of baseline against scan produces drift events. See scanner.spec_discovery, scanner.marker_discovery.</spec>
+
+<spec id="edge">Edge: a directed relationship &lt;From, To&gt; between two nodes (specs or markers). The From endpoint stores the edge (is the citer); the To endpoint is the target (is the cited). Two establishment kinds: marker→spec (created by `drift link`) and spec→spec (auto-parsed from &lt;ref&gt; tags in spec text). Both share the same Edge type; the storage and drift semantics are identical (see model.provenance "THE UNIFIED EDGE").</spec>
+
+<spec id="ref">Ref: an XML element &lt;ref spec="module.localid"&gt;label&lt;/ref&gt; appearing inside a spec element's content. The scanner parses refs into spec→spec edges. The label text is preserved in the canonical hash; the &lt;ref&gt; tag itself is stripped before hashing so renaming the referenced spec ID does not invalidate the referrer's hash. See scanner.ref_parsing.</spec>
+
+<spec id="closure">Closure: a per-seed drift set computed by core.DeriveClosures. Each closure contains exactly one seed, the transitive citer chain reachable from that seed via incoming edges, and any edges among those nodes. Closures are strictly disjoint across seeds. Closure identity is the first 8 hex characters of SHA1(sorted node IDs + sorted undirected edge keys). Closures are ephemeral — they exist only for the current drift todo run. See core.provenance_closure.</spec>
+
+<spec id="seed">Seed: the citer-side party of a drift event — the node where a change is observable. For NODE_CHANGED on spec X cited by spec Y, the seed is Y (the citer), not X. For a marker drift, the marker is the seed. For EDGE_ADDED or EDGE_REMOVED on edge (F, T), the seed is F. Reset operates per-seed; non-seed citers in the same closure are not modified by reset (see model.provenance RESOLUTION).</spec>
+
+<spec id="citer">Citer: the From endpoint of an edge — the node that stores the edge. If spec A contains &lt;ref spec="B"/&gt;, A is the citer and B is the cited. Drift propagates in the citer direction: when the cited changes, the citer is suspect (see model.provenance A3). A non-seed citer that cites multiple drifted specs appears in each spec's closure independently.</spec>
+</module>

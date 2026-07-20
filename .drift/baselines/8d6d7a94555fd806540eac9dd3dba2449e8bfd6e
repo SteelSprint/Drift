@@ -1,1 +1,0 @@
-DiffAll returns per-closure diff results alongside the evaluated state. For each closure, it computes DiffSides for every node and returns them as a ClosureDiff struct (Hash, Events, Diffs). Used by `drift diff --all` to render every closure's diffs in one pass.

@@ -81,7 +81,7 @@ func RunWithRender(args []string, dir string, presenter output.Presenter) (strin
 
 	stateStore := statestore.NewFileStateStore(dir)
 	scn := scanner.NewFileScanner(dir)
-	baselines := statestore.NewBaselineStore(filepath.Join(dir, ".drift", "baselines"))
+	baselines := statestore.NewBaselineStore()
 	orch := orchestrator.NewOrchestrator(stateStore, scn, baselines)
 
 	sess, err := fileio.Begin(dir)

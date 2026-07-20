@@ -1,64 +1,106 @@
 package statestore
 
 import (
-	"crypto/sha1"
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+
+	"drift/internal/fileio"
 )
 
+// baselinesFileName is the name of the gob-encoded packfile inside .drift/.
+const baselinesFileName = "baselines.bin"
+
 // D! id=pbase range-start
+
+// ErrBaselineHashMismatch is retained for backward-compatibility with the
+// pre-packed format; the new BaselineStore does not verify sha1(content)==hash
+// because spec canonical hashes legitimately mismatch raw content (refs stripped).
 var ErrBaselineHashMismatch = errors.New("baseline content hash does not match declared hash")
 
-type BaselineStore struct {
-	dir string
+// BaselineStore manages content-addressed baseline content packed in a single
+// .drift/baselines.bin file (gob-encoded map[string]string). Stateless between
+// calls — each Read/Write/Delete loads and persists via the Session.
+type BaselineStore struct{}
+
+// NewBaselineStore returns a fresh BaselineStore. No path argument: the
+// packfile location is owned by the Session (always .drift/baselines.bin).
+func NewBaselineStore() *BaselineStore {
+	return &BaselineStore{}
 }
 
-func NewBaselineStore(dir string) *BaselineStore {
-	return &BaselineStore{dir: dir}
-}
-
-// Write stores content at .drift/baselines/<hash> if absent. The hash is the
-// canonical hash (refs stripped for specs); the content is the raw text the
-// user sees in the spec file (including <ref> tags) so that `drift diff` and
-// `drift show` display faithful spec text. The legacy sha1(content)==hash
-// integrity check is therefore not enforced — drift's own scanner produces
-// matching pairs, and the display concern outweighs the integrity net for
-// spec baselines. If a file already exists for hash, Write is a no-op (dedup).
-func (b *BaselineStore) Write(hash, content string) error {
-	if err := os.MkdirAll(b.dir, 0755); err != nil {
+// Write stores content for hash in the packfile via the Session. If hash
+// already has identical content, Write is a no-op (dedup). The packfile is
+// loaded, updated, marshaled, and atomically rewritten.
+func (b *BaselineStore) Write(sess *fileio.Session, hash, content string) error {
+	data, err := b.loadAll(sess)
+	if err != nil {
 		return err
 	}
-	path := filepath.Join(b.dir, hash)
-	if _, err := os.Stat(path); err == nil {
+	if existing, ok := data[hash]; ok && existing == content {
 		return nil
 	}
-	return os.WriteFile(path, []byte(content), 0644)
+	data[hash] = content
+	return b.saveAll(sess, data)
 }
 
-// Read returns the baseline content for hash. Returns false when the file
-// is missing (e.g. pre-migration snapshots, or content-addressed lookup miss).
-func (b *BaselineStore) Read(hash string) (string, bool) {
-	data, err := os.ReadFile(filepath.Join(b.dir, hash))
+// Read returns the baseline content for hash. Returns ("", false) when the
+// packfile is missing or hash is not present.
+func (b *BaselineStore) Read(sess *fileio.Session, hash string) (string, bool) {
+	data, err := b.loadAll(sess)
 	if err != nil {
 		return "", false
 	}
-	return string(data), true
+	content, ok := data[hash]
+	return content, ok
 }
 
-// Delete removes a baseline file. Missing files are not an error.
-func (b *BaselineStore) Delete(hash string) error {
-	err := os.Remove(filepath.Join(b.dir, hash))
-	if err != nil && !os.IsNotExist(err) {
+// Delete removes the entry for hash from the packfile. Missing hash is a
+// no-op (returns nil).
+func (b *BaselineStore) Delete(sess *fileio.Session, hash string) error {
+	data, err := b.loadAll(sess)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return err
 	}
-	return nil
+	if _, ok := data[hash]; !ok {
+		return nil
+	}
+	delete(data, hash)
+	return b.saveAll(sess, data)
 }
 
-func sha1Hex(content string) string {
-	h := sha1.Sum([]byte(content))
-	return fmt.Sprintf("%x", h)
+// loadAll reads and unmarshals the packfile. Returns an empty map if the
+// file does not exist (fresh project).
+func (b *BaselineStore) loadAll(sess *fileio.Session) (map[string]string, error) {
+	raw, err := sess.Read(baselinesFileName)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]string{}, nil
+		}
+		return nil, err
+	}
+	var data map[string]string
+	if err := gob.NewDecoder(bytes.NewReader(raw)).Decode(&data); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", baselinesFileName, err)
+	}
+	if data == nil {
+		data = map[string]string{}
+	}
+	return data, nil
+}
+
+// saveAll marshals the map and atomic-writes it via the Session.
+func (b *BaselineStore) saveAll(sess *fileio.Session, data map[string]string) error {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(data); err != nil {
+		return fmt.Errorf("encode %s: %w", baselinesFileName, err)
+	}
+	return sess.Write(baselinesFileName, buf.Bytes())
 }
 
 // D! id=pbase range-end

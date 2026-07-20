@@ -89,9 +89,9 @@ type EdgeChange struct {
 	Kind string // "added" / "removed"
 }
 
-// writeBaseline writes a content-addressed baseline file for the given
+// writeBaseline writes a content-addressed baseline entry for the given
 // spec or marker using its current scanned hash. Best-effort.
-func (o *Orchestrator) writeBaseline(scannedHash, filepath, specID string, startLine, endLine int, isSpec bool) error {
+func (o *Orchestrator) writeBaseline(sess *fileio.Session, scannedHash, filepath, specID string, startLine, endLine int, isSpec bool) error {
 	if o.baselines == nil {
 		return nil
 	}
@@ -106,7 +106,7 @@ func (o *Orchestrator) writeBaseline(scannedHash, filepath, specID string, start
 	if err != nil {
 		return nil
 	}
-	return o.baselines.Write(scannedHash, content)
+	return o.baselines.Write(sess, scannedHash, content)
 }
 
 func (o *Orchestrator) resolvePath(p string) string {
@@ -252,10 +252,10 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 				switch e.Kind {
 				case core.EventNodeChanged, core.EventNodeAdded:
 					if s, ok := findSpecByID(scanResult.Specs, e.NodeID); ok {
-						_ = o.writeBaseline(s.Hash, s.Filepath, s.ID, 0, 0, true)
+						_ = o.writeBaseline(sess, s.Hash, s.Filepath, s.ID, 0, 0, true)
 					}
 					if m, ok := findMarkerByID(scanResult.Markers, e.NodeID); ok {
-						_ = o.writeBaseline(m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
+						_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
 					}
 				}
 			}
@@ -397,13 +397,13 @@ func (o *Orchestrator) linkInner(sess *fileio.Session, markerID, specID string, 
 		}
 		for _, s := range scanResult.Specs {
 			if s.ID == specID {
-				_ = o.writeBaseline(s.Hash, s.Filepath, specID, 0, 0, true)
+				_ = o.writeBaseline(sess, s.Hash, s.Filepath, specID, 0, 0, true)
 				break
 			}
 		}
 		for _, m := range scanResult.Markers {
 			if m.ID == markerID {
-				_ = o.writeBaseline(m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
+				_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
 				break
 			}
 		}
@@ -711,12 +711,12 @@ func (o *Orchestrator) DiffClosure(sess *fileio.Session, hash string) ([]DiffRes
 		seen[n.ID] = true
 		isSeed := seedSet[n.ID]
 		if n.IsSpec {
-			side := o.buildSpecDiffSide(n.ID, reconciledSpecs, scanResult)
+			side := o.buildSpecDiffSide(sess, n.ID, reconciledSpecs, scanResult)
 			if side != nil {
 				out = append(out, DiffResult{Spec: side, IsSeed: isSeed})
 			}
 		} else {
-			side := o.buildMarkerDiffSide(n.ID, reconciledMarkers, scanResult)
+			side := o.buildMarkerDiffSide(sess, n.ID, reconciledMarkers, scanResult)
 			if side != nil {
 				out = append(out, DiffResult{Marker: side, IsSeed: isSeed})
 			}
@@ -777,11 +777,11 @@ func (o *Orchestrator) DiffAll(sess *fileio.Session) ([]ClosureDiff, core.Evalua
 			seen[n.ID] = true
 			isSeed := seedSet[n.ID]
 			if n.IsSpec {
-				if side := o.buildSpecDiffSide(n.ID, reconciledSpecs, scanResult); side != nil {
+				if side := o.buildSpecDiffSide(sess, n.ID, reconciledSpecs, scanResult); side != nil {
 					diffs = append(diffs, DiffResult{Spec: side, IsSeed: isSeed})
 				}
 			} else {
-				if side := o.buildMarkerDiffSide(n.ID, reconciledMarkers, scanResult); side != nil {
+				if side := o.buildMarkerDiffSide(sess, n.ID, reconciledMarkers, scanResult); side != nil {
 					diffs = append(diffs, DiffResult{Marker: side, IsSeed: isSeed})
 				}
 			}
@@ -795,7 +795,7 @@ func (o *Orchestrator) DiffAll(sess *fileio.Session) ([]ClosureDiff, core.Evalua
 	return out, evaluated, nil
 }
 
-func (o *Orchestrator) buildSpecDiffSide(specID string, reconciledSpecs []core.Spec, scanResult scanner.ScanResult) *DiffSide {
+func (o *Orchestrator) buildSpecDiffSide(sess *fileio.Session, specID string, reconciledSpecs []core.Spec, scanResult scanner.ScanResult) *DiffSide {
 	var spec *core.Spec
 	for i := range reconciledSpecs {
 		if reconciledSpecs[i].ID == specID {
@@ -819,7 +819,7 @@ func (o *Orchestrator) buildSpecDiffSide(specID string, reconciledSpecs []core.S
 		}
 	}
 	if o.baselines != nil {
-		if content, ok := o.baselines.Read(spec.Hash); ok {
+		if content, ok := o.baselines.Read(sess, spec.Hash); ok {
 			side.Baseline = content
 			side.HasBaseline = true
 		}
@@ -827,7 +827,7 @@ func (o *Orchestrator) buildSpecDiffSide(specID string, reconciledSpecs []core.S
 	return side
 }
 
-func (o *Orchestrator) buildMarkerDiffSide(markerID string, reconciledMarkers []core.Marker, scanResult scanner.ScanResult) *DiffSide {
+func (o *Orchestrator) buildMarkerDiffSide(sess *fileio.Session, markerID string, reconciledMarkers []core.Marker, scanResult scanner.ScanResult) *DiffSide {
 	var marker *core.Marker
 	for i := range reconciledMarkers {
 		if reconciledMarkers[i].ID == markerID {
@@ -852,7 +852,7 @@ func (o *Orchestrator) buildMarkerDiffSide(markerID string, reconciledMarkers []
 		}
 	}
 	if o.baselines != nil {
-		if content, ok := o.baselines.Read(marker.Hash); ok {
+		if content, ok := o.baselines.Read(sess, marker.Hash); ok {
 			side.Baseline = content
 			side.HasBaseline = true
 		}

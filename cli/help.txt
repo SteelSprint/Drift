@@ -9,7 +9,8 @@ Commands:
   init                          Initialize: create .drift/ + starter main.drift.xml
   todo                          Scan specs and markers, report drift closures
   list [--verbose]              Show all specs, markers, edges, and sync state
-  show <marker|spec>            Show current content of a spec or marker
+  show <marker|spec>            Show full citation closure of a spec or marker
+                                (--no-content: graph overview without content bytes)
   diff <hash>                   Show what changed for every node in the closure
   diff --all                    Show diffs for ALL closures at once (review before reset)
   link <marker> <module.spec>   Connect a marker to a spec (link-style edge)

@@ -33,7 +33,7 @@ Properties:
 | `drift init` | Initialize `.drift/` + starter `main.drift.xml`. Idempotent. |
 | `drift todo` | Scan specs and markers; derive closures; report drift. Exit 0 when clean, 1 when drift exists, 2 on error. |
 | `drift list [--verbose]` | List all specs, markers, edges, and sync state. `--verbose` adds previews. |
-| `drift show <marker\|spec>` | Show one entity's content with linked counterparts. |
+| `drift show <marker\|spec>` | Show full citation closure of a spec or marker (ancestors + descendants + linked markers + edges + content). Add `--no-content` for a graph overview. |
 | `drift diff <hash>` | Show unified diffs for every node in the closure. |
 | `drift diff --all` | Show diffs for all closures in one pass. |
 | `drift link <marker> <module.spec>` | Create a link edge (marker → spec). |

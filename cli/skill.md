@@ -110,7 +110,7 @@ Closures are strictly disjoint across seeds. Two seeds produce two closures, eve
 | `drift todo` | Derive closures; report drift. Exit 0 clean, 1 drift, 2 error. |
 | `drift todo --json` | JSON output (closure hash, nodes, edges, events). |
 | `drift list [--verbose]` | List specs, markers, edges, sync state. |
-| `drift show <marker\|spec>` | Show entity content + linked counterparts. |
+| `drift show <marker\|spec>` | Show full citation closure of a spec or marker — ancestors, descendants, linked markers, all edges, all content. Add `--no-content` for a graph overview without the content bytes. |
 | `drift diff <hash>` | Show unified diffs for every node in the closure. |
 | `drift diff --all` | Show diffs for all closures. |
 | `drift link <marker> <module.spec>` | Create a link edge. |

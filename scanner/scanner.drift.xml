@@ -45,4 +45,48 @@ Requirements:
 
 See also: scanner.marker_discovery, scanner.range_markers, scanner.marker_blanking, build.show_result.
 </spec>
+<spec id="ignore_span">
+Overview: An ignore-span directive suppresses marker detection for a
+contiguous span of lines within a single file. This lets documentation
+about drift markers include example marker syntax (e.g. in code fences,
+tutorials, or reference docs) without the scanner treating the examples
+as real markers.
+
+Defined terms:
+  ignore-span directive — a pair of lines matching
+    `D! instruction=ignore-span-start` and `D! instruction=ignore-span-end`
+    that bracket a region in which the markerPattern is not applied
+
+Requirements:
+  R1. The scanner MUST recognize the directives
+      `D! instruction=ignore-span-start` and
+      `D! instruction=ignore-span-end` as a span boundary pair. The
+      directive pattern is `D!\s+instruction=(ignore-span-start|ignore-span-end)`.
+  R2. Lines between an ignore-span-start and its matching ignore-span-end
+      (exclusive of both directive lines) MUST NOT be scanned for markers.
+      Any `D! id=... range-start` or `D! id=... range-end` lines in the
+      span are silently skipped — they do not produce markers and do not
+      count toward the duplicate-marker or unpaired-marker checks.
+  R3. Ignore-spans MUST NOT nest. A second ignore-span-start before the
+      matching ignore-span-end is an error: "ignore-span-start inside an
+      active ignore-span". The scanner reports the line number of the
+      offending directive.
+  R4. An ignore-span-end without a matching ignore-span-start is an error:
+      "ignore-span-end without a matching ignore-span-start".
+  R5. An ignore-span-start without a matching ignore-span-end is an error:
+      "ignore-span-start without a matching ignore-span-end".
+  R6. Ignore-span directives MUST NOT themselves be treated as markers.
+      They are not paired by ID, not hashed, and not linked to specs.
+  R7. Ignore-spans are file-local. A span opened in one file does not
+      affect any other file. The scanner processes each file independently.
+  R8. Ignore-span directives MUST be recognized in any text file that the
+      scanner scans for markers (subject to the same text_file_detection
+      rules). They are NOT recognized in .drift.xml spec files (those are
+      parsed for specs, not markers).
+  R9. The directive pattern and the marker pattern are mutually exclusive:
+      `D!\s+id=` matches markers; `D!\s+instruction=` matches directives.
+      A single line cannot match both.
+
+See also: scanner.marker_discovery, scanner.range_markers, principles.language_agnostic.
+</spec>
 </module>

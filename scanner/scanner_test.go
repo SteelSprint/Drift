@@ -1426,3 +1426,194 @@ func TestScannerSpecErrors(t *testing.T) {
 		assertScanError(t, sc, "expected <main> or <module>")
 	})
 }
+
+func TestScannerIgnoreSpan(t *testing.T) {
+	t.Run("markers_inside_ignore_span_are_skipped", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+// D! instruction=ignore-span-start
+// D! id=example range-start
+func example() {}
+// D! id=example range-end
+// D! instruction=ignore-span-end
+
+// D! id=real range-start
+func realFunc() {}
+// D! id=real range-end
+`)
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+		if len(result.Markers) != 1 {
+			t.Fatalf("expected 1 marker (real), got %d: %+v", len(result.Markers), result.Markers)
+		}
+		if result.Markers[0].ID != "real" {
+			t.Fatalf("expected marker 'real', got %q", result.Markers[0].ID)
+		}
+	})
+
+	t.Run("ignore_span_allows_duplicate_marker_ids", func(t *testing.T) {
+		// The same shortcode can appear inside an ignore-span AND as a real
+		// marker outside it — the one inside is skipped, so no duplicate error.
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+// D! instruction=ignore-span-start
+// D! id=dup range-start
+func dupExample() {}
+// D! id=dup range-end
+// D! instruction=ignore-span-end
+
+// D! id=dup range-start
+func realDup() {}
+// D! id=dup range-end
+`)
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+		if len(result.Markers) != 1 {
+			t.Fatalf("expected 1 marker, got %d", len(result.Markers))
+		}
+		if result.Markers[0].ID != "dup" {
+			t.Fatalf("expected marker 'dup', got %q", result.Markers[0].ID)
+		}
+	})
+
+	t.Run("ignore_span_start_without_end_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+// D! instruction=ignore-span-start
+// D! id=example range-start
+func example() {}
+// D! id=example range-end
+`)
+		sc := scanner.NewFileScanner(dir)
+		_, err := sc.Scan()
+		if err == nil {
+			t.Fatal("expected error for unpaired ignore-span-start, got nil")
+		}
+		if !strings.Contains(err.Error(), "ignore-span-start without a matching ignore-span-end") {
+			t.Fatalf("expected 'without matching' error, got: %v", err)
+		}
+	})
+
+	t.Run("ignore_span_end_without_start_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+// D! instruction=ignore-span-end
+`)
+		sc := scanner.NewFileScanner(dir)
+		_, err := sc.Scan()
+		if err == nil {
+			t.Fatal("expected error for ignore-span-end without start, got nil")
+		}
+		if !strings.Contains(err.Error(), "ignore-span-end without a matching ignore-span-start") {
+			t.Fatalf("expected 'without matching' error, got: %v", err)
+		}
+	})
+
+	t.Run("nested_ignore_span_start_errors", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+// D! instruction=ignore-span-start
+// D! instruction=ignore-span-start
+// D! instruction=ignore-span-end
+// D! instruction=ignore-span-end
+`)
+		sc := scanner.NewFileScanner(dir)
+		_, err := sc.Scan()
+		if err == nil {
+			t.Fatal("expected error for nested ignore-span-start, got nil")
+		}
+		if !strings.Contains(err.Error(), "ignore-span-start inside an active ignore-span") {
+			t.Fatalf("expected 'inside an active' error, got: %v", err)
+		}
+	})
+
+	t.Run("ignore_span_in_markdown_html_comments", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "guide.md", `# Guide
+
+<!-- D! instruction=ignore-span-start -->
+
+Example marker syntax:
+
+`+"```"+`
+// D! id=example range-start
+func example() {}
+// D! id=example range-end
+`+"```"+`
+
+<!-- D! instruction=ignore-span-end -->
+
+<!-- D! id=realmd range-start -->
+
+Real content.
+
+<!-- D! id=realmd range-end -->
+`)
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+		if len(result.Markers) != 1 {
+			t.Fatalf("expected 1 marker (realmd), got %d: %+v", len(result.Markers), result.Markers)
+		}
+		if result.Markers[0].ID != "realmd" {
+			t.Fatalf("expected marker 'realmd', got %q", result.Markers[0].ID)
+		}
+	})
+
+	t.Run("ignore_span_directives_not_treated_as_markers", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "main.go", `package main
+
+// D! instruction=ignore-span-start
+// D! instruction=ignore-span-end
+`)
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+		if len(result.Markers) != 0 {
+			t.Fatalf("expected 0 markers, got %d", len(result.Markers))
+		}
+	})
+
+	t.Run("ignore_span_file_local", func(t *testing.T) {
+		// A span in one file does not affect another file.
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "a.go", `package main
+
+// D! instruction=ignore-span-start
+// D! id=skipme range-start
+// D! id=skipme range-end
+// D! instruction=ignore-span-end
+`)
+		testutil.WriteCodeFile(t, dir, "b.go", `package main
+
+// D! id=skipme range-start
+func realSkipme() {}
+// D! id=skipme range-end
+`)
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+		if len(result.Markers) != 1 {
+			t.Fatalf("expected 1 marker in b.go, got %d: %+v", len(result.Markers), result.Markers)
+		}
+		if result.Markers[0].ID != "skipme" {
+			t.Fatalf("expected marker 'skipme', got %q", result.Markers[0].ID)
+		}
+	})
+}

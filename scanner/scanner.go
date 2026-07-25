@@ -96,6 +96,14 @@ func isTextFile(path string) bool {
 var markerPattern = regexp.MustCompile(`D!\s+id=([A-Za-z][A-Za-z0-9_]*)\s+(range-start|range-end)`)
 // D! id=mregex range-end
 
+// D! id=signor range-start
+// ignoreSpanPattern matches the ignore-span directives that suppress marker
+// detection for documentation regions containing example marker syntax.
+// A pair (ignore-span-start ... ignore-span-end) brackets lines that the
+// scanner skips when looking for markers. See scanner.ignore_span.
+var ignoreSpanPattern = regexp.MustCompile(`D!\s+instruction=(ignore-span-start|ignore-span-end)`)
+// D! id=signor range-end
+
 type ScanResult struct {
 	Specs   []core.Spec
 	Markers []core.Marker
@@ -395,9 +403,36 @@ func parseMarkerFile(path, storePath string) ([]core.Marker, error) {
 		lines = lines[:len(lines)-1]
 	}
 
-	// Pass 1: Find all marker declarations
+	// Pass 1: Find all marker declarations, respecting ignore-span directives.
+	// Lines within an ignore-span are skipped for marker detection. The
+	// directives themselves are validated for proper pairing and nesting.
 	var decls []rawMarkerDecl
+	ignoreSpanActive := false
+	ignoreSpanStartLine := 0
 	for i, line := range lines {
+		// Check for ignore-span directives first (mutually exclusive with markers).
+		if m := ignoreSpanPattern.FindStringSubmatch(line); m != nil {
+			directive := m[1]
+			lineNumber := i + 1
+			switch directive {
+			case "ignore-span-start":
+				if ignoreSpanActive {
+					return nil, fmt.Errorf("%s:%d: ignore-span-start inside an active ignore-span (opened at line %d)", path, lineNumber, ignoreSpanStartLine)
+				}
+				ignoreSpanActive = true
+				ignoreSpanStartLine = lineNumber
+			case "ignore-span-end":
+				if !ignoreSpanActive {
+					return nil, fmt.Errorf("%s:%d: ignore-span-end without a matching ignore-span-start", path, lineNumber)
+				}
+				ignoreSpanActive = false
+			}
+			continue
+		}
+		// Skip marker detection while inside an ignore-span.
+		if ignoreSpanActive {
+			continue
+		}
 		match := markerPattern.FindStringSubmatch(line)
 		if match == nil {
 			continue
@@ -412,6 +447,9 @@ func parseMarkerFile(path, storePath string) ([]core.Marker, error) {
 			line:   lineNumber,
 			index:  i,
 		})
+	}
+	if ignoreSpanActive {
+		return nil, fmt.Errorf("%s:%d: ignore-span-start without a matching ignore-span-end", path, ignoreSpanStartLine)
 	}
 
 	// Validate pairs (all-at-once)

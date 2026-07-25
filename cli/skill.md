@@ -57,6 +57,12 @@ func login(w http.ResponseWriter, r *http.Request) {
 - Markers can be nested and overlapping — the scanner blank inner-marker declarations before hashing, so they don't interfere.
 - Marker syntax (`//`, `#`, `--`, etc.) works in any comment style across any text file.
 
+### Ignore-span directives
+
+Documentation about drift (tutorials, reference docs, this very guide) often shows example marker syntax. Without protection, the scanner treats example markers as real markers — producing duplicates or false positives. Ignore-span directives suppress marker detection for a contiguous region:
+
+The directive uses the `D!` prefix followed by `instruction=ignore-span-start` (open) or `instruction=ignore-span-end` (close). Lines between an open and its matching close are not scanned for markers. Directives must be properly paired; nesting is not allowed. See scanner.ignore_span.
+
 ### Marker placement (refactors)
 
 <!-- D! id=skillmp range-start -->

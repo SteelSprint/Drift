@@ -9,7 +9,7 @@ Drift is a spec-drift detection tool for LLM coding agents. Specs describe behav
 3. **For each closure:** decide whether the *code* is wrong (fix the code), the *spec* is wrong (update the spec), or the *citation* is wrong (fix the `<ref>` target)
 4. **`drift reset <hash>`** — resolve ONE closure at a time, only after reviewing it
 
-**NEVER batch-reset.** There is no `drift reset --all`. This friction is the point — blind reset defeats the tool.
+**NEVER batch-reset.** There is no `drift reset --all`. This friction is the point — blind reset defeats the tool. A runtime rate-limit layer (`cli.reset_friction_block`) additionally blocks the 4th reset within any 30-second window; `--dangerously-override-friction` bypasses it but is not advertised in error output.
 
 **`drift todo` exit 1 means unfinished work.** Exit 0 requires both (a) all markers linked and (b) no closures derived. Unlinked markers are actionable drift.
 
@@ -29,7 +29,7 @@ Drift is a spec-drift detection tool for LLM coding agents. Specs describe behav
 - **Closures are derived per-seed.** Each drift event has a seed node (the citer-side party of the change). Closure membership = seed + transitive citers (plus, for marker seeds, the linked specs so reviewers can verify the marker still implements them). Closure identity is the first 8 hex chars of SHA1(sorted node IDs + sorted undirected edge keys) — stable across drift-state changes, changes only when membership changes.
 - **Closures are strictly disjoint.** Two seeds produce two closures, even if they share non-seed citers. A non-seed citer that cites multiple drifted specs appears in each spec's closure independently.
 - **Reset is per-closure, per-seed events.** `drift reset <hash>` syncs the closure's seed events to baseline (NODE_CHANGED → set hash, EDGE_ADDED → add edge, EDGE_REMOVED → remove edge, NODE_REMOVED → remove node). Broken-edge events are no-ops on reset and persist until the user fixes the scan. Citers' state is never modified by reset — only the seed's events sync.
-- **Commit `.drift/state.xml` and `.drift/baselines.bin` to git.** They are shared baselines, not local artifacts. Do NOT commit `.drift/user-settings.xml` or `.drift/state.lock` (both gitignored).
+- **Commit `.drift/state.xml` and `.drift/baselines.bin` to git.** They are shared baselines, not local artifacts. Do NOT commit `.drift/user-settings.xml`, `.drift/state.lock`, or `.drift/friction.json` (all gitignored).
 - **State file locking is built in.** Concurrent `drift link`/`unlink`/`reset` calls are safe — `internal/fileio` acquires an exclusive advisory lock (flock on Unix, LockFileEx on Windows) on `.drift/state.lock` for the entire CLI invocation via `fileio.Begin`; all state/baseline I/O routes through the resulting `Session`. Safe to batch these in parallel tool calls.
 
 ## Build / test / lint

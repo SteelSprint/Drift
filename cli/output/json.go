@@ -520,9 +520,10 @@ type jsonChangeSummary struct {
 }
 
 type jsonChangeSummaryResult struct {
-	Preview bool               `json:"preview"`
-	Message string             `json:"message,omitempty"`
-	Summary jsonChangeSummary   `json:"summary"`
+	Preview bool             `json:"preview"`
+	Message string           `json:"message,omitempty"`
+	Warning string           `json:"warning,omitempty"`
+	Summary jsonChangeSummary `json:"summary"`
 }
 
 func truncateHash(h string) string {
@@ -549,6 +550,7 @@ func (p JSONPresenter) ChangeSummary(r ChangeSummaryResult) string {
 	return marshal(jsonChangeSummaryResult{
 		Preview: r.Preview,
 		Message: r.Message,
+		Warning: r.Warning,
 		Summary: jcs,
 	})
 }

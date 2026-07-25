@@ -19,6 +19,8 @@ Commands:
   unlink --dry-run <marker> <spec> Preview the unlink without writing (exit 3)
   reset <hash>                  Resolve a closure by syncing its seed events to baseline
   reset --dry-run <hash>        Preview the reset change summary without writing (exit 3)
+  reset --dangerously-override-friction <hash>
+                                Bypass the reset rate-limit block (see cli.reset_friction_block)
   config theme <name>           Set theme preference (default, gruvbox, nord, dracula, etc.)
   config theme                  Show current theme preference
   help                          Show this help
@@ -59,6 +61,8 @@ Closure-driven workflow:
   drift diff <hash>             Review every node in the closure
   drift diff --all              Review all closures in one pass
   drift reset <hash>            Resolve one closure after reviewing it
+                                (rate limit: 3 resets per 30s window; 4th is
+                                blocked unless --dangerously-override-friction)
 
 Closures are derived per-seed (the node that drifted). Drift propagates
 along the citer chain (cited → citer). Markers cannot be cited, so drift

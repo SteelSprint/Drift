@@ -85,12 +85,14 @@ func TestConcurrentResetClosureRace(t *testing.T) {
 
 	// Reset all 3 closures concurrently. Without the lock, two of the three
 	// Save calls would clobber each other and some resets would be lost.
+	// --dangerously-override-friction bypasses the 3-in-30s rate limit so
+	// the race test can fire 3 concurrent resets without blocking.
 	var wg sync.WaitGroup
 	for _, h := range hashes {
 		wg.Add(1)
 		go func(hash string) {
 			defer wg.Done()
-			run("reset", hash)
+			run("reset", "--dangerously-override-friction", hash)
 		}(h)
 	}
 	wg.Wait()

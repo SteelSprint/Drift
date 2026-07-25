@@ -2,3 +2,5 @@
 user-settings.xml
 # Runtime lock file — not committed
 state.lock
+# Rate-limit telemetry — not committed
+friction.json

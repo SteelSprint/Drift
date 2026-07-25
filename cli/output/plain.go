@@ -594,6 +594,9 @@ func (p PlainPresenter) DiffAll(r DiffAllResult) string {
 // (with optional Message lead-in). Hashes are truncated to 8 chars.
 func formatChangeSummary(r ChangeSummaryResult) string {
 	var sb strings.Builder
+	if r.Warning != "" {
+		sb.WriteString("[" + r.Warning + "]\n")
+	}
 	if r.Preview {
 		sb.WriteString("Preview — no changes written\n")
 	}

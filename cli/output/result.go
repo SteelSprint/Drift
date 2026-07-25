@@ -93,10 +93,15 @@ type DiffAllResult struct {
 // post-apply printing. When Preview is true, presenters render a
 // "Preview — no changes written" banner; otherwise they render the
 // summary as the body following any lead-in message in Message.
+//
+// Warning is a non-empty string (e.g. "bypass-friction") when the
+// operation proceeded under an explicit override. JSON consumers use it
+// to detect bypass behavior without parsing stderr.
 type ChangeSummaryResult struct {
 	Summary  orchestrator.ChangeSummary
 	Preview  bool   // true for dry-run; false for post-apply
 	Message  string // optional lead-in (e.g. "Closure a3f7b2c1 resolved.")
+	Warning  string // optional bypass notice (e.g. "bypass-friction"); empty in normal operation
 }
 
 // OkResult is a generic success message for commands that don't produce

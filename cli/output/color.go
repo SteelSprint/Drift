@@ -531,6 +531,9 @@ func (p ColorPresenter) DiffAll(r DiffAllResult) string {
 func (p ColorPresenter) ChangeSummary(r ChangeSummaryResult) string {
 	t := p.Theme
 	var sb strings.Builder
+	if r.Warning != "" {
+		sb.WriteString(t.StatusWarn.Apply("["+r.Warning+"]") + "\n")
+	}
 	if r.Preview {
 		sb.WriteString(t.StatusWarn.Apply("Preview — no changes written") + "\n")
 	}

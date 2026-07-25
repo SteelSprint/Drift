@@ -20,7 +20,7 @@ func writeInitFile(dir, template string) error {
 	// Create .drift/.gitignore so user-settings.xml and runtime artifacts are never committed
 	gitignorePath := filepath.Join(dir, ".drift", ".gitignore")
 	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-		content := "# User-specific settings — not committed\nuser-settings.xml\n# Runtime lock file — not committed\nstate.lock\n"
+		content := "# User-specific settings — not committed\nuser-settings.xml\n# Runtime lock file — not committed\nstate.lock\n# Rate-limit telemetry — not committed\nfriction.json\n"
 		os.WriteFile(gitignorePath, []byte(content), 0644)
 	}
 	return nil

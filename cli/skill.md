@@ -116,6 +116,7 @@ Closures are strictly disjoint across seeds. Two seeds produce two closures, eve
 | `drift link <marker> <module.spec>` | Create a link edge. |
 | `drift unlink <marker> <module.spec>` | Remove a link edge. |
 | `drift reset <hash>` | Resolve a closure. |
+| `drift reset --dangerously-override-friction <hash>` | Resolve a closure, bypassing the rate-limit block (see cli.reset_friction_block). Intended for tests and CI. |
 | `drift config theme <name>` | Set theme. |
 | `drift skill` | Print this guide. |
 | `drift help` | Print command reference. |
@@ -181,10 +182,13 @@ Every command supports three modes:
 - `theme.xml` — project-level custom theme. Commit to git.
 - `user-settings.xml` — per-user theme preference. Do NOT commit (gitignored).
 - `state.lock` — runtime lock acquired by `fileio.Begin` for the duration of each CLI invocation. Do NOT commit (gitignored).
+- `friction.json` — rate-limit telemetry: Unix-second timestamps of recent successful non-dry-run resets, used to block rapid batch dismissal (see cli.reset_friction_block). Do NOT commit (gitignored).
 
 ## Why no bulk reset?
 
 `drift reset <hash>` accepts exactly ONE closure per invocation. There is no `--all`, no glob, no multi-arg form. This friction is the point: a bulk reset would let an LLM blindly mark everything as reviewed without actually reviewing the changes. The intended workflow is todo → diff --all → reset one closure at a time.
+
+A runtime rate-limit layer additionally blocks the 4th reset within any 30-second window. The block enforces per-closure review pacing on top of the one-at-a-time structural rule. `--dangerously-override-friction` bypasses the block (emits a stderr squawk and a `warning` field in JSON output); the flag exists for tests and CI but is not advertised in the block's error message.
 
 ## Edge cases
 
@@ -219,3 +223,78 @@ drift todo --json
 # Set theme.
 drift config theme gruvbox
 ```
+
+## Cookbook
+
+How-to recipes for common agent tasks. Cookbook entries cover periodic or large-scale operations; the main workflow sections above cover daily per-closure work.
+
+<!-- D! id=skillaudit range-start -->
+
+### How to run a spec audit
+
+`drift todo` reports hash drift — when a marker's bytes or a spec's canonical hash changed. It does NOT verify that the spec text actually describes the code. To catch semantic drift that hash-based detection can't see, run a periodic spec audit: a parallel pass where each spec is graded against its linked marker (or, for unlinked specs, against its citers).
+
+The pattern below assumes a coding harness that can spawn subagents in parallel. A single human can run the same phases serially against slices of the spec list. Expected yield for a 150-spec project: ~80% of specs aligned, ~12% misaligned, ~4% violated, ~3% unclear. Partition roughly 15 subagents at ~10 specs each.
+
+**Phase 0 — Build the audit index (once).**
+
+The harness builds a compact index so each subagent starts with ground truth in hand, instead of re-discovering the citation graph.
+
+```sh
+# Full inventory of specs, markers, edges.
+drift list --json
+
+# For each spec id in the inventory, get the closure structure (no content bytes).
+drift show <spec-id> --no-content --json
+```
+
+From these two outputs, build an index with one entry per spec. Example entry shape:
+
+```json
+{
+  "spec_id": "diff.unified_format",
+  "linked_marker": "dunif",
+  "filepath": "internal/diff/diff.go",
+  "line_range": "5-231",
+  "cites": [],
+  "cited_by": ["core.scan_coverage"],
+  "group_id": "dunif"
+}
+```
+
+For unlinked specs, set `linked_marker`, `filepath`, and `line_range` to null and `group_id` to the spec_id itself. Specs sharing a marker share a `group_id` (the marker id) — audit the code region once, split the verdict across the specs. Pass each subagent only the slice of the index covering their assigned specs.
+
+**Phase 1 — Spawn subagents (parallel).**
+
+Partition the spec list across ~15 subagents at ~10 specs each. Each subagent receives its slice of the index plus this rubric:
+
+- For each assigned spec, fetch content with `drift show <id> --json` (use `--no-content` first for structure, then the full version for content).
+- List each requirement R1, R2, … with RFC 2119 keywords (MUST, MUST NOT, SHOULD, MAY).
+- For specs WITH a linked marker: per requirement, read the marker code region and grade `aligned` / `misaligned` / `unclear`. Cite `file:line` for every verdict.
+- For specs WITHOUT a marker (intent/glossary/conceptual): check internal consistency and spot-check that the contract is reflected in citers. Verdict `holds` / `violated` / `unclear`.
+- For specs sharing a marker (same `group_id` in the index): audit the code region ONCE, then split the verdict across the specs.
+- Return a structured JSON table (not prose). Each finding has: `spec_id`, `overall`, `requirements` (map of R-id to `{verdict, evidence}`), `notes`.
+- Do NOT propose fixes. Diagnose only. The separation is deliberate — a human reviews the audit before any code changes, and the audit pass itself MUST NOT auto-resolve the drift closures it may open by editing spec text or relocating markers.
+
+Efficiency rules for subagents:
+
+- Batch `drift show` calls and file reads — send multiple tool calls in one message.
+- Use `--json` for all drift invocations; plain text output is verbose.
+- Don't re-discover ground truth — the index has marker paths, line ranges, and citations.
+
+**Phase 2 — Synthesize (once).**
+
+After all subagents return, the harness runs a synthesis LLM pass over the K JSON verdict tables. The synthesis does four things:
+
+- **Cross-spec contradictions**: scan every spec's R-text against every other spec's R-text. The parallel agents only catch contradictions that happen to fall within one agent's slice; the synthesis pass catches cross-slice contradictions (e.g. one spec says "14 elements", a cited spec says "18 elements").
+- **Deduplicate**: cluster findings that point at the same code region or the same contradiction.
+- **Triage by fix direction**:
+  - Hard MUST violation → fix the code (or update the spec if the spec is wrong and code is right).
+  - Spec-text staleness (spec behind code, no hash drift) → update the spec text.
+  - Marker placement (marker wraps wrong region) → relocate the marker, re-link.
+  - Unclear → flag for human review.
+
+**After fixes land, close the loop with drift's normal workflow.** Each fix to spec text or marker placement is itself a drift event: run `drift todo` to see the new closure(s), `drift diff <hash>` to review the change, `drift reset <hash>` to baseline it. The audit doesn't replace `drift todo`; it runs alongside it to catch semantic drift that hash-based detection can't see.
+
+<!-- D! id=skillaudit range-end -->
+

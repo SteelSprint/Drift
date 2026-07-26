@@ -418,3 +418,130 @@ func TestResetClosure_BrokenEdgeOnlyRefused(t *testing.T) {
 		t.Fatalf("expected ErrBrokenEdgeNotResettable, got %v", err)
 	}
 }
+
+// Guardrail: Broken-edge event persists through reset when mixed with a
+// NODE_CHANGED event. Per core.reset_action: "EDGE_BROKEN is a no-op (the
+// user must fix the scan)." The closure should survive reset (not be refused,
+// since it has a non-broken event), and after reset the broken edge should
+// still produce a closure on the next todo run.
+func TestGuardrail_BrokenEdgePersistsThroughReset(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("old")),
+	}
+	baselineEdges := []core.Edge{}
+	// Scan: m.a changed AND has a broken edge (m.a → m.missing).
+	scanEdges := []core.Edge{testutil.NewRef("m.a", "m.missing")}
+	scan := makeScan(map[string]string{"m.a": hash("new")}, nil, scanEdges)
+
+	closures := core.DeriveClosures(specs, nil, baselineEdges, scan)
+	if len(closures) != 1 {
+		t.Fatalf("expected 1 closure, got %d", len(closures))
+	}
+	hasNodeChanged := false
+	hasBrokenEdge := false
+	for _, ev := range closures[0].Events {
+		if ev.Kind == core.EventNodeChanged {
+			hasNodeChanged = true
+		}
+		if ev.Kind == core.EventEdgeBroken {
+			hasBrokenEdge = true
+		}
+	}
+	if !hasNodeChanged || !hasBrokenEdge {
+		t.Fatalf("closure should have both NODE_CHANGED and EDGE_BROKEN events, got: %+v", closures[0].Events)
+	}
+
+	// Reset should succeed (not refused, since not ALL events are broken).
+	ctx := core.CoreAlgorithmContext{
+		Specs:  specs,
+		Action: core.ResetClosureAction{Hash: closures[0].Hash, Scan: scan},
+	}
+	alg := core.NewCoreAlgorithm()
+	_, err := alg.EvaluateState(ctx)
+	if err != nil {
+		t.Fatalf("reset of mixed closure should succeed (not refused): %v", err)
+	}
+
+	// After reset, the baseline has m.a synced to new hash, but the broken
+	// edge is still in scan (not added to baseline — broken edges are no-ops).
+	// Re-deriving closures: the broken edge still produces a closure.
+	updatedSpecs := []core.Spec{testutil.NewSpec("m.a", hash("new"))}
+	postReset := core.DeriveClosures(updatedSpecs, nil, baselineEdges, scan)
+	if len(postReset) != 1 {
+		t.Fatalf("broken edge should still produce a closure after reset, got %d closures", len(postReset))
+	}
+	if postReset[0].Hash != closures[0].Hash {
+		t.Fatalf("closure hash should be stable (membership unchanged): was %q, now %q", closures[0].Hash, postReset[0].Hash)
+	}
+	hasBrokenAfterReset := false
+	for _, ev := range postReset[0].Events {
+		if ev.Kind == core.EventEdgeBroken {
+			hasBrokenAfterReset = true
+		}
+	}
+	if !hasBrokenAfterReset {
+		t.Fatalf("broken-edge event should persist after reset, got events: %+v", postReset[0].Events)
+	}
+}
+
+// Guardrail: Closure identity is stable when drift-state changes but
+// membership does not. Per AGENTS.md: "Identity ... stable across drift-state
+// changes; changes only when nodes/edges are added or removed." The hash is
+// computed from sorted node IDs + sorted undirected edge keys, NOT from event
+// kinds or hashes. So the same seed producing different NewHash values should
+// yield the same closure hash.
+func TestGuardrail_ClosureIdentityEventAgnostic(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.s", hash("old")),
+		testutil.NewSpec("m.s2", hash("s2")),
+	}
+	// S2 cites S. When S drifts, closure = {S, S2} (seed + citer).
+	edges := []core.Edge{testutil.NewRef("m.s2", "m.s")}
+
+	// State 1: S changed to "newA".
+	scan1 := makeScan(map[string]string{"m.s": hash("newA"), "m.s2": hash("s2")}, nil, edges)
+	c1 := core.DeriveClosures(specs, nil, edges, scan1)
+	if len(c1) != 1 {
+		t.Fatalf("expected 1 closure, got %d", len(c1))
+	}
+
+	// State 2: S changed to "newB" (different NewHash, same membership).
+	scan2 := makeScan(map[string]string{"m.s": hash("newB"), "m.s2": hash("s2")}, nil, edges)
+	c2 := core.DeriveClosures(specs, nil, edges, scan2)
+	if len(c2) != 1 {
+		t.Fatalf("expected 1 closure, got %d", len(c2))
+	}
+
+	// Same membership (m.s + m.s2 + edge) → same hash, even though NewHash differs.
+	if c1[0].Hash != c2[0].Hash {
+		t.Fatalf("closure hash should be event-agnostic (same membership, different NewHash): %q vs %q", c1[0].Hash, c2[0].Hash)
+	}
+}
+
+// Guardrail: Closure identity changes when membership changes. Adding a new
+// citer to the closure must produce a different hash.
+func TestGuardrail_ClosureIdentityChangesWithMembership(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.s", hash("old")),
+		testutil.NewSpec("m.s2", hash("s2")),
+	}
+	// Two specs, one edge (S2 cites S).
+	edges := []core.Edge{testutil.NewRef("m.s2", "m.s")}
+	scan := makeScan(map[string]string{"m.s": hash("new"), "m.s2": hash("s2")}, nil, edges)
+	c1 := core.DeriveClosures(specs, nil, edges, scan)
+	if len(c1) != 1 {
+		t.Fatalf("expected 1 closure, got %d", len(c1))
+	}
+
+	// Add a third spec S3 that also cites S. Now the closure expands.
+	specs3 := append(specs, testutil.NewSpec("m.s3", hash("s3")))
+	edges3 := append(edges, testutil.NewRef("m.s3", "m.s"))
+	scan3 := makeScan(map[string]string{"m.s": hash("new"), "m.s2": hash("s2"), "m.s3": hash("s3")}, nil, edges3)
+	c2 := core.DeriveClosures(specs3, nil, edges3, scan3)
+	if len(c2) != 1 {
+		t.Fatalf("expected 1 closure, got %d", len(c2))
+	}
+	if c1[0].Hash == c2[0].Hash {
+		t.Fatalf("closure hash should change when membership changes: both = %q", c1[0].Hash)
+	}
+}

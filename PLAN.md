@@ -17,7 +17,7 @@ context beyond the drift codebase itself.
 behavior in `*.drift.xml` files. Markers (`// D! id=<shortcode> range-start`
 / `range-end`) wrap the implementing code. When any side changes, drift derives
 **closures** (per-seed drift sets) so the reviewer can verify alignment before
-re-baselining. The project is self-hosting: drift tracks its own specs (157
+re-baselining. The project dogfoods itself: drift tracks its own specs (157
 specs, 96 markers, 184 edges as of this writing).
 
 **Key recent feature**: `cli.reset_friction_block` — a runtime rate-limit that
@@ -139,7 +139,7 @@ must be properly paired; nesting is not allowed. See scanner.ignore_span.
 
 `make build` runs `go build` followed by `./drift todo`. If `drift todo`
 reports any drift (exit 1) or any unlinked markers, the build fails. This
-is the self-hosting enforcement: drift's own specs MUST be clean before
+is the dogfooding enforcement: drift's own specs MUST be clean before
 the binary builds.
 
 **Consequence**: every spec added to `docs.drift.xml` MUST have at least
@@ -176,34 +176,50 @@ LLM agent users (covered by `cli/skill.md`), contributors (covered by
 When tradeoffs arise (depth vs brevity, formal vs conversational), solo human
 developers win.
 
-### Voice: terse progressive
+### Voice: warm tutorial
 
-**Terse progressive** = Rust Book's progressive structure (chapters build on
-each other, concepts introduced via worked examples) delivered in man-page
-voice (declarative, third-person, present tense, no chatty filler).
+**Warm tutorial** = the Rust Book's collaborative, patient approach. The
+reader and the author build something together. The tone is
+conversational but precise — like pairing with an expert who explains
+why things work, not just how to use them.
 
-**Examples**:
+**Core principles:**
 
-| Voice | Example |
+- Use "you" and "we/let's" freely. The reader is your pair programming
+  partner. "Let's install drift." "Your agent writes specs." "We'll
+  cover closures in the next chapter."
+- Build a sustained project across chapters. The reader builds a real
+  todo app, adding drift to it chapter by chapter.
+- Show the loop: write code, drift catches something, read the diff,
+  decide what to do, fix or resolve. This is the Rust Book's signature
+  pattern: deliberate change, system feedback, explanation, decision.
+- Treat closures as teaching moments, not just output. Explain what
+  each part means and what the reader should learn.
+- Use forward references. "We'll cover the citer chain in chapter 7 —
+  for now, just know that changing a spec may affect others."
+- Anticipate questions. "You might wonder why drift doesn't distinguish
+  a refactor from a behavior change. That's intentional — here's why."
+- Celebrate milestones briefly. "Drift caught it!" "Your project is
+  now tracked." Not saccharine, just human.
+- Be patient. Explain WHY something works, not just HOW to do it.
+- Prefer prose over tables. Tables are reference material; prose is
+  tutorial.
+- No RFC 2119 keywords in docs prose. They are an internal spec
+  convention, not something to push on users.
+- No emoji.
+
+**Examples:**
+
+| Good (warm tutorial) | Bad (terse/impersonal) |
 |---|---|
-| Forbidden (conversational) | "You can create a spec like this:" |
-| Forbidden (vague) | "Specs are pretty important." |
-| Forbidden (chatty) | "Let's look at how closures work." |
-| Forbidden (second-person) | "You should run drift todo daily." |
-| Required (terse progressive) | "A spec is plain English inside an XML element. The scanner hashes the spec text; refs are stripped before hashing." |
-| Required (declarative) | "Closures are per-seed drift sets. The unit of review is one closure at a time." |
-| Required (imperative for commands) | "Run `drift todo` to check for drift." |
-| Required (concept introduction) | "A closure contains the seed node plus every spec that transitively cites it." |
+| "Let's see what happens when the agent changes something." | "The agent edits code inside an existing marker." |
+| "Drift caught it! The closure shows..." | "A NODE_CHANGED event fires." |
+| "You might wonder: does drift distinguish a refactor from a behavior change?" | "Refactors produce NODE_CHANGED events." |
+| "Your project is now drift-tracked." | "The project is clean." |
 
-Rules:
-- Third-person, present tense, declarative.
-- Short sentences. Active voice.
-- Reserve RFC 2119 keywords (MUST, MUST NOT, SHOULD, MAY) for actual normative
-  requirements — not for emphasis.
-- No emoji. No "let's" or "we'll". No "pretty" or "just".
-- Each chapter opens with a one-paragraph orientation: what this chapter
-  covers, what the reader will be able to do after, what prerequisite
-  chapters are assumed.
+Each chapter opens with a one-paragraph orientation: what we'll build,
+what the reader will be able to do after, and what prerequisite
+chapters are assumed.
 
 ### Sub-category framing
 
@@ -232,7 +248,7 @@ docs/
   06-friction.md                       (one-closure-at-a-time; rate limit; override flag)
   07-output-modes.md                   (plain/color/json; themes; JSON contract)
   08-spec-audit.md                     (periodic semantic audit, human-voiced)
-  09-internals.md                      (state.xml; .drift/ layout; self-hosting)
+  09-internals.md                      (state.xml; .drift/ layout; dogfooding)
   10-contributing.md                   (repo layout; build/test; editing tracked code)
   spec-format.md                       (was SPECIFICATIONS.md — RFC 2119 spec authoring guide)
   contributors/
@@ -631,17 +647,17 @@ Exercise: run a 5-spec audit slice on your own project; report findings in
 the structured JSON format.
 
 ### docs/09-internals.md (~100 lines)
-**Under the hood.** state.xml, baselines.bin, .drift/ layout, self-hosting.
+**Under the hood.** state.xml, baselines.bin, .drift/ layout, dogfooding.
 
 Learning objectives: the reader can describe the `.drift/` directory
 layout; explain state.xml v4; explain baselines.bin; explain the
-fileio.Session lock; describe the self-hosting principle.
+fileio.Session lock; describe the dogfooding principle.
 
 Content: `.drift/` layout (state.xml committed, baselines.bin committed,
 theme.xml committed, user-settings.xml gitignored, state.lock gitignored,
 friction.json gitignored); state.xml v4 (baseline only, no resolutions
 table); baselines.bin (gob-encoded packfile); `fileio.Begin` lock
-(flock/LockFileEx for the entire CLI invocation); self-hosting
+(flock/LockFileEx for the entire CLI invocation); dogfooding
 (`make build` runs `drift todo` as a gate).
 
 Exercise: inspect `.drift/state.xml` after a `drift link`; identify the
@@ -1094,3 +1110,86 @@ Each phase follows the same loop:
 6. `make build` to verify the gate.
 
 **Review checkpoint**: pause at end of each phase for review before proceeding.
+
+---
+
+## 15. Revised chapter structure (task-oriented)
+
+The original chapter structure (§6) was concept-oriented: "Specs and
+markers", "Closures", "Friction", etc. After discussion, the structure
+was revised to be **task-oriented** — each chapter is a real task a
+developer performs, phrased in natural language.
+
+### Core framing
+
+**Drift is a sync layer between specs and code. The agent writes both.
+Drift keeps them aligned.** Specs are compressed intent. Code is the
+expansion. The human prompts; the agent writes specs and code; drift
+keeps them in sync. This makes the agent more accurate (checks its own
+work against specs) and more agile (moves fast, knowing drift catches
+misalignment).
+
+### Final chapter list (15 chapters + 3 appendices)
+
+```
+01. Why drift exists
+02. Getting started
+03. How to add drift to a project
+04. How to add a feature
+05. How to fix a bug
+06. How to refactor a module
+07. How to change a spec
+08. How to remove a feature
+09. How to explore the codebase
+10. How to configure drift
+11. How to set up CI with drift
+12. How to commit drift to git
+13. How to audit your specs
+14. How to troubleshoot drift
+15. How to get more information about drift commands
+
+Appendices:
+A. Output modes
+B. Internals
+C. Spec-format reference
+```
+
+### Structural decisions
+
+- **No RFC 2119 in docs prose.** RFC 2119 keywords are an internal
+  convention for writing specs (in `*.drift.xml`), not something to push
+  on users in documentation.
+- **No "Contributing" chapter.** Deferred.
+- **No separate Reference section.** Friction and closures fold into
+  the task chapters that use them ("How to troubleshoot drift" covers
+  friction; "How to fix a bug" covers closures).
+- **Agent is the primary operator.** The docs frame drift as a tool for
+  LLMs. The human prompts; the agent writes specs and code. The docs
+  teach the human what drift is and how to steer through specs.
+
+### Revised execution phases
+
+| Phase | Scope | Chapters |
+|---|---|---|
+| **0** | Foundation: restructure meta-spec, concepts, ch.01-03 | 01-03 |
+| **1** | Daily-work tasks | 04-08 |
+| **2** | Operations + recovery | 09-15 |
+| **3** | Appendices + migrations | A, B, C + README/AGENTS slim |
+| **4** | Sync specs + skill.md markers | sync specs |
+| **5** | Final verification | make build, go test, drift todo clean |
+
+### Phase 0 status (complete)
+
+- [x] docs.pedagogy updated (R3 dropped RFC 2119, R5 task-driven spiral,
+      R6 stale ref fixed, overview sync-layer framing)
+- [x] 4 new concept specs added (closure, drift_event, citer_chain,
+      friction)
+- [x] ch.01 rewritten (sync-layer framing)
+- [x] ch.02 rewritten (install + agent handoff)
+- [x] ch.03 rewritten (How to add drift to a project; replaces old
+      specs-and-markers chapter)
+- [x] Old markers docsm/docsm_ex unlinked and removed
+- [x] New markers docaddp/docaddp_ex linked to chapter_03
+- [x] All closures resolved
+- [x] `drift todo` clean: 171 specs, 104 markers, 217 edges
+- [x] `make build` passes

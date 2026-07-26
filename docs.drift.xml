@@ -6,12 +6,13 @@ docs module follows. Chapter specs, concept specs, and sync specs MUST
 satisfy these requirements. This spec is the pedagogical authority for
 the documentation system.
 
-The documentation follows outcome-based education (OBE): each chapter
-is designed backward from measurable learning objectives. The reader
-gains abilities, not just information. See
-<ref spec="glossary.spec">glossary.spec</ref> for the formal definition
-of a spec and <ref spec="glossary.ref">glossary.ref</ref> for the ref
-mechanism used throughout.
+Drift is a sync layer between specs and code. The agent writes both.
+Drift keeps them aligned. The documentation is task-oriented: each
+chapter is a real task a developer performs, not an abstract concept.
+Concepts are introduced in service of tasks, reinforced through reuse
+in other tasks. See <ref spec="glossary.spec">glossary.spec</ref> for
+the formal definition of a spec and <ref spec="glossary.ref">
+glossary.ref</ref> for the ref mechanism used throughout.
 
 R1. Learning objectives. Every chapter spec MUST list 3-7 learning
 objectives. Each objective MUST use a measurable Bloom verb (identify,
@@ -26,7 +27,6 @@ concept spec, but no chapter may cite a later chapter.
 
 R3. Content requirements. Every chapter spec MUST enumerate what the
 chapter file (docs/NN-*.md) covers to satisfy the learning objectives.
-Content requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 
 R4. Formative assessment. Every chapter spec MUST require at least one
 "Try it yourself" exercise. Exercises state a goal and a verification
@@ -36,22 +36,384 @@ spec. Removing an exercise from a chapter file MUST produce drift on the
 chapter spec.
 
 R5. Concept specs. Concept specs are atomic and MAY be cited by multiple
-chapter specs (spiral curriculum: a concept introduced briefly in an
-early chapter, defined formally in a middle chapter, applied in a later
-chapter). Concept specs MUST cite canonical authority (glossary.* for
-definitions, core.* for algorithmic contracts) via &lt;ref&gt;. Concept specs
-MUST NOT cite chapter specs. Concepts are foundational; chapters are
-delivery vehicles.
+chapter specs. A concept introduced when first needed in a task chapter
+is reinforced through reuse in later task chapters (task-driven spiral).
+Concept specs MUST cite canonical authority (glossary.* for definitions,
+core.* for algorithmic contracts) via &lt;ref&gt;. Concept specs MUST NOT
+cite chapter specs. Concepts are foundational; chapters are delivery
+vehicles.
 
 R6. Sync specs. Topics covered in BOTH docs/ and cli/skill.md MUST have
 a sync spec. The sync spec enumerates required coverage; markers in both
 files link to it. Changing the enumeration drifts both markers. Sync
 specs do NOT catch wording divergence. That requires the periodic spec
-audit (docs.chapter_08_spec_audit).
+audit.
 
 R7. Ref ordering. Within a chapter spec prerequisite list, concept specs
 MUST be cited before chapter specs. This ordering is a convention, not
 enforced by the scanner.
+</spec>
+
+<spec id="concept_spec">
+Overview: A spec is a unit of intended behavior expressed as plain text
+inside an XML element in a *.drift.xml module file. Specs are compressed
+intent: the human or agent writes a spec to capture a rule, and the
+scanner hashes the spec content (with refs stripped) so renaming a
+referenced spec ID does not invalidate the referrer's hash.
+
+Definition authority: <ref spec="glossary.spec">glossary.spec</ref>.
+</spec>
+
+<spec id="concept_marker">
+Overview: A marker is a pair of comment lines — a range-start and a
+range-end — wrapping a code region that implements a spec. The
+shortcode contains no dot. The scanner hashes the lines between the
+markers, excluding the marker declarations themselves. Markers are the
+implementation side of the spec-code duality. Markers cannot be cited
+by specs or other markers.
+
+Definition authority: <ref spec="glossary.marker">glossary.marker</ref>.
+</spec>
+
+<spec id="concept_edge">
+Overview: An edge is a directed relationship between two nodes in the
+citation graph. Two kinds exist: marker to spec (created by drift link)
+and spec to spec (auto-parsed from ref tags inside spec content). Both
+share the same storage and drift semantics. The From endpoint is the
+citer; the To endpoint is the cited. Drift propagates along the citer
+chain: when the cited changes, every citer is suspect.
+
+Definition authority: <ref spec="glossary.edge">glossary.edge</ref>.
+</spec>
+
+<spec id="concept_baseline">
+Overview: The baseline is the most-recently-reviewed state of the
+citation graph, persisted in .drift/state.xml with content snapshots in
+.drift/baselines.bin. A node whose baseline hash matches its current
+scan hash has not changed since last review. Closures are derived by
+comparing baseline against scan; drift events are the differences.
+
+Definition authority: <ref spec="glossary.baseline">glossary.baseline</ref>.
+</spec>
+
+<spec id="concept_scan">
+Overview: A scan is the current state of specs, markers, and edges
+discovered by walking workspace files. The scanner reads *.drift.xml
+for specs and refs, and scans text files for markers. A scan is
+computed fresh on every drift todo invocation. Comparing baseline
+against scan produces drift events.
+
+Definition authority: <ref spec="glossary.scan">glossary.scan</ref>.
+</spec>
+
+<spec id="concept_closure">
+Overview: A closure is a per-seed drift set computed when baseline and
+scan disagree. Each closure contains one seed node plus every spec that
+transitively cites it (the citer chain). For marker seeds, the linked
+specs are also included. Closures are ephemeral — not stored in
+state.xml — and strictly disjoint across seeds. Closure identity is the
+first 8 hex chars of SHA1(sorted node IDs + sorted undirected edge
+keys).
+
+Definition authority: <ref spec="glossary.closure">glossary.closure</ref>
+(canonical definition),
+<ref spec="core.provenance_closure">core.provenance_closure</ref>
+(algorithmic contract).
+</spec>
+
+<spec id="concept_drift_event">
+Overview: A drift event is a single difference between baseline and
+scan. Six types exist: NODE_CHANGED (hash differs), NODE_ADDED (new in
+scan), NODE_REMOVED (missing from scan), EDGE_ADDED (new spec-spec
+edge), EDGE_REMOVED (edge gone from scan), EDGE_BROKEN (scan edge whose
+target does not exist). Each event has a seed: the node where the
+change originates. Events seed closures.
+
+Definition authority: <ref spec="glossary.seed">glossary.seed</ref>.
+</spec>
+
+<spec id="concept_citer_chain">
+Overview: The citer chain is the set of specs that transitively cite a
+given spec via ref edges. When a spec changes, drift propagates along
+the citer chain: every citer is suspect and lands in the closure. This
+is how changing a foundational spec surfaces drift on every spec that
+depends on it, transitively to fixpoint.
+
+Definition authority: <ref spec="glossary.citer">glossary.citer</ref>.
+</spec>
+
+<spec id="concept_friction">
+Overview: Friction is drift's design principle that per-closure review
+cannot be bypassed. There is no bulk reset. A runtime rate-limit blocks
+the 4th reset within any 30-second window. The friction layer enforces
+that each closure receives individual attention — the agent cannot
+blindly dismiss all drift without reviewing each piece.
+
+Definition authority: <ref spec="cli.reset_friction_block">cli.reset_friction_block</ref>.
+</spec>
+
+<spec id="chapter_01_why_drift_exists">
+Overview: The reader learns what spec drift is and why LLM-assisted
+codebases make it acute. This is a motivation chapter with no commands
+and no install. The chapter frames the problem drift solves and
+introduces drift as a sync layer.
+
+Learning objectives: after reading docs/01-why-drift-exists.md, the
+reader can:
+  - describe the problem of spec drift between intent and code
+  - explain why human review fails to catch drift at agent code volume
+  - identify drift as a sync layer between specs and code
+
+Prerequisites:
+  - <ref spec="docs.concept_spec">spec concept</ref> (introduced by analogy)
+  - <ref spec="docs.concept_marker">marker concept</ref> (introduced by analogy)
+
+Content requirements:
+  - present a concrete scenario where an LLM agent ships code that
+    violates an implicit project rule
+  - explain why traditional review practices (code review, testing)
+    fail to catch semantic drift at agent output volume
+  - describe drift as a sync layer: specs are compressed intent, code
+    is the expansion, drift keeps them aligned
+  - explain that the agent writes both specs and code; the human
+    steers through specs
+  - link forward to chapter 02 (getting started) as the next step
+  - include a thought exercise (marker: docwhy_ex) asking the reader
+    to identify a recent PR where an agent violated an implicit rule
+    and what spec would have caught it
+</spec>
+
+<spec id="chapter_02_getting_started">
+Overview: The reader installs drift, gives the binary to their agent,
+and watches the agent bootstrap specs and markers. The chapter frames
+the agent as the primary operator of drift; the human steers through
+specs and reviews in PRs.
+
+Learning objectives: after reading docs/02-getting-started.md, the
+reader can:
+  - install drift on macOS, Linux, or Windows
+  - give drift to their LLM agent via drift skill
+  - observe the agent writing specs, placing markers, and running
+    drift todo
+  - interpret a clean drift todo result
+
+Prerequisites:
+  - <ref spec="docs.concept_spec">spec concept</ref>
+  - <ref spec="docs.concept_marker">marker concept</ref>
+  - <ref spec="docs.concept_edge">edge concept</ref>
+  - <ref spec="docs.chapter_01_why_drift_exists">chapter 1</ref>
+
+Content requirements:
+  - provide install instructions for macOS/Linux (curl pipe bash) and
+    Windows (irm pipe iex)
+  - show drift init creating .drift/ and a starter main.drift.xml
+  - show the agent running drift skill to learn the workflow
+  - show the agent writing a spec, placing a marker, and linking them
+    (wrapped in ignore-span directives so the scanner does not treat
+    examples as real markers)
+  - show drift todo producing a clean result
+  - explain that the human prompts the agent; the agent writes both
+    specs and code
+  - include a hands-on exercise (marker: docstart_ex) where the reader
+    installs drift, gives it to their agent, and observes a clean
+    drift todo
+</spec>
+
+<spec id="chapter_03_add_drift_to_project">
+Overview: The reader learns how to introduce drift to an existing
+codebase. The agent surveys existing code, writes retroactive specs
+for current behavior, places markers around implementing code, links
+them, and resolves the resulting closures. This is the adoption
+workflow every new user goes through.
+
+Learning objectives: after reading docs/03-how-to-add-drift-to-a-project.md,
+the reader can:
+  - bootstrap drift on an existing codebase using their agent
+  - describe the agent's role in surveying code and writing retroactive
+    specs
+  - place markers around existing implementing code
+  - link markers to specs and resolve the initial closures
+  - explain what belongs in .drift/ and what to commit to git
+
+Prerequisites:
+  - <ref spec="docs.concept_spec">spec concept</ref>
+  - <ref spec="docs.concept_marker">marker concept</ref>
+  - <ref spec="docs.concept_edge">edge concept</ref>
+  - <ref spec="docs.concept_baseline">baseline concept</ref>
+  - <ref spec="docs.concept_scan">scan concept</ref>
+  - <ref spec="docs.chapter_02_getting_started">chapter 2</ref>
+
+Content requirements:
+  - walk through the agent surveying existing code to identify rules
+    and behaviors worth specing
+  - show the agent writing specs that capture existing behavior
+  - show the agent placing markers around existing implementing code
+  - show the agent linking markers to specs
+  - show drift todo reporting closures from the new specs and markers
+  - show the agent resolving closures to establish the baseline
+  - explain what to commit to git (state.xml, baselines.bin) and what
+    to gitignore (user-settings.xml, state.lock, friction.json)
+  - include a hands-on exercise (marker: docaddp_ex) where the reader
+    bootstraps drift on a small existing project with their agent
+</spec>
+
+<spec id="chapter_04_add_feature">
+Overview: The reader learns how the agent adds a new feature: writes a
+spec capturing the intent, writes the implementing code, places a marker,
+links marker to spec, and verifies a clean state.
+
+Learning objectives: after reading docs/04-how-to-add-a-feature.md, the
+reader can:
+  - describe the agent workflow for adding a feature
+  - identify what makes a good spec (compressed intent, specific enough
+    to verify)
+  - explain how markers connect specs to code
+  - verify that a new feature is drift-clean
+
+Prerequisites:
+  - <ref spec="docs.concept_spec">spec concept</ref>
+  - <ref spec="docs.concept_marker">marker concept</ref>
+  - <ref spec="docs.concept_edge">edge concept</ref>
+  - <ref spec="docs.chapter_03_add_drift_to_project">chapter 3</ref>
+
+Content requirements:
+  - show the agent writing a spec from a natural-language prompt
+  - show the agent writing implementing code and placing a marker
+  - show the agent linking marker to spec
+  - show drift todo clean after the feature is added
+  - explain what makes a good spec vs a bad spec (too vague, too
+    brittle)
+  - include a hands-on exercise (marker: docfeat_ex) where the reader
+    prompts the agent to add a small feature and verifies clean state
+</spec>
+
+<spec id="chapter_05_fix_bug">
+Overview: The reader learns how drift detects misalignment when the
+agent edits code inside a marker, how closures work, and how the agent
+uses the self-correction loop to catch its own mistakes.
+
+Learning objectives: after reading docs/05-how-to-fix-a-bug.md, the
+reader can:
+  - describe how closures detect misalignment between specs and code
+  - interpret drift todo output when a marker drifts
+  - trace drift through the citation graph
+  - explain the self-correction loop: detect, review, decide, fix
+
+Prerequisites:
+  - <ref spec="docs.concept_closure">closure concept</ref>
+  - <ref spec="docs.concept_drift_event">drift event concept</ref>
+  - <ref spec="docs.concept_baseline">baseline concept</ref>
+  - <ref spec="docs.concept_scan">scan concept</ref>
+  - <ref spec="docs.chapter_04_add_feature">chapter 4</ref>
+
+Content requirements:
+  - show the agent editing code inside a marker (NODE_CHANGED)
+  - show the closure containing the changed marker, its linked spec,
+    and any specs that cite that spec
+  - show the agent reading drift diff to see what changed
+  - show the agent deciding: spec wrong, code wrong, or intentional
+  - show the agent fixing whichever side is wrong and resolving
+  - explain the six drift event types and when each fires
+  - explain that this self-correction loop is the core amplification:
+    the agent catches its own mistakes before the human sees them
+  - include a hands-on exercise (marker: docfix_ex) where the reader
+    edits code inside a marker, observes the closure, and resolves it
+</spec>
+
+<spec id="chapter_06_refactor">
+Overview: The reader learns how drift behaves during refactoring. Moving
+code across marker boundaries changes the hash; drift cannot distinguish
+a pure refactor from a behavior change. The agent verifies semantics are
+preserved and resolves.
+
+Learning objectives: after reading docs/06-how-to-refactor-a-module.md,
+the reader can:
+  - explain why drift flags refactors (hash change is intentional)
+  - describe the agent workflow for refactoring marked code
+  - verify that a refactor preserved semantics
+
+Prerequisites:
+  - <ref spec="docs.concept_marker">marker concept</ref>
+  - <ref spec="docs.chapter_04_add_feature">chapter 4</ref>
+  - <ref spec="docs.chapter_05_fix_bug">chapter 5</ref>
+
+Content requirements:
+  - show the agent moving code across a marker boundary
+  - show drift flagging the change (NODE_CHANGED on the marker)
+  - explain that drift does NOT distinguish refactor from behavior
+    change — both produce hash changes, both need review
+  - explain why this is intentional: refactors that accidentally change
+    behavior are the most dangerous bugs
+  - show the agent verifying semantics via drift diff, then resolving
+  - explain marker placement strategy: keep markers on public entry
+    points, not helpers
+  - include a hands-on exercise (marker: docrefac_ex) where the reader
+    refactors a function inside a marker and verifies semantics
+</spec>
+
+<spec id="chapter_07_change_spec">
+Overview: The reader learns how to steer the project through spec edits.
+When a spec changes, drift propagates through the citation graph along
+the citer chain. Every spec that transitively cites the changed spec
+lands in the closure. The agent reads the closure as a work order and
+updates all affected code.
+
+Learning objectives: after reading docs/07-how-to-change-a-spec.md, the
+reader can:
+  - edit a spec to change project direction
+  - trace drift propagation through the citation graph
+  - describe how the citer chain works
+  - update affected code based on closure membership
+
+Prerequisites:
+  - <ref spec="docs.concept_citer_chain">citer chain concept</ref>
+  - <ref spec="docs.concept_closure">closure concept</ref>
+  - <ref spec="docs.chapter_04_add_feature">chapter 4</ref>
+  - <ref spec="docs.chapter_05_fix_bug">chapter 5</ref>
+
+Content requirements:
+  - show editing a spec (changing a rule)
+  - show drift propagating: every spec citing the changed spec via ref
+    appears in the closure, transitively
+  - show every marker linked to those specs also in the closure
+  - show the agent reading the closure as a work order: here is all
+    the code affected by this spec change
+  - show the agent updating affected code to match the new spec
+  - explain the citer chain: cited changes, citers are suspect,
+    transitive to fixpoint
+  - explain that this is the control plane in action: one spec edit
+    shows all downstream impact
+  - include a hands-on exercise (marker: docsteer_ex) where the reader
+    edits a spec, observes propagation, and has the agent update
+    affected code
+</spec>
+
+<spec id="chapter_08_remove_feature">
+Overview: The reader learns how to cleanly remove a feature from a
+drift-tracked project: delete the spec, remove the marker, unlink, and
+resolve the NODE_REMOVED closure.
+
+Learning objectives: after reading docs/08-how-to-remove-a-feature.md,
+the reader can:
+  - remove a spec and its marker cleanly
+  - resolve NODE_REMOVED closures
+  - verify no orphan state remains after removal
+
+Prerequisites:
+  - <ref spec="docs.concept_edge">edge concept</ref>
+  - <ref spec="docs.chapter_04_add_feature">chapter 4</ref>
+
+Content requirements:
+  - show the agent deleting a spec from the *.drift.xml file
+  - show the agent removing the marker lines from the code file
+  - show drift todo reporting NODE_REMOVED for both spec and marker
+  - show the agent unlinking the marker from the spec
+  - show the agent resolving the closures
+  - show drift todo clean after removal
+  - explain that leaving orphan markers or specs without cleanup
+    produces persistent drift
+  - include a hands-on exercise (marker: docrem_ex) where the reader
+    removes a feature and verifies clean state
 </spec>
 
 </module>

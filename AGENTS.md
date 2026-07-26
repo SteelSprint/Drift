@@ -66,7 +66,7 @@ model.drift.xml  # CONCEPTUAL SPEC — model.provenance (above all impls)
 
 ## Specs in this repo
 
-The drift codebase is self-hosting on drift. Specs live in `*.drift.xml` files next to the code they describe:
+The drift codebase dogfoods drift. Specs live in `*.drift.xml` files next to the code they describe:
 
 - `model.drift.xml` — `model.provenance`: notation, axioms, algorithm
 - `cli/cli.drift.xml` — CLI command contracts

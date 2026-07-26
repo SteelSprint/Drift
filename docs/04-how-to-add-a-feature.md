@@ -90,7 +90,7 @@ existing code and drifts from the spec? Let's find out:
 maybe "mark a todo as complete" or "edit the todo title." Watch it
 write the spec, place the marker, link them, and run `drift todo`.
 
-**Verify.** `drift todo` reports "No changes detected" with the spec
-and marker counts incremented.
+**Verify:** The agent's `drift todo` reports "No changes detected" with
+the spec and marker counts incremented.
 
 <!-- D! id=docfeat_ex range-end -->

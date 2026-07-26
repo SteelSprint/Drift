@@ -124,7 +124,8 @@ but aren't in the baseline yet. The agent reviews each closure via
 `drift diff <hash>`, confirms the spec matches the code, and runs
 `drift reset <hash>` to establish the baseline.
 
-After resolving all closures:
+After resolving all closures, the agent runs `drift todo` again to
+confirm everything is clean:
 
 ```bash
 $ drift todo
@@ -159,8 +160,9 @@ Now let's add a new feature to our tracked todo app:
 Give drift to your agent and tell it to survey the code, write specs,
 place markers, link them, and resolve the closures.
 
-**Verify.** `drift todo` reports "No changes detected." Then edit one
-function inside a marker and run `drift todo` again. You should see a
-closure appear containing the changed marker and its linked spec.
+**Verify:** The agent's `drift todo` reports "No changes detected." Then
+tell the agent to edit one function inside a marker and run
+`drift todo` again. You should see a closure appear containing the
+changed marker and its linked spec.
 
 <!-- D! id=docaddp_ex range-end -->

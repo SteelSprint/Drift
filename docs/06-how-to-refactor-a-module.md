@@ -32,7 +32,8 @@ def create_todo(title, user_id):
 <!-- D! instruction=ignore-span-end -->
 
 The behavior is the same. But the content inside the `ctodo` marker
-changed. The validation logic moved out. Run `drift todo`:
+changed. The validation logic moved out. When the agent runs
+`drift todo`, drift reports:
 
 ```bash
 $ drift todo
@@ -100,12 +101,12 @@ change through the citation graph: [How to change a spec &rarr;](07-how-to-chang
 
 <!-- D! id=docrefac_ex range-start -->
 
-**Goal:** Pick a function inside a marker in your project. Extract a
-helper from it, move 2-3 lines into a separate function outside the
-marker. Run `drift todo`: Read the diff. Confirm the change is purely
-structural.
+**Goal:** Tell your agent to pick a function inside a marker and
+extract a helper from it, moving 2-3 lines into a separate function
+outside the marker. Then have the agent run `drift todo` and read the
+diff. Confirm the change is purely structural.
 
-**Verify.** The diff shows the extraction. The spec still describes the
-function's behavior. Resolve the closure.
+**Verify:** The diff shows the extraction. The spec still describes the
+function's behavior. The agent resolves the closure.
 
 <!-- D! id=docrefac_ex range-end -->

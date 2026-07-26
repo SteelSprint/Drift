@@ -33,7 +33,8 @@ Now we want to require a minimum title length. We update the spec:
 ```
 <!-- D! instruction=ignore-span-end -->
 
-The spec content changed. Run `drift todo`:
+The spec content changed. When the agent runs `drift todo`, drift
+reports:
 
 ```bash
 $ drift todo
@@ -108,11 +109,11 @@ needed: [How to remove a feature &rarr;](08-how-to-remove-a-feature.md)
 <!-- D! id=docsteer_ex range-start -->
 
 **Goal:** Edit a spec in your project. Tighten or loosen a
-requirement. Run `drift todo`: Look at the closure membership. If you
-have `<ref>` citations set up, the closure should include transitively
-dependent specs.
+requirement. Then have the agent run `drift todo` and look at the
+closure membership. If you have `<ref>` citations set up, the closure
+should include transitively dependent specs.
 
-**Verify.** Read the closure output. Have the agent update any affected
+**Verify:** Read the closure output. Have the agent update any affected
 code, then resolve the closure.
 
 <!-- D! id=docsteer_ex range-end -->

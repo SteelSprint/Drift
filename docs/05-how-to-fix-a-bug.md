@@ -36,7 +36,7 @@ empty." There's a mismatch.
 
 ## Drift catches it
 
-Run `drift todo`:
+When the agent next runs `drift todo`, drift reports the mismatch:
 
 ```bash
 $ drift todo
@@ -60,7 +60,7 @@ that in action in chapter 7.)
 
 ## Read the diff
 
-Let's see exactly what changed:
+The agent runs `drift diff a3f7b2c1` to see exactly what changed:
 
 ```bash
 $ drift diff a3f7b2c1
@@ -87,14 +87,14 @@ diff and decides:
 ```
 <!-- D! instruction=ignore-span-end -->
 
-Then resolve the closure: `drift reset a3f7b2c1`.
+Then the agent resolves the closure with `drift reset a3f7b2c1`.
 
-**If the new rule is wrong**, remove the check from the code. Then
-resolve.
+**If the new rule is wrong**, the agent removes the check from the
+code, then resolves.
 
 **If the change was purely intentional** (the code and spec already
-agree, the hash just changed for structural reasons), resolve without
-changing anything.
+agree, the hash just changed for structural reasons), the agent
+resolves without changing anything.
 
 Either way, the agent doesn't blindly reset. It reads the diff, checks
 the spec, and decides which side is wrong. That decision, made before
@@ -138,13 +138,14 @@ changes but the behavior shouldn't: [How to refactor a module &rarr;](06-how-to-
 
 <!-- D! id=docfix_ex range-start -->
 
-**Goal:** Edit a function inside a marker in your project, add a
-check, change a condition, or rename a variable. Run `drift todo`.
-Read the closure diff with `drift diff <hash>`: Decide: does the code
-still match the spec?
+**Goal:** Tell your agent to edit a function inside a marker in your
+project, add a check, change a condition, or rename a variable. Then
+have the agent run `drift todo` and read the closure diff with
+`drift diff <hash>`. Does the code still match the spec?
 
-**Verify.** If the code matches the spec, resolve the closure with
-`drift reset <hash>`: If not, fix the code or update the spec first,
-then resolve. `drift todo` should report clean after resolving.
+**Verify:** If the code matches the spec, the agent resolves the
+closure with `drift reset <hash>`. If not, the agent fixes the code or
+updates the spec first, then resolves. The agent's `drift todo` should
+report clean after resolving.
 
 <!-- D! id=docfix_ex range-end -->

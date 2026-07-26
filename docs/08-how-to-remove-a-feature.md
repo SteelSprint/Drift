@@ -28,8 +28,8 @@ The agent:
 
 ## Drift detects removal
 
-Both the spec and the marker are now gone from the scan. Run
-`drift todo`:
+Both the spec and the marker are now gone from the scan. When the
+agent runs `drift todo`, drift reports:
 
 ```bash
 $ drift todo
@@ -65,6 +65,8 @@ $ drift reset c5d9e3f0
 Closure c5d9e3f0 resolved.
 ```
 
+The agent confirms the cleanup with a final `drift todo`:
+
 ```bash
 $ drift todo
 No changes detected. 2 specs, 2 markers, 2 edges in sync.
@@ -94,7 +96,8 @@ endpoints are gone.
 the spec, remove the marker, unlink the edge, and resolve the
 closures.
 
-**Verify.** `drift todo` reports "No changes detected" with the spec
-and marker counts decremented. No orphan markers or specs remain.
+**Verify:** The agent's `drift todo` reports "No changes detected"
+with the spec and marker counts decremented. No orphan markers or
+specs remain.
 
 <!-- D! id=docrem_ex range-end -->

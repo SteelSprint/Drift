@@ -83,7 +83,7 @@ get started: [Getting started &rarr;](02-getting-started.md)
 that violated an implicit rule in your project. Name the rule and write
 down what spec text would have caught the violation.
 
-**Verify.** The spec should be one or two sentences, specific enough
+**Verify:** The spec should be one or two sentences, specific enough
 that a scanner comparing it to the agent's code would have flagged the
 drift.
 

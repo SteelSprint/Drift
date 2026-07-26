@@ -67,7 +67,8 @@ changes, drift derives a closure and the agent reviews it.
 
 ## Verify: drift todo
 
-Let's check that everything is set up correctly. Run:
+Let's check that everything is set up correctly. Have the agent run
+`drift todo` and show you the output:
 
 ```bash
 $ drift todo
@@ -93,12 +94,12 @@ bootstrap: [How to add drift to a project &rarr;](03-how-to-add-drift-to-a-proje
 <!-- D! id=docstart_ex range-start -->
 
 **Goal:** Install drift, give the binary to your agent, and tell it to
-run `drift skill`: Let the agent initialize the project, write a few
+run `drift skill`. Let the agent initialize the project, write a few
 specs for existing code, and run `drift todo`.
 
-**Verify.** `drift todo` reports "No changes detected" with the spec
-and marker counts incremented. If you see closures instead, that's
-fine. The agent just hasn't resolved them yet. Tell it to review and
-resolve each one.
+**Verify:** The agent's `drift todo` reports "No changes detected" with
+the spec and marker counts incremented. If you see closures instead,
+that's fine. The agent just hasn't resolved them yet. Tell it to review
+and resolve each one.
 
 <!-- D! id=docstart_ex range-end -->

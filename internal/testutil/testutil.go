@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"drift/core"
@@ -102,28 +103,63 @@ func AssertBaselineHashes(t *testing.T, state core.EvaluatedState, specID string
 
 func AssertStateEquals(t *testing.T, got, want statestore.State) {
 	t.Helper()
-	if len(got.Specs) != len(want.Specs) {
-		t.Fatalf("specs length = %d, want %d (got=%v want=%v)", len(got.Specs), len(want.Specs), got.Specs, want.Specs)
+	// Normalize slice order per R5: sort by ID for specs/markers, by (From,To) for edges.
+	gotSpecs := make([]core.Spec, len(got.Specs))
+	copy(gotSpecs, got.Specs)
+	sort.Slice(gotSpecs, func(i, j int) bool { return gotSpecs[i].ID < gotSpecs[j].ID })
+
+	wantSpecs := make([]core.Spec, len(want.Specs))
+	copy(wantSpecs, want.Specs)
+	sort.Slice(wantSpecs, func(i, j int) bool { return wantSpecs[i].ID < wantSpecs[j].ID })
+
+	gotMarkers := make([]core.Marker, len(got.Markers))
+	copy(gotMarkers, got.Markers)
+	sort.Slice(gotMarkers, func(i, j int) bool { return gotMarkers[i].ID < gotMarkers[j].ID })
+
+	wantMarkers := make([]core.Marker, len(want.Markers))
+	copy(wantMarkers, want.Markers)
+	sort.Slice(wantMarkers, func(i, j int) bool { return wantMarkers[i].ID < wantMarkers[j].ID })
+
+	gotEdges := make([]core.Edge, len(got.Edges))
+	copy(gotEdges, got.Edges)
+	sort.Slice(gotEdges, func(i, j int) bool {
+		if gotEdges[i].From != gotEdges[j].From {
+			return gotEdges[i].From < gotEdges[j].From
+		}
+		return gotEdges[i].To < gotEdges[j].To
+	})
+
+	wantEdges := make([]core.Edge, len(want.Edges))
+	copy(wantEdges, want.Edges)
+	sort.Slice(wantEdges, func(i, j int) bool {
+		if wantEdges[i].From != wantEdges[j].From {
+			return wantEdges[i].From < wantEdges[j].From
+		}
+		return wantEdges[i].To < wantEdges[j].To
+	})
+
+	if len(gotSpecs) != len(wantSpecs) {
+		t.Fatalf("specs length = %d, want %d (got=%v want=%v)", len(gotSpecs), len(wantSpecs), gotSpecs, wantSpecs)
 	}
-	for i := range got.Specs {
-		if got.Specs[i] != want.Specs[i] {
-			t.Fatalf("spec[%d] = %+v, want %+v", i, got.Specs[i], want.Specs[i])
+	for i := range gotSpecs {
+		if gotSpecs[i] != wantSpecs[i] {
+			t.Fatalf("spec[%d] = %+v, want %+v", i, gotSpecs[i], wantSpecs[i])
 		}
 	}
-	if len(got.Markers) != len(want.Markers) {
-		t.Fatalf("markers length = %d, want %d (got=%v want=%v)", len(got.Markers), len(want.Markers), got.Markers, want.Markers)
+	if len(gotMarkers) != len(wantMarkers) {
+		t.Fatalf("markers length = %d, want %d (got=%v want=%v)", len(gotMarkers), len(wantMarkers), gotMarkers, wantMarkers)
 	}
-	for i := range got.Markers {
-		if got.Markers[i] != want.Markers[i] {
-			t.Fatalf("marker[%d] = %+v, want %+v", i, got.Markers[i], want.Markers[i])
+	for i := range gotMarkers {
+		if gotMarkers[i] != wantMarkers[i] {
+			t.Fatalf("marker[%d] = %+v, want %+v", i, gotMarkers[i], wantMarkers[i])
 		}
 	}
-	if len(got.Edges) != len(want.Edges) {
-		t.Fatalf("edges length = %d, want %d (got=%v want=%v)", len(got.Edges), len(want.Edges), got.Edges, want.Edges)
+	if len(gotEdges) != len(wantEdges) {
+		t.Fatalf("edges length = %d, want %d (got=%v want=%v)", len(gotEdges), len(wantEdges), gotEdges, wantEdges)
 	}
-	for i := range got.Edges {
-		if got.Edges[i] != want.Edges[i] {
-			t.Fatalf("edge[%d] = %+v, want %+v", i, got.Edges[i], want.Edges[i])
+	for i := range gotEdges {
+		if gotEdges[i] != wantEdges[i] {
+			t.Fatalf("edge[%d] = %+v, want %+v", i, gotEdges[i], wantEdges[i])
 		}
 	}
 }

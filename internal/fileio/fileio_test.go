@@ -339,3 +339,28 @@ func TestCrossProcessMutualExclusion(t *testing.T) {
 	}
 	cleanup()
 }
+
+// TestWriteRecreatesDriftDirIfMissing: Write MUST create .drift/ if it was
+// removed after Begin (defense-in-depth per write_atomicity R2).
+func TestWriteRecreatesDriftDirIfMissing(t *testing.T) {
+	dir := t.TempDir()
+	sess, err := fileio.Begin(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	// Remove .drift/ after Begin — Write should recreate it.
+	if err := os.RemoveAll(filepath.Join(dir, ".drift")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Write("state.xml", []byte("data\n")); err != nil {
+		t.Fatalf("Write should recreate .drift/ if missing: %v", err)
+	}
+	got, err := sess.Read("state.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "data\n" {
+		t.Fatalf("round-trip after dir recreation: got %q want %q", got, "data\n")
+	}
+}

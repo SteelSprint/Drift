@@ -111,6 +111,9 @@ func (s *Session) Write(name string, data []byte) error {
 		return err
 	}
 	target := filepath.Join(s.driftDir, name)
+	if err := os.MkdirAll(s.driftDir, 0755); err != nil {
+		return fmt.Errorf("fileio: create %s: %w", s.driftDir, err)
+	}
 	tmp := target + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return fmt.Errorf("fileio: write temp %s: %w", tmp, err)

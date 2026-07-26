@@ -74,8 +74,7 @@ func BuildListResult(state core.EvaluatedState, dir string, verbose bool) ListRe
 // BuildShowResult constructs a ShowResult containing the full citation closure
 // reachable from the seed (a spec or marker ID). The closure walks spec-spec
 // edges in both directions to fixpoint, includes every marker linked to any
-// reached spec, and resolves content for every node. The 1-hop behavior is
-// deprecated; show always returns the full transitive closure.
+// reached spec, and resolves content for every node.
 func BuildShowResult(state core.EvaluatedState, dir, id string) (ShowResult, error) {
 	isSpec := isSpecID(id)
 

@@ -181,6 +181,21 @@ Every command supports three modes:
 - **Color** (default in TTY) — themed ANSI + syntax highlighting.
 - **JSON** (`--json`) — structured output. LLM agents should use this for reliable parsing.
 
+## Theming
+
+Drift ships 12 built-in themes: `default`, `minimal`, `monochrome`, `high-contrast`, `dark`, `light`, `protanopia`, `solarized-dark`, `solarized-light`, `gruvbox`, `nord`, `dracula`.
+
+Theme resolution uses a 3-level precedence:
+
+1. `.drift/theme.xml` — project-level full override (all 18 elements). Committed to git.
+2. `.drift/user-settings.xml` — per-user built-in theme name. Not committed (gitignored).
+3. `default` — the fallback when neither file exists.
+
+```sh
+drift config theme gruvbox      # set theme preference
+drift config theme              # show current theme
+```
+
 ## The `.drift/` directory
 
 - `state.xml` — baseline (v4). Specs, markers, edges. No resolutions table. Commit to git.
@@ -189,6 +204,10 @@ Every command supports three modes:
 - `user-settings.xml` — per-user theme preference. Do NOT commit (gitignored).
 - `state.lock` — runtime lock acquired by `fileio.Begin` for the duration of each CLI invocation. Do NOT commit (gitignored).
 - `friction.json` — rate-limit telemetry: Unix-second timestamps of recent successful non-dry-run resets, used to block rapid batch dismissal (see cli.reset_friction_block). Do NOT commit (gitignored).
+
+## Ignoring files
+
+The scanner auto-detects text files and scans them for markers. To exclude files from scanning (e.g. generated code, vendored dependencies), create a `drift.ignore` file at the project root with one pattern per line. Patterns use `.gitignore` syntax.
 
 ## Why no bulk reset?
 
@@ -204,6 +223,7 @@ A runtime rate-limit layer additionally blocks the 4th reset within any 30-secon
 - **Orphan specs/markers**: 1-node closures. Resolved with `drift reset <hash>` like any other closure.
 - **Broken refs**: EDGE_BROKEN events. Closures containing only broken-edge events are refused on reset — fix the scan (add the missing spec or remove the ref).
 - **`drift reset` semantics**: syncs the closure's seed events to baseline. Prints "Closure HASH resolved. Baseline updated." on success.
+- **Exit codes**: `drift todo` exits 0 clean (all linked + no closures), 1 drift/unlinked markers, 2 error. `drift diff` exits 0 always (read-only). `drift reset` exits 0 on success, 2 on friction block, 3 on dry-run preview. All commands: exit 1 for usage errors.
 
 ## Examples
 

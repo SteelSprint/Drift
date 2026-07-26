@@ -65,7 +65,7 @@ type Theme struct {
 	CodeNumber    Style // numeric literals
 }
 
-// AllElementIDs lists the 14 element IDs in Theme field order. Used by
+// AllElementIDs lists the 18 element IDs in Theme field order. Used by
 // LoadCustomTheme to validate that .drift/theme.xml specifies all elements.
 var AllElementIDs = []string{
 	"marker_id", "spec_id", "filepath", "line_number", "hash",

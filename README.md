@@ -12,7 +12,13 @@ Specs are plain-English rules in XML files. Markers are comment lines
 that wrap the implementing code. Any language, any text file. Single
 static binary, zero dependencies.
 
-**Full documentation: [docs/index.md](docs/index.md)**
+## Documentation
+
+The full docs live in [`docs/`](docs/index.md). Start with
+[Why drift exists](docs/01-why-drift-exists.md) for the problem and
+how drift solves it, or jump straight to
+[Getting started](docs/02-getting-started.md) to install and hand off
+to your agent.
 
 ## Install
 

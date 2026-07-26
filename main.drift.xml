@@ -18,4 +18,5 @@
   <import path="./cli/output/output.drift.xml" />
   <import path="./cli/output/output_impl.drift.xml" />
   <import path="./eval/eval.drift.xml" />
+  <import path="./docs.drift.xml" />
 </main>

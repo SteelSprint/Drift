@@ -1047,3 +1047,50 @@ indicates misconfigured `<ref>` tags.
 - This plan is itself drift-tracked: after execution, `PLAN.md` remains in
   the repo as the documentation plan reference. Future doc work should
   update this file (or supersede it with a new plan).
+
+---
+
+## 14. Execution strategy — incremental spec creation
+
+The original Phase 1 (§8) called for stubbing all 29 specs at once, then
+fleshing them out in Phases 2-4. This creates double work: each stub gets
+baselined, then re-drifts (NODE_CHANGED) when overwritten with real content,
+requiring a second reset per spec.
+
+**Revised approach**: create specs in full, incrementally, within their
+natural phase. No stubs. Each phase creates its specs with final content,
+places markers, links, and resolves drift — once.
+
+### Revised phase schedule
+
+| Phase | Specs created (in full) | Markers placed | Output |
+|---|---|---|---|
+| **1** | `docs.pedagogy` (meta-spec) + module skeleton + import in main.drift.xml | 0 | docs.drift.xml exists, module imported |
+| **2** | 5 concept specs (spec, marker, edge, baseline, scan) + 3 chapter specs (01-03) | 6 (docwhy±_ex, docstart±_ex, docsm±_ex) | docs/01-03 + concept tier started |
+| **3** | 4 concept specs (closure, drift_event, citer_chain, friction) + 3 chapter specs (04-06) | 6 (docclos±_ex, docflow±_ex, docfric±_ex) | docs/04-06 |
+| **4** | 1 concept spec (output_mode) + 4 chapter specs (07-10) | 8 (docout±_ex, docaudit±_ex, docint±_ex, doccont±_ex) | docs/07-10 |
+| **5** | 8 sync specs | 6 new skill.md sync markers + 2 re-links | sync tier complete |
+| **6** | 2 migration specs (contributors_agent_guide, spec_format) | ~5 (docagent, docspec, docidx) | migrations + README/AGENTS slim + CONTRIBUTING |
+| **7** | 0 | 0 | verify: make build, go test, drift todo clean |
+
+**Totals**: 1 + 8 + 7 + 5 + 8 + 2 = 31 specs; ~31 markers.
+
+### Phase 1 status (complete)
+
+- [x] `<import path="./docs.drift.xml" />` added to `main.drift.xml`.
+- [x] `docs.drift.xml` created with `<module name="docs">`.
+- [x] `docs.pedagogy` meta-spec authored (R1-R7).
+- [x] Closure `e1fdd412` reviewed and reset (NODE_ADDED + 2 EDGE_ADDED for glossary.spec, glossary.ref refs).
+- [x] `drift todo` clean: 159 specs, 98 markers, 189 edges.
+
+### What each subsequent phase does
+
+Each phase follows the same loop:
+1. Author specs in `docs.drift.xml` (full content, not stubs).
+2. Author the `.md` chapter files in terse-progressive voice with exercises.
+3. Place markers in the `.md` files (HTML comment syntax).
+4. `drift link` each marker to its spec.
+5. `drift todo` → review closures → `drift reset` (use `--dangerously-override-friction` for batches >3).
+6. `make build` to verify the gate.
+
+**Review checkpoint**: pause at end of each phase for review before proceeding.

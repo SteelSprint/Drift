@@ -1,0 +1,57 @@
+<module name="docs">
+
+<spec id="pedagogy">
+Overview: This meta-spec establishes the rules every other spec in the
+docs module follows. Chapter specs, concept specs, and sync specs MUST
+satisfy these requirements. This spec is the pedagogical authority for
+the documentation system.
+
+The documentation follows outcome-based education (OBE): each chapter
+is designed backward from measurable learning objectives. The reader
+gains abilities, not just information. See
+<ref spec="glossary.spec">glossary.spec</ref> for the formal definition
+of a spec and <ref spec="glossary.ref">glossary.ref</ref> for the ref
+mechanism used throughout.
+
+R1. Learning objectives. Every chapter spec MUST list 3-7 learning
+objectives. Each objective MUST use a measurable Bloom verb (identify,
+describe, explain, apply, analyze, evaluate, design, construct,
+troubleshoot). Objectives MUST NOT use unmeasurable verbs (know,
+understand, learn, see, grasp, appreciate).
+
+R2. Prerequisites via ref. Every chapter spec MUST declare prerequisites
+via &lt;ref&gt; tags to concept specs and earlier chapter specs. The prereq
+graph MUST be acyclic: chapter N may cite chapters 1 through N-1 and any
+concept spec, but no chapter may cite a later chapter.
+
+R3. Content requirements. Every chapter spec MUST enumerate what the
+chapter file (docs/NN-*.md) covers to satisfy the learning objectives.
+Content requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
+
+R4. Formative assessment. Every chapter spec MUST require at least one
+"Try it yourself" exercise. Exercises state a goal and a verification
+step, not a step-by-step recipe. Each exercise MUST be wrapped in a
+dedicated marker (named &lt;shortcode&gt;_ex) linked to the same chapter
+spec. Removing an exercise from a chapter file MUST produce drift on the
+chapter spec.
+
+R5. Concept specs. Concept specs are atomic and MAY be cited by multiple
+chapter specs (spiral curriculum: a concept introduced briefly in an
+early chapter, defined formally in a middle chapter, applied in a later
+chapter). Concept specs MUST cite canonical authority (glossary.* for
+definitions, core.* for algorithmic contracts) via &lt;ref&gt;. Concept specs
+MUST NOT cite chapter specs. Concepts are foundational; chapters are
+delivery vehicles.
+
+R6. Sync specs. Topics covered in BOTH docs/ and cli/skill.md MUST have
+a sync spec. The sync spec enumerates required coverage; markers in both
+files link to it. Changing the enumeration drifts both markers. Sync
+specs do NOT catch wording divergence. That requires the periodic spec
+audit (docs.chapter_08_spec_audit).
+
+R7. Ref ordering. Within a chapter spec prerequisite list, concept specs
+MUST be cited before chapter specs. This ordering is a convention, not
+enforced by the scanner.
+</spec>
+
+</module>

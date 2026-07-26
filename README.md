@@ -53,20 +53,14 @@ resolve it. You prompt; the agent does the rest.
 
 New to drift? Start with [Why drift exists](docs/01-why-drift-exists.md).
 
-## Development principles
+## Drift dogfoods itself.
 
 <!-- D! id=selfhost range-start -->
-Drift dogfoods itself: it tracks its own specs and markers. `drift todo`
-must be clean before any commit. This is a hard gate, not a suggestion.
-The project is its own primary test case. If drift can't track itself
-correctly, it can't track anything. A bug that breaks `drift todo` on
-drift's own codebase blocks all other work until fixed.
+Drift dogfoods itself. Every feature, every CLI command, every edge
+case in this repo has a spec and a marker. 176 specs, 113 markers,
+244 edges, all in sync, all the time. `make build` runs `drift todo`
+as a gate: if any spec drifted from its code, the build fails. No
+exceptions. [Browse the specs](docs.drift.xml).
 <!-- D! id=selfhost range-end -->
 
-<!-- D! id=testfirst range-start -->
-Bugs are fixed test-first. Write the test that reproduces the bug,
-confirm it fails for the right reason, then fix the code and confirm
-the test passes. The failing test is proof you understand the bug
-before you touch the fix. Never fix a bug without first writing the
-test that reproduces it.
-<!-- D! id=testfirst range-end -->
+

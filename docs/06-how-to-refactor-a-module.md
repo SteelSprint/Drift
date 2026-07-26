@@ -1,5 +1,7 @@
 # How to refactor a module
 
+[&larr; How to fix a bug](05-how-to-fix-a-bug.md) | [Index](index.md) | [How to change a spec &rarr;](07-how-to-change-a-spec.md)
+
 Refactoring is where drift's design gets interesting. You might
 expect drift to ignore "pure" refactors (moves, renames, structural
 reorganization that don't change behavior). It doesn't. Drift flags
@@ -91,9 +93,6 @@ or function entirely. In that case:
 
 The spec doesn't change, only the marker location moves.
 
-So far we've been changing code and letting drift catch the mismatch.
-Next, let's flip it, change a spec and watch drift propagate the
-change through the citation graph: [How to change a spec &rarr;](07-how-to-change-a-spec.md)
 
 <!-- D! id=docrefac range-end -->
 
@@ -110,3 +109,9 @@ diff. Confirm the change is purely structural.
 function's behavior. The agent resolves the closure.
 
 <!-- D! id=docrefac_ex range-end -->
+
+---
+
+<!-- D! id=docnav6 range-start -->
+[&larr; How to fix a bug](05-how-to-fix-a-bug.md) | [Index](index.md) | [How to change a spec &rarr;](07-how-to-change-a-spec.md)
+<!-- D! id=docnav6 range-end -->

@@ -1,5 +1,7 @@
 # How to change a spec
 
+[&larr; How to refactor a module](06-how-to-refactor-a-module.md) | [Index](index.md) | [How to remove a feature &rarr;](08-how-to-remove-a-feature.md)
+
 So far we've been changing code and letting drift catch the mismatch.
 Now let's flip it: we'll change a spec and watch drift propagate the
 change through the citation graph. This is where drift becomes a
@@ -99,8 +101,6 @@ them automatically through the citation graph. We'll cover how to set
 up `<ref>` citations between specs in more detail in a future chapter.
 For now, the key takeaway: editing a spec is how you steer the project.
 
-Finally, let's see how to cleanly remove a feature when it's no longer
-needed: [How to remove a feature &rarr;](08-how-to-remove-a-feature.md)
 
 <!-- D! id=docsteer range-end -->
 
@@ -117,3 +117,9 @@ should include transitively dependent specs.
 code, then resolve the closure.
 
 <!-- D! id=docsteer_ex range-end -->
+
+---
+
+<!-- D! id=docnav7 range-start -->
+[&larr; How to refactor a module](06-how-to-refactor-a-module.md) | [Index](index.md) | [How to remove a feature &rarr;](08-how-to-remove-a-feature.md)
+<!-- D! id=docnav7 range-end -->

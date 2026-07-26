@@ -1,5 +1,7 @@
 # How to add a feature
 
+[&larr; How to add drift to a project](03-how-to-add-drift-to-a-project.md) | [Index](index.md) | [How to fix a bug &rarr;](05-how-to-fix-a-bug.md)
+
 Now let's add a new feature to our todo app and watch the agent handle
 it end-to-end. We'll add a "delete todo" feature. The agent will
 write the spec, write the code, place the marker, link it, and verify
@@ -76,9 +78,7 @@ No changes detected. 3 specs, 3 markers, 3 edges in sync.
 The feature is tracked. Any future change to the spec or the code
 inside the marker will produce a closure for the agent to review.
 That's it. The agent handled the entire feature, from prompt to
-tracked implementation. But what happens when the agent changes
-existing code and drifts from the spec? Let's find out:
-[How to fix a bug &rarr;](05-how-to-fix-a-bug.md)
+tracked implementation.
 
 <!-- D! id=docfeat range-end -->
 
@@ -94,3 +94,9 @@ write the spec, place the marker, link them, and run `drift todo`.
 the spec and marker counts incremented.
 
 <!-- D! id=docfeat_ex range-end -->
+
+---
+
+<!-- D! id=docnav4 range-start -->
+[&larr; How to add drift to a project](03-how-to-add-drift-to-a-project.md) | [Index](index.md) | [How to fix a bug &rarr;](05-how-to-fix-a-bug.md)
+<!-- D! id=docnav4 range-end -->

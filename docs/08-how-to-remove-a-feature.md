@@ -1,5 +1,7 @@
 # How to remove a feature
 
+[&larr; How to change a spec](07-how-to-change-a-spec.md) | [Index](index.md)
+
 Let's wrap up our tour of the core workflows by removing a feature
 cleanly. When you delete a feature, the spec and marker both go away.
 Drift reports NODE_REMOVED events, and the agent resolves them. Get
@@ -101,3 +103,9 @@ with the spec and marker counts decremented. No orphan markers or
 specs remain.
 
 <!-- D! id=docrem_ex range-end -->
+
+---
+
+<!-- D! id=docnav8 range-start -->
+[&larr; How to change a spec](07-how-to-change-a-spec.md) | [Index](index.md)
+<!-- D! id=docnav8 range-end -->

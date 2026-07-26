@@ -1,5 +1,7 @@
 # How to add drift to a project
 
+[&larr; Getting started](02-getting-started.md) | [Index](index.md) | [How to add a feature &rarr;](04-how-to-add-a-feature.md)
+
 In this chapter, we'll walk through adding drift to an existing
 codebase. A small Python todo app. You'll see exactly what the agent
 does during bootstrap: surveying code, writing retroactive specs,
@@ -147,8 +149,6 @@ The `.drift/.gitignore` file (created by `drift init`) automatically
 excludes local-only files like `user-settings.xml`, `state.lock`, and
 `friction.json`. You don't need to manage this manually.
 
-Now let's add a new feature to our tracked todo app:
-[How to add a feature &rarr;](04-how-to-add-a-feature.md)
 
 <!-- D! id=docaddp range-end -->
 
@@ -166,3 +166,9 @@ tell the agent to edit one function inside a marker and run
 changed marker and its linked spec.
 
 <!-- D! id=docaddp_ex range-end -->
+
+---
+
+<!-- D! id=docnav3 range-start -->
+[&larr; Getting started](02-getting-started.md) | [Index](index.md) | [How to add a feature &rarr;](04-how-to-add-a-feature.md)
+<!-- D! id=docnav3 range-end -->

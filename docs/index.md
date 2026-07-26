@@ -1,5 +1,7 @@
 # Drift documentation
 
+[Getting started &rarr;](01-why-drift-exists.md)
+
 Drift is a sync layer between your specs and your code. Your agent
 writes both. Drift keeps them aligned.
 
@@ -41,3 +43,9 @@ First time? Start with [Why drift exists](01-why-drift-exists.md).
 
 - **`drift skill`**: the complete agent guide (what your LLM reads)
 - **`drift help`**: command reference with examples
+
+---
+
+<!-- D! id=docnavs range-start -->
+[Index](index.md) | [Getting started &rarr;](01-why-drift-exists.md)
+<!-- D! id=docnavs range-end -->

@@ -416,4 +416,22 @@ Content requirements:
     removes a feature and verifies clean state
 </spec>
 
+<spec id="page_navigation">
+Overview: Every page in docs/ has prev/next/index navigation links at
+the top and bottom. The first page (index.md) has only a forward link.
+The last page has only a back link. All other pages have both. Each
+nav block includes a link to index.md. This ensures the reader can
+move between chapters without scrolling to find links, and can always
+return to the index.
+
+Content requirements:
+  - top nav appears immediately after the page title
+  - bottom nav appears after a horizontal rule at the end of the page
+  - nav uses HTML entities for arrows (larr and rarr)
+  - prev link uses the chapter title as label; next link uses the
+    chapter title as label
+  - index link is always present in nav blocks (except the top of
+    index.md itself)
+</spec>
+
 </module>

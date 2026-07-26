@@ -1,5 +1,7 @@
 # Getting started
 
+[&larr; Why drift exists](01-why-drift-exists.md) | [Index](index.md) | [How to add drift to a project &rarr;](03-how-to-add-drift-to-a-project.md)
+
 Let's get drift installed and hand it off to your LLM agent. By the end
 of this chapter, your agent will be writing specs, placing markers, and
 checking its own work, all autonomously.
@@ -85,7 +87,7 @@ Drift keeps them in sync.
 
 In the next chapter, we'll walk through adding drift to an existing
 project from scratch, so you can see exactly what the agent does during
-bootstrap: [How to add drift to a project &rarr;](03-how-to-add-drift-to-a-project.md)
+bootstrap.
 
 <!-- D! id=docstart range-end -->
 
@@ -103,3 +105,9 @@ that's fine. The agent just hasn't resolved them yet. Tell it to review
 and resolve each one.
 
 <!-- D! id=docstart_ex range-end -->
+
+---
+
+<!-- D! id=docnav2 range-start -->
+[&larr; Why drift exists](01-why-drift-exists.md) | [Index](index.md) | [How to add drift to a project &rarr;](03-how-to-add-drift-to-a-project.md)
+<!-- D! id=docnav2 range-end -->

@@ -1,5 +1,7 @@
 # Why drift exists
 
+[&larr; Index](index.md) | [Getting started &rarr;](02-getting-started.md)
+
 Every project has rules. "The title must not be empty." "Rate limits
 apply per user, not per IP." "All API responses include a request ID."
 Some rules are written in documentation. Others live in code comments.
@@ -70,8 +72,7 @@ the specs before reporting done) and more agile (it moves fast, knowing
 drift catches misalignment). Drift doesn't slow the agent down. It
 amplifies what the agent can do.
 
-We'll see all of this in practice over the next few chapters. Let's
-get started: [Getting started &rarr;](02-getting-started.md)
+We'll see all of this in practice over the next few chapters.
 
 <!-- D! id=docwhy range-end -->
 
@@ -88,3 +89,9 @@ that a scanner comparing it to the agent's code would have flagged the
 drift.
 
 <!-- D! id=docwhy_ex range-end -->
+
+---
+
+<!-- D! id=docnav1 range-start -->
+[&larr; Index](index.md) | [Getting started &rarr;](02-getting-started.md)
+<!-- D! id=docnav1 range-end -->

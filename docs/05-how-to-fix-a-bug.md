@@ -1,5 +1,7 @@
 # How to fix a bug
 
+[&larr; How to add a feature](04-how-to-add-a-feature.md) | [Index](index.md) | [How to refactor a module &rarr;](06-how-to-refactor-a-module.md)
+
 Now let's see what happens when the agent changes existing code. This
 is where drift earns its keep. The agent catches its own mistakes
 before you ever see them. We'll deliberately introduce a change that
@@ -129,8 +131,6 @@ was deleted without updating the referrer.
 Each event seeds a closure. The agent handles them all the same way:
 read the diff, decide what's wrong, fix it, resolve.
 
-Now let's see how drift behaves during refactoring. When the code
-changes but the behavior shouldn't: [How to refactor a module &rarr;](06-how-to-refactor-a-module.md)
 
 <!-- D! id=docfix range-end -->
 
@@ -149,3 +149,9 @@ updates the spec first, then resolves. The agent's `drift todo` should
 report clean after resolving.
 
 <!-- D! id=docfix_ex range-end -->
+
+---
+
+<!-- D! id=docnav5 range-start -->
+[&larr; How to add a feature](04-how-to-add-a-feature.md) | [Index](index.md) | [How to refactor a module &rarr;](06-how-to-refactor-a-module.md)
+<!-- D! id=docnav5 range-end -->

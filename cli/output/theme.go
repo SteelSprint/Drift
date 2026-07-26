@@ -38,9 +38,9 @@ func (st Style) Apply(s string) string {
 	return "\x1b[" + strings.Join(codes, ";") + "m" + s + "\x1b[0m"
 }
 
-// Theme maps each of the 14 named elements to a Style. ColorPresenter holds
+// Theme maps each of the 18 named elements to a Style. ColorPresenter holds
 // a Theme and calls the appropriate element's Apply for each piece of output.
-// All 14 fields are required — a theme with missing elements is rejected
+// All 18 fields are required — a theme with missing elements is rejected
 // (for .drift/theme.xml) or has zero-value Styles (for programmatic misuse,
 // which renders as plain text via Apply's zero-value behavior).
 type Theme struct {

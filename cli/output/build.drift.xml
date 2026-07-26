@@ -15,18 +15,19 @@ See also: cli.list_format.
 </spec>
 
 <spec id="show_result">
-Overview: BuildShowResult constructs a ShowResult for a single spec or marker identified by ID, resolving content and linked entities from state and disk. Used by `drift show &lt;id&gt;`.
+Overview: BuildShowResult constructs a ShowResult containing the full citation closure reachable from the seed (a spec or marker ID). The closure walks spec-spec edges in both directions to fixpoint via BFS, includes every marker linked to any reached spec, and resolves content for every node. Used by `drift show &lt;id&gt;`.
 
 Defined terms:
   isSpec — heuristic: ID contains exactly one dot → spec; no dot → marker
+  closure — the full transitive set of nodes reachable by walking spec-spec edges bidirectionally from the seed, plus markers linked to any reached spec
 
 Requirements:
-  R1. BuildShowResult MUST dispatch on isSpecID(id): spec IDs (containing a dot) route to buildShowSpecResult; marker IDs (no dot) route to buildShowMarkerResult.
-  R2. If the primary entity is not found in state, BuildShowResult MUST return a ShowResult with nil Spec and nil Marker and a nil error. The caller (drift show command) sets exit code 1.
-  R3. If the primary entity's content cannot be read from disk, BuildShowResult MUST return a non-nil error wrapping the read failure. The caller maps this to exit code 1.
-  R4. For a spec result, BuildShowResult MUST resolve all linked markers (markers whose From points to this spec) and their content. Linked-marker content reads that fail MUST be silently omitted (R3 applies only to the primary entity).
-  R5. For a marker result, BuildShowResult MUST resolve all linked specs (specs whose ID appears as To in any edge with this marker as From) and their content. Linked-spec content reads that fail MUST be silently omitted.
-  R6. Inbound and outbound spec-spec references (OutboundRefs, InboundRefs) MUST be computed from the baseline edge set, deduplicated, and order-stable (insertion order from the edge slice).
+  R1. BuildShowResult MUST dispatch on isSpecID(id) to determine whether the seed is a spec or marker. Spec IDs contain a dot; marker IDs do not.
+  R2. If the seed entity is not found in state, BuildShowResult MUST return a ShowResult with empty Nodes and a nil error. The caller (drift show command) checks EntityExists to set exit code 1.
+  R3. BuildShowResult MUST resolve content for every node in the closure. Content reads that fail (e.g. deleted files) MUST be silently omitted — the node is included with empty Content. This is a best-effort resolution, not a hard failure.
+  R4. For a marker seed, BuildShowResult MUST expand the initial reachability set to include the marker's linked specs (outgoing edge targets) before starting the BFS, so the closure includes the specs the marker implements.
+  R5. The BFS MUST walk both outgoing and incoming spec-spec edges to fixpoint, so the closure contains the full citation neighborhood (ancestors and descendants).
+  R6. Nodes and edges in the ShowResult MUST be sorted by ID and by (From, To) respectively for deterministic output.
 
 See also: cli.show_command.
 </spec>

@@ -22,7 +22,7 @@ type elementXML struct {
 }
 
 // LoadCustomTheme reads .drift/theme.xml via the Session and returns a Theme
-// built from the 14 element entries. All 14 element IDs must be present (full
+// built from the 18 element entries. All 18 element IDs must be present (full
 // override — no inheritance from built-in themes). Returns os.ErrNotExist if
 // the file does not exist; returns a descriptive error if any element is
 // missing.

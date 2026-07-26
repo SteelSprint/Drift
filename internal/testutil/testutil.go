@@ -248,6 +248,10 @@ func FindClosureContainingNode(t *testing.T, state core.EvaluatedState, nodeID s
 	return core.Closure{}
 }
 
+// D! id=tfind2 range-end
+
+// D! id=tassert2 range-start
+
 // AssertNodeInClosure asserts the closure has a node with the given ID.
 func AssertNodeInClosure(t *testing.T, c core.Closure, nodeID string) {
 	t.Helper()
@@ -269,4 +273,4 @@ func AssertNodeNotInClosure(t *testing.T, c core.Closure, nodeID string) {
 	}
 }
 
-// D! id=tfind2 range-end
+// D! id=tassert2 range-end

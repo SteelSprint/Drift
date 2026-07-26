@@ -334,7 +334,6 @@ func (o *Orchestrator) linkInner(sess *fileio.Session, markerID, specID string, 
 			break
 		}
 	}
-	// D! id=cperr range-end
 	if !markerExists {
 		var available []string
 		for _, m := range reconciledMarkers {
@@ -357,6 +356,7 @@ func (o *Orchestrator) linkInner(sess *fileio.Session, markerID, specID string, 
 		}
 		return ChangeSummary{}, fmt.Errorf("link references unknown spec %q.\nSpec IDs are module-qualified: <module>.<specId> (e.g. main.example or core.validate).\nAvailable specs: %s", specID, strings.Join(available, ", "))
 	}
+	// D! id=cperr range-end
 
 	for _, e := range beforeState.Edges {
 		if e.From == markerID && e.To == specID {

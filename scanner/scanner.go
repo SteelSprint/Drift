@@ -249,11 +249,9 @@ func (l *importLoader) load(absPath string) ([]core.Spec, []core.Edge, error) {
 		moduleName = "main"
 	} else {
 		moduleName = file.Name
-		// D! id=smname range-start
 		if moduleName == "" {
 			return nil, nil, fmt.Errorf("%s: module element missing name attribute", absPath)
 		}
-		// D! id=smname range-end
 	}
 
 	if existingPath, ok := l.seenNames[moduleName]; ok {
@@ -489,6 +487,7 @@ func parseMarkerFile(path, storePath string) ([]core.Marker, error) {
 		return nil, fmt.Errorf("%s", strings.Join(unpaired, "\n"))
 	}
 
+	// D! id=smname range-start
 	// Pass 2: Compute hashes with blanking
 	// Build a set of all marker declaration line indices for blanking
 	markerLines := make(map[int]bool)
@@ -534,6 +533,8 @@ func blankMarkerDecl(line string) string {
 	}
 	return line[:idx]
 }
+
+// D! id=smname range-end
 
 // D! id=shash range-start
 func sha1Hex(content string) string {

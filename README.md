@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="Drift%20Headline%20Image.png" alt="Drift - sync layer between specs and code for LLM agents" width="800" style="max-width: 100%; height: auto;" />
-</p>
-
-# Drift
+# Drift is a sync layer between your specs and your code
 
 **Drift is a sync layer between your specs and your code. Your agent
 writes both. Drift keeps them aligned.**

@@ -146,3 +146,139 @@ func hasAddedLine(s string) bool {
 	}
 	return false
 }
+
+// Hunk-splitting tests (R4): "Two change regions separated by more than
+// 2*3+1 context lines MUST produce separate hunks." Gap = number of context
+// lines between change regions. Gap <= 7 → one hunk. Gap > 7 → two hunks.
+// Hunks MUST NOT overlap (no line appears in more than one hunk).
+
+func countHunks(t *testing.T, s string) int {
+	t.Helper()
+	return strings.Count(s, "@@ -")
+}
+
+// hunkLines extracts the lines in each hunk (the body lines after the
+// header). Returns a slice of slices for overlap checking.
+func hunkLines(t *testing.T, s string) [][]string {
+	t.Helper()
+	var hunks [][]string
+	var current []string
+	inHunk := false
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, "@@ ") {
+			if inHunk {
+				hunks = append(hunks, current)
+			}
+			current = nil
+			inHunk = true
+			continue
+		}
+		if inHunk {
+			if line == "" {
+				continue
+			}
+			// Strip the leading prefix character (' ', '-', '+')
+			if len(line) > 0 {
+				current = append(current, line[1:])
+			}
+		}
+	}
+	if inHunk {
+		hunks = append(hunks, current)
+	}
+	return hunks
+}
+
+func TestHunkSplitGap4(t *testing.T) {
+	// Two changes separated by 4 context lines. Gap <= 7 → one hunk.
+	old := "A\nC1\nC2\nC3\nC4\nB\n"
+	new := "A2\nC1\nC2\nC3\nC4\nB2\n"
+	got := diff.UnifiedDiff(old, new)
+	if c := countHunks(t, got); c != 1 {
+		t.Errorf("gap=4: expected 1 hunk, got %d:\n%s", c, got)
+	}
+}
+
+func TestHunkSplitGap7(t *testing.T) {
+	// Two changes separated by 7 context lines. Gap <= 7 → one hunk.
+	old := "A\nC1\nC2\nC3\nC4\nC5\nC6\nC7\nB\n"
+	new := "A2\nC1\nC2\nC3\nC4\nC5\nC6\nC7\nB2\n"
+	got := diff.UnifiedDiff(old, new)
+	if c := countHunks(t, got); c != 1 {
+		t.Errorf("gap=7: expected 1 hunk, got %d:\n%s", c, got)
+	}
+}
+
+func TestHunkSplitGap8(t *testing.T) {
+	// Two changes separated by 8 context lines. Gap > 7 → two hunks.
+	old := "A\nC1\nC2\nC3\nC4\nC5\nC6\nC7\nC8\nB\n"
+	new := "A2\nC1\nC2\nC3\nC4\nC5\nC6\nC7\nC8\nB2\n"
+	got := diff.UnifiedDiff(old, new)
+	if c := countHunks(t, got); c != 2 {
+		t.Errorf("gap=8: expected 2 hunks, got %d:\n%s", c, got)
+	}
+}
+
+func TestHunkSplitNoOverlap(t *testing.T) {
+	// Hunks MUST NOT overlap — no content line appears in more than one
+	// hunk. This catches the overlapping-hunk bug where trailing context
+	// of hunk 1 becomes leading context of hunk 2.
+	old := "A\nC1\nC2\nC3\nC4\nB\n"
+	new := "A2\nC1\nC2\nC3\nC4\nB2\n"
+	got := diff.UnifiedDiff(old, new)
+	hunks := hunkLines(t, got)
+	if len(hunks) > 1 {
+		seen := make(map[string]bool)
+		for _, hunk := range hunks {
+			for _, line := range hunk {
+				if seen[line] {
+					t.Errorf("line %q appears in multiple hunks (overlap):\n%s", line, got)
+				}
+				seen[line] = true
+			}
+		}
+	}
+}
+
+func TestHunkSplitMixedGaps(t *testing.T) {
+	// Three changes: gap1=2 (merge A+B), gap2=10 (split B+C).
+	// Expected: 2 hunks (A+B merged, C separate).
+	old := "A\nC1\nC2\nB\nD1\nD2\nD3\nD4\nD5\nD6\nD7\nD8\nD9\nD10\nE\n"
+	new := "A2\nC1\nC2\nB2\nD1\nD2\nD3\nD4\nD5\nD6\nD7\nD8\nD9\nD10\nE2\n"
+	got := diff.UnifiedDiff(old, new)
+	if c := countHunks(t, got); c != 2 {
+		t.Errorf("mixed gaps (2,10): expected 2 hunks, got %d:\n%s", c, got)
+	}
+}
+
+func TestHunkSplitConsecutiveChanges(t *testing.T) {
+	// Two changes with no context between them (gap=0). Always one hunk.
+	old := "A\nB\nC\n"
+	new := "A2\nB2\nC\n"
+	got := diff.UnifiedDiff(old, new)
+	if c := countHunks(t, got); c != 1 {
+		t.Errorf("gap=0: expected 1 hunk, got %d:\n%s", c, got)
+	}
+}
+
+func TestHunkSplitExactly7(t *testing.T) {
+	// Boundary: gap = exactly 7 → merge. Two changes at positions 1 and 9
+	// (1-indexed), separated by lines 2-8 (7 context lines).
+	old := "OLD\nK1\nK2\nK3\nK4\nK5\nK6\nK7\nOLD2\n"
+	new := "NEW\nK1\nK2\nK3\nK4\nK5\nK6\nK7\nNEW2\n"
+	got := diff.UnifiedDiff(old, new)
+	if c := countHunks(t, got); c != 1 {
+		t.Errorf("gap=exactly 7: expected 1 hunk, got %d:\n%s", c, got)
+	}
+}
+
+func TestHunkSplitExactly8(t *testing.T) {
+	// Boundary: gap = exactly 8 → split. Two changes at positions 1 and 10
+	// (1-indexed), separated by lines 2-9 (8 context lines).
+	old := "OLD\nK1\nK2\nK3\nK4\nK5\nK6\nK7\nK8\nOLD2\n"
+	new := "NEW\nK1\nK2\nK3\nK4\nK5\nK6\nK7\nK8\nNEW2\n"
+	got := diff.UnifiedDiff(old, new)
+	if c := countHunks(t, got); c != 2 {
+		t.Errorf("gap=exactly 8: expected 2 hunks, got %d:\n%s", c, got)
+	}
+}

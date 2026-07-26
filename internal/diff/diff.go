@@ -108,6 +108,12 @@ func diffOps(a, b []string) []op {
 
 const contextLines = 3
 
+// gapThreshold is the maximum number of context lines between two change
+// regions that still merge into a single hunk. Spec R4: "Two change regions
+// separated by more than 2*3+1 context lines MUST produce separate hunks."
+// So gap <= gapThreshold merges; gap > gapThreshold splits.
+const gapThreshold = 2*contextLines + 1
+
 func buildHunks(oldLines, newLines []string) []hunk {
 	ops := diffOps(oldLines, newLines)
 
@@ -132,7 +138,6 @@ func buildHunks(oldLines, newLines []string) []hunk {
 	}
 
 	// Find change indices (non-context ops).
-	changeIdx := -1
 	nextChange := func(from int) int {
 		for k := from; k < len(nops); k++ {
 			if nops[k].kind != ' ' {
@@ -141,37 +146,55 @@ func buildHunks(oldLines, newLines []string) []hunk {
 		}
 		return -1
 	}
-	changeIdx = nextChange(0)
 
 	var hunks []hunk
+	changeIdx := nextChange(0)
+
 	for changeIdx != -1 {
-		// Start of hunk: walk back context lines.
+		// Start of hunk: walk back contextLines for leading context.
 		start := changeIdx
 		for k := 0; k < contextLines && start > 0 && nops[start-1].kind == ' '; k++ {
 			start--
 		}
 
-		// Find end of hunk: extend until contextLines consecutive
-		// context ops (or end of input).
+		// Find end of hunk: extend forward through changes and small gaps.
+		// A gap (run of context ops) larger than gapThreshold splits the hunk.
 		end := changeIdx
-		for end < len(nops) {
-			// Advance end past any changes.
+		for {
+			// Advance past all contiguous changes.
 			for end < len(nops) && nops[end].kind != ' ' {
 				end++
 			}
-			// Check if next contextLines ops are all context.
+			// Measure the run of context ops after the last change.
 			ctxRun := 0
 			for k := end; k < len(nops) && nops[k].kind == ' '; k++ {
 				ctxRun++
 			}
-			if ctxRun > contextLines {
-				// Include contextLines context, then end the hunk.
+			// If the gap exceeds the threshold, this hunk ends after
+			// contextLines of trailing context (or fewer if the file
+			// ends first).
+			if ctxRun > gapThreshold {
 				end += contextLines
+				if end > len(nops) {
+					end = len(nops)
+				}
 				break
 			}
-			// Not enough trailing context — extend hunk to end.
-			end = len(nops)
-			break
+			// Gap is small enough to absorb. If there are more changes after
+			// the gap, extend through the gap and continue. If no more
+			// changes, the hunk extends to the trailing context or EOF.
+			nextChangeIdx := nextChange(end)
+			if nextChangeIdx == -1 {
+				// No more changes. Include up to contextLines of trailing
+				// context, then end.
+				end += contextLines
+				if end > len(nops) {
+					end = len(nops)
+				}
+				break
+			}
+			// Absorb the gap and continue extending from the next change.
+			end = nextChangeIdx
 		}
 
 		// Build hunk.
@@ -199,7 +222,7 @@ func buildHunks(oldLines, newLines []string) []hunk {
 
 		hunks = append(hunks, hunk{header: header, body: body.String()})
 
-		// Next hunk starts after any trailing context.
+		// Next hunk starts after the trailing context we already included.
 		changeIdx = nextChange(end)
 	}
 

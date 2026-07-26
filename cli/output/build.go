@@ -59,7 +59,7 @@ func BuildListResult(state core.EvaluatedState, dir string, verbose bool) ListRe
 		if marker.Deleted {
 			continue
 		}
-		content, err := readMarkerContent(dir, marker.Filepath, marker.LineNumber, marker.EndLineNumber)
+		content, err := readMarkerContent(dir, marker.Filepath, marker.LineNumber+1, marker.EndLineNumber)
 		if err == nil {
 			result.MarkerContents[marker.ID] = content
 		}
@@ -208,7 +208,7 @@ func BuildShowResult(state core.EvaluatedState, dir, id string) (ShowResult, err
 			Deleted:  m.Deleted,
 		}
 		if !m.Deleted {
-			if content, err := readMarkerContent(dir, m.Filepath, m.LineNumber, m.EndLineNumber); err == nil {
+			if content, err := readMarkerContent(dir, m.Filepath, m.LineNumber+1, m.EndLineNumber); err == nil {
 				node.Content = content
 			}
 		}

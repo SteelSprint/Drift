@@ -255,7 +255,7 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 						_ = o.writeBaseline(sess, s.Hash, s.Filepath, s.ID, 0, 0, true)
 					}
 					if m, ok := findMarkerByID(scanResult.Markers, e.NodeID); ok {
-						_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
+						_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber+1, m.EndLineNumber, false)
 					}
 				}
 			}
@@ -403,7 +403,7 @@ func (o *Orchestrator) linkInner(sess *fileio.Session, markerID, specID string, 
 		}
 		for _, m := range scanResult.Markers {
 			if m.ID == markerID {
-				_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber, m.EndLineNumber, false)
+				_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber+1, m.EndLineNumber, false)
 				break
 			}
 		}
@@ -847,7 +847,7 @@ func (o *Orchestrator) buildMarkerDiffSide(sess *fileio.Session, markerID string
 		Deleted:      marker.Deleted,
 	}
 	if !marker.Deleted {
-		if content, err := scanner.ReadMarkerContent(o.resolvePath(marker.Filepath), marker.LineNumber, marker.EndLineNumber); err == nil {
+		if content, err := scanner.ReadMarkerContent(o.resolvePath(marker.Filepath), marker.LineNumber+1, marker.EndLineNumber); err == nil {
 			side.Current = content
 		}
 	}

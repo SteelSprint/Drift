@@ -83,7 +83,8 @@ func ReadMarkerContent(filepath string, startLine, endLine int) (string, error) 
 	}
 
 	var contentLines []string
-	for i := startLine; i < endLine-1; i++ {
+	for lineNo := startLine; lineNo <= endLine-1; lineNo++ {
+		i := lineNo - 1
 		if i >= len(lines) {
 			break
 		}

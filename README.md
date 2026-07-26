@@ -12,6 +12,15 @@ Specs are plain-English rules in XML files. Markers are comment lines
 that wrap the implementing code. Any language, any text file. Single
 static binary, zero dependencies.
 
+## Quickstart
+
+1. Install drift (see [Install](#install) below).
+2. Give the binary to your LLM agent and tell it to run `drift skill`.
+
+That's it. The agent learns everything it needs from `drift skill` -
+how to write specs, place markers, link them, check for drift, and
+resolve it. You prompt; the agent does the rest.
+
 ## Documentation
 
 The full docs live in [`docs/`](docs/index.md). Start with
@@ -47,17 +56,6 @@ $env:DRIFT_VERSION='v1.0.0'; irm https://raw.githubusercontent.com/SteelSprint/D
 Installs to `~/.local/bin/drift` (macOS/Linux) or
 `%USERPROFILE%\.local\bin\drift.exe` (Windows); override with `DESTDIR`.
 To build from source: `make build`.
-
-## Quickstart
-
-1. Install drift (see above).
-2. Give the binary to your LLM agent and tell it to run `drift skill`.
-
-That's it. The agent learns everything it needs from `drift skill` -
-how to write specs, place markers, link them, check for drift, and
-resolve it. You prompt; the agent does the rest.
-
-New to drift? Start with [Why drift exists](docs/01-why-drift-exists.md).
 
 ## Drift dogfoods itself.
 

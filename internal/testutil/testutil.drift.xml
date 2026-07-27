@@ -29,6 +29,7 @@ Requirements:
   R5. AssertStateEquals(t, got, want) MUST fatal when got and want differ in Specs, Markers, or Edges (compared as deep-equal after normalizing slice order).
   R6. AssertNodeInClosure / AssertNodeNotInClosure MUST scan the closure's Nodes for the given ID and fatal according to presence.
   R7. Every assertion helper MUST call t.Helper() so the failure line points to the test, not the helper.
+  R8. AssertEdgesResolve(t, state) MUST fatal when any edge endpoint (From or To) in the saved State does not resolve to a node (spec or marker) in that same State. Apply after any state-writing operation (reset, link, unlink) to enforce the referential-closure invariant at the persistence boundary; it catches both the typo route (citing an ID that never existed) and the deletion route (citing an ID just removed) regardless of which operation built the State.
 
 See also: glossary.closure.
 </spec>

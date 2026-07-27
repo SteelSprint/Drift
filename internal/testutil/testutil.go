@@ -309,4 +309,28 @@ func AssertNodeNotInClosure(t *testing.T, c core.Closure, nodeID string) {
 	}
 }
 
+// AssertEdgesResolve enforces the saved-state invariant that every edge
+// endpoint resolves to a node (spec or marker) in that same state. Apply
+// after any operation that writes state — it catches both the typo route
+// (citing an ID that never existed) and the deletion route (citing an ID
+// that was just removed) regardless of which operation built the state.
+func AssertEdgesResolve(t *testing.T, state statestore.State) {
+	t.Helper()
+	known := make(map[string]bool, len(state.Specs)+len(state.Markers))
+	for _, s := range state.Specs {
+		known[s.ID] = true
+	}
+	for _, m := range state.Markers {
+		known[m.ID] = true
+	}
+	for _, e := range state.Edges {
+		if !known[e.From] {
+			t.Fatalf("edge from unknown node: %+v (known: %v)", e, known)
+		}
+		if !known[e.To] {
+			t.Fatalf("edge to unknown node: %+v (known: %v)", e, known)
+		}
+	}
+}
+
 // D! id=tassert2 range-end

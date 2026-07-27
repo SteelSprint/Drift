@@ -162,6 +162,7 @@ func TestOrchestrator_Link(t *testing.T) {
 	if len(store.state.Edges) != 1 {
 		t.Fatalf("expected 1 edge, got %d", len(store.state.Edges))
 	}
+	testutil.AssertEdgesResolve(t, store.state)
 }
 
 // TestOrchestrator_Unlink: unlink removes the edge.
@@ -185,6 +186,7 @@ func TestOrchestrator_Unlink(t *testing.T) {
 	if len(store.state.Edges) != 0 {
 		t.Fatalf("expected 0 edges, got %d", len(store.state.Edges))
 	}
+	testutil.AssertEdgesResolve(t, store.state)
 }
 
 // TestOrchestrator_Todo_SpecRemoved: spec deleted from scan → closure with NODE_REMOVED event.
@@ -232,6 +234,83 @@ func TestOrchestrator_ResetClosure_SpecRemoved(t *testing.T) {
 			t.Fatalf("ghost spec m.a remains in baseline after reset: %+v", saved.Specs)
 		}
 	}
+	// Invariant: every edge endpoint must resolve to a node in the saved state.
+	testutil.AssertEdgesResolve(t, saved)
+}
+
+// TestOrchestrator_ResetClosure_SpecRemoved_DropsInboundEdges is a regression
+// test for a high-severity bug: resetting a NODE_REMOVED closure for a spec
+// that another spec still cites used to write a dangling edge into the
+// baseline (edge from m.a to the just-removed m.b), brickying every later
+// command with "edge references unknown to-node". The fix has two layers:
+// (1) resetClosureInner filters scan edges against the spec set being WRITTEN
+// (evaluated.Specs), not the pre-evaluation set; (2) FileStateStore.Save
+// rejects any state where an edge endpoint is not a node. This test
+// exercises layer 1 directly through the orchestrator; the fake store does
+// not run the Save-layer guard, so the assertion must catch the dangling
+// edge itself. See TestFileStateStore_Save_RejectsDanglingEdge for layer 2.
+func TestOrchestrator_ResetClosure_SpecRemoved_DropsInboundEdges(t *testing.T) {
+	specA := testutil.NewSpec("m.a", "hash-a")
+	specB := testutil.NewSpec("m.b", "hash-b")
+	refAB := testutil.NewRef("m.a", "m.b") // m.a cites m.b
+	store := &fakeStateStore{state: statestore.State{
+		Specs: []core.Spec{specA, specB},
+		Edges: []core.Edge{refAB},
+	}}
+	// Scan sees only m.a; the citation in m.a's text still yields m.a → m.b.
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs:  []core.Spec{specA},
+		Edges:  []core.Edge{refAB},
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	testutil.AssertClosureCount(t, state, 2)
+
+	// Find the NODE_REMOVED closure for m.b. The other closure is the
+	// broken-edge closure and is correctly refused by ResetClosure.
+	var removedHash string
+	for _, c := range state.Closures {
+		for _, ev := range c.Events {
+			if ev.Kind == core.EventNodeRemoved && ev.NodeID == "m.b" {
+				removedHash = c.Hash
+			}
+		}
+	}
+	if removedHash == "" {
+		t.Fatalf("no NODE_REMOVED closure for m.b in %+v", state.Closures)
+	}
+
+	if _, err := orch.ResetClosure(nil, removedHash); err != nil {
+		t.Fatalf("ResetClosure: %v", err)
+	}
+
+	if len(store.saved) != 1 {
+		t.Fatalf("expected 1 save, got %d", len(store.saved))
+	}
+	saved := store.saved[0]
+
+	// m.b must be gone from the spec set.
+	for _, s := range saved.Specs {
+		if s.ID == "m.b" {
+			t.Fatalf("removed spec m.b still in saved specs: %+v", saved.Specs)
+		}
+	}
+
+	// No edge may reference m.b — neither as source nor target. This is the
+	// crux of the regression: pre-fix, the m.a → m.b scan edge was re-admitted
+	// because the filter validated against the stale pre-reset spec set.
+	for _, e := range saved.Edges {
+		if e.From == "m.b" || e.To == "m.b" {
+			t.Fatalf("dangling edge to removed spec m.b in saved state: %+v", e)
+		}
+	}
+
+	// Belt-and-braces: every remaining edge endpoint must resolve to a saved
+	// node. This is the invariant the report asks to be checked after every
+	// state-writing operation.
+	testutil.AssertEdgesResolve(t, saved)
 }
 
 // TestOrchestrator_Todo_NewSpecAdded: spec appears in scan only → closure with NODE_ADDED event.

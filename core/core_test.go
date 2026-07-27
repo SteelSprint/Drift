@@ -306,6 +306,9 @@ func TestResetClosure_NodeRemoved(t *testing.T) {
 	if len(evaluated.Edges) != 0 {
 		t.Fatalf("edges touching removed spec still present: %+v", evaluated.Edges)
 	}
+	// Invariant: after any state-producing operation, every edge endpoint
+	// must resolve to a node in that state. See statestore.validateEdgeEndpoints.
+	testutil.AssertEdgesResolve(t, testutil.EvaluatedToState(evaluated))
 }
 
 // TestClosure_NoDrift: scan matches baseline. No closures.
@@ -456,9 +459,17 @@ func TestGuardrail_BrokenEdgePersistsThroughReset(t *testing.T) {
 		Action: core.ResetClosureAction{Hash: closures[0].Hash, Scan: scan},
 	}
 	alg := core.NewCoreAlgorithm()
-	_, err := alg.EvaluateState(ctx)
+	evaluated, err := alg.EvaluateState(ctx)
 	if err != nil {
 		t.Fatalf("reset of mixed closure should succeed at core level: %v", err)
+	}
+	// Broken edges must not appear in the evaluated state's edge list — the
+	// orchestrator's mergeScannedEdges is responsible for the same at save.
+	testutil.AssertEdgesResolve(t, testutil.EvaluatedToState(evaluated))
+	for _, e := range evaluated.Edges {
+		if e.To == "m.missing" {
+			t.Fatalf("broken edge leaked into evaluated state: %+v", e)
+		}
 	}
 }
 

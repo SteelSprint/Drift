@@ -232,7 +232,9 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
-	savedEdges := mergeScannedEdges(evaluated.Edges, scanResult.Edges, buildKnownSpecIDs(reconciledSpecs, scanResult.Specs))
+	// Filter against the spec set being WRITTEN, not the pre-evaluation set:
+	// using reconciledSpecs here re-admits edges to NODE_REMOVED specs.
+	savedEdges := mergeScannedEdges(evaluated.Edges, scanResult.Edges, buildKnownSpecIDs(evaluated.Specs))
 	afterState := statestore.State{
 		Specs:   evaluated.Specs,
 		Markers: evaluated.Markers,

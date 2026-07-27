@@ -1,6 +1,7 @@
 package statestore_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,5 +89,56 @@ func TestFileStateStore_Initialized(t *testing.T) {
 	}
 	if ok, _ := store.Initialized(); !ok {
 		t.Fatal("expected initialized after Save")
+	}
+}
+
+// TestFileStateStore_Save_RejectsDanglingEdge is the persistence-layer
+// backstop for the dangling-edge class of corruption. A per-call-site fix
+// in the orchestrator already failed once; enforcing the invariant at Save
+// makes the class unreachable regardless of which operation built the state.
+// Both endpoints must resolve against the union of specs AND markers, since
+// marker→spec edges are legitimate.
+func TestFileStateStore_Save_RejectsDanglingEdge(t *testing.T) {
+	dir := t.TempDir()
+	sess := beginTestSession(t, dir)
+	store := statestore.NewFileStateStore(dir)
+
+	// Valid state: marker→spec and spec→spec edges both resolve.
+	good := statestore.State{
+		Specs:   []core.Spec{{ID: "m.a", Hash: "aaa", Filepath: "a.xml", LineNumber: 1}, {ID: "m.b", Hash: "bbb", Filepath: "b.xml", LineNumber: 1}},
+		Markers: []core.Marker{{ID: "mk", Hash: "mmm", Filepath: "a.go", LineNumber: 10, EndLineNumber: 20}},
+		Edges:   []core.Edge{{From: "mk", To: "m.a"}, {From: "m.a", To: "m.b"}},
+	}
+	if err := store.Save(sess, good); err != nil {
+		t.Fatalf("expected good state to save, got: %v", err)
+	}
+
+	// Dangling To: edge targets a spec not in the state.
+	danglingTo := statestore.State{
+		Specs: []core.Spec{{ID: "m.a", Hash: "aaa", Filepath: "a.xml", LineNumber: 1}},
+		Edges: []core.Edge{{From: "m.a", To: "m.ghost"}},
+	}
+	err := store.Save(sess, danglingTo)
+	if !errors.Is(err, statestore.ErrDanglingEdge) {
+		t.Fatalf("expected ErrDanglingEdge for unknown To, got: %v", err)
+	}
+
+	// Dangling From: edge originates from a spec not in the state.
+	danglingFrom := statestore.State{
+		Specs: []core.Spec{{ID: "m.a", Hash: "aaa", Filepath: "a.xml", LineNumber: 1}},
+		Edges: []core.Edge{{From: "m.ghost", To: "m.a"}},
+	}
+	if err := store.Save(sess, danglingFrom); !errors.Is(err, statestore.ErrDanglingEdge) {
+		t.Fatalf("expected ErrDanglingEdge for unknown From, got: %v", err)
+	}
+
+	// Sanity: the original good state must still round-trip (no partial write
+	// left the on-disk file in a bad shape).
+	got, err := store.Load(sess)
+	if err != nil {
+		t.Fatalf("Load after rejected saves: %v", err)
+	}
+	if len(got.Edges) != 2 {
+		t.Fatalf("expected good state to survive rejected saves, got edges: %+v", got.Edges)
 	}
 }

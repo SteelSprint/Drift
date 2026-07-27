@@ -151,6 +151,9 @@ func (s *FileStateStore) Load(sess *fileio.Session) (State, error) {
 
 // D! id=psave range-start
 func (s *FileStateStore) Save(sess *fileio.Session, state State) error {
+	if err := validateEdgeEndpoints(state); err != nil {
+		return err
+	}
 	file := stateFileXML{
 		Version: 4,
 		Specs:   make([]specXML, len(state.Specs)),
@@ -191,3 +194,35 @@ func (s *FileStateStore) Save(sess *fileio.Session, state State) error {
 }
 
 // D! id=psave range-end
+
+// ErrDanglingEdge is returned by Save when an edge endpoint does not resolve
+// to any spec or marker in the same state. This invariant previously held
+// only implicitly and was violated by reset accepting a spec deletion while
+// a citer's edge still pointed at the removed spec; enforcing it at the
+// persistence boundary makes the class of bug unreachable from any writer.
+var ErrDanglingEdge = errors.New("state contains an edge whose endpoint is not a node in that state")
+
+// validateEdgeEndpoints enforces the invariant that every edge endpoint in a
+// saved baseline resolves to a node (spec or marker) in that same baseline.
+// Marker→spec and spec→spec edges are both legitimate, so endpoints are
+// resolved against the union of specs and markers. The check runs at the
+// persistence boundary so a future writer cannot re-introduce the
+// dangling-edge corruption regardless of which operation built the state.
+func validateEdgeEndpoints(state State) error {
+	known := make(map[string]bool, len(state.Specs)+len(state.Markers))
+	for _, s := range state.Specs {
+		known[s.ID] = true
+	}
+	for _, m := range state.Markers {
+		known[m.ID] = true
+	}
+	for _, e := range state.Edges {
+		if !known[e.From] {
+			return fmt.Errorf("%w: from=%q to=%q", ErrDanglingEdge, e.From, e.To)
+		}
+		if !known[e.To] {
+			return fmt.Errorf("%w: from=%q to=%q", ErrDanglingEdge, e.From, e.To)
+		}
+	}
+	return nil
+}

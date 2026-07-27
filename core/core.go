@@ -371,7 +371,10 @@ func (algorithm *CoreAlgorithm) evaluateResetClosureAction(ctx CoreAlgorithmCont
 	if target == nil {
 		return EvaluatedState{}, fmt.Errorf("%w: %q", ErrClosureNotFound, action.Hash)
 	}
-	// Refuse if closure has ONLY broken-edge events.
+	// Refuse if closure has ONLY broken-edge events. Mixed closures
+	// (broken edge + node changed/added/removed) are allowed: the core
+	// treats broken edges as no-ops, and the orchestrator's edge merge
+	// filters out broken edges whose target doesn't resolve.
 	allBroken := true
 	for _, ev := range target.Events {
 		if ev.Kind != EventEdgeBroken {

@@ -241,7 +241,7 @@ func (p JSONPresenter) List(r ListResult) string {
 			if content, ok := r.MarkerContents[m.ID]; ok {
 				firstLine := strings.Split(content, "\n")[0]
 				if len(firstLine) > 80 {
-					firstLine = firstLine[:80] + "..."
+					firstLine = string([]rune(firstLine)[:80]) + "..."
 				}
 				entry.Preview = firstLine
 			}

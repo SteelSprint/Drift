@@ -4,7 +4,7 @@ internal/testutil/fixtures.go
 # Exclude test files (contain D! marker literals in test cases)
 *_test.go
 
-# Exclude examples (use new <module> format not yet supported by scanner)
+# Exclude examples (illustrative, not real specs to track)
 examples/
 
 # Exclude eval (pipeline.go contains D! marker literals in prompt strings)

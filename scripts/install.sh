@@ -5,7 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/SteelSprint/Drift/main/scripts/install.sh | bash
 #
 # Or pin a version:
-#   DRIFT_VERSION=v1.0.0 curl -fsSL ... | bash
+#   curl -fsSL ... | DRIFT_VERSION=v1.0.0 bash
 #
 # Installs to ~/.local/bin/drift (or $DESTDIR/drift if DESTDIR is set).
 # Prints a PATH hint if the install location is not on $PATH.

@@ -232,7 +232,7 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
-	savedEdges := mergeScannedEdges(evaluated.Edges, scanResult.Edges)
+	savedEdges := mergeScannedEdges(evaluated.Edges, scanResult.Edges, buildKnownSpecIDs(reconciledSpecs, scanResult.Specs))
 	afterState := statestore.State{
 		Specs:   evaluated.Specs,
 		Markers: evaluated.Markers,
@@ -364,7 +364,7 @@ func (o *Orchestrator) linkInner(sess *fileio.Session, markerID, specID string, 
 		}
 	}
 
-	mergedEdges := mergeScannedEdges(beforeState.Edges, scanResult.Edges)
+	mergedEdges := mergeScannedEdges(beforeState.Edges, scanResult.Edges, buildKnownSpecIDs(reconciledSpecs, scanResult.Specs))
 
 	scanSpecHashes := make(map[string]string, len(scanResult.Specs))
 	for _, s := range scanResult.Specs {
@@ -882,8 +882,10 @@ func scanHashForMarker(scanResult scanner.ScanResult, id string) string {
 
 // mergeScannedEdges returns baseline edges with all spec-spec edges replaced
 // by the scan's spec-spec edges. Link-style edges (marker-spec) are preserved
-// from baseline because they are user-curated, not auto-discovered.
-func mergeScannedEdges(baselineEdges, scanEdges []core.Edge) []core.Edge {
+// from baseline because they are user-curated, not auto-discovered. Scan
+// edges whose To target doesn't resolve to a known spec are rejected to
+// prevent broken refs from corrupting the baseline.
+func mergeScannedEdges(baselineEdges, scanEdges []core.Edge, knownSpecIDs map[string]bool) []core.Edge {
 	out := make([]core.Edge, 0, len(baselineEdges)+len(scanEdges))
 	for _, e := range baselineEdges {
 		if !isSpecID(e.From) {
@@ -891,7 +893,7 @@ func mergeScannedEdges(baselineEdges, scanEdges []core.Edge) []core.Edge {
 		}
 	}
 	for _, e := range scanEdges {
-		if isSpecID(e.From) && isSpecID(e.To) {
+		if isSpecID(e.From) && isSpecID(e.To) && knownSpecIDs[e.To] {
 			out = append(out, e)
 		}
 	}
@@ -904,6 +906,20 @@ func isSpecID(id string) bool {
 		return false
 	}
 	return strings.Index(id[first+1:], ".") < 0
+}
+
+func buildKnownSpecIDs(specLists ...[]core.Spec) map[string]bool {
+	var total int
+	for _, sl := range specLists {
+		total += len(sl)
+	}
+	m := make(map[string]bool, total)
+	for _, sl := range specLists {
+		for _, s := range sl {
+			m[s.ID] = true
+		}
+	}
+	return m
 }
 
 func buildScan(scanResult scanner.ScanResult, reconciledSpecs []core.Spec, reconciledMarkers []core.Marker) core.Scan {

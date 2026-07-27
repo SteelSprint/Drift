@@ -47,7 +47,7 @@ Or pin a version:
 
 ```bash
 # macOS / Linux
-DRIFT_VERSION=v1.0.0 curl -fsSL https://raw.githubusercontent.com/SteelSprint/Drift/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/SteelSprint/Drift/main/scripts/install.sh | DRIFT_VERSION=v1.0.0 bash
 
 # Windows
 $env:DRIFT_VERSION='v1.0.0'; irm https://raw.githubusercontent.com/SteelSprint/Drift/main/scripts/install.ps1 | iex
@@ -61,10 +61,9 @@ To build from source: `make build`.
 
 <!-- D! id=selfhost range-start -->
 Drift dogfoods itself. Every feature, every CLI command, every design
-decision in this repo has a spec. 176 specs, 113 markers, 244 edges,
-all in sync, all the time. `make build` runs `drift todo` as a gate:
-if any spec drifted from its code, the build fails. No exceptions.
-[Browse the specs](docs.drift.xml).
+decision in this repo has a spec. `make build` runs `drift todo`
+as a gate: if any spec drifted from its code, the build fails. No
+exceptions. [Browse the specs](docs.drift.xml).
 <!-- D! id=selfhost range-end -->
 
 ## Prior art

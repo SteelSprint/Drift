@@ -18,20 +18,23 @@ func (c UnlinkCommand) Run(ctx Context) (output.Result, int) {
 			Exit:    1,
 		}, 1
 	}
-	dryRun := ctx.Args[1] == "--dry-run"
-	var markerID, specID string
-	if dryRun {
-		if len(ctx.Args) < 4 {
-			return output.ErrorResult{
-				Command: "unlink",
-				Message: "usage: drift unlink --dry-run <marker> <module.spec>",
-				Exit:    1,
-			}, 1
+	var dryRun bool
+	var positional []string
+	for _, arg := range ctx.Args[1:] {
+		if arg == "--dry-run" {
+			dryRun = true
+		} else {
+			positional = append(positional, arg)
 		}
-		markerID, specID = ctx.Args[2], ctx.Args[3]
-	} else {
-		markerID, specID = ctx.Args[1], ctx.Args[2]
 	}
+	if len(positional) < 2 {
+		return output.ErrorResult{
+			Command: "unlink",
+			Message: "usage:\n  drift unlink <marker> <module.spec>\n  drift unlink --dry-run <marker> <module.spec>\n\nExample: drift unlink validate_input core.validate_input",
+			Exit:    1,
+		}, 1
+	}
+	markerID, specID := positional[0], positional[1]
 
 	if dryRun {
 		summary, err := ctx.Orch.PreviewUnlink(ctx.Sess, markerID, specID)

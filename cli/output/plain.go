@@ -241,7 +241,7 @@ func (p PlainPresenter) List(r ListResult) string {
 			if content, ok := r.SpecContents[spec.ID]; ok && len(content) > 0 {
 				preview := content
 				if len(preview) > 80 {
-					preview = preview[:80] + "..."
+					preview = string([]rune(preview)[:80]) + "..."
 				}
 				sb.WriteString(fmt.Sprintf("    %s\n", preview))
 			}
@@ -268,7 +268,7 @@ func (p PlainPresenter) List(r ListResult) string {
 			if content, ok := r.MarkerContents[marker.ID]; ok && len(content) > 0 {
 				firstLine := strings.Split(content, "\n")[0]
 				if len(firstLine) > 80 {
-					firstLine = firstLine[:80] + "..."
+					firstLine = string([]rune(firstLine)[:80]) + "..."
 				}
 				if firstLine != "" {
 					sb.WriteString(fmt.Sprintf("    %s\n", firstLine))

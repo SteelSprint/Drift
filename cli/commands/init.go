@@ -25,15 +25,20 @@ func (c InitCommand) Run(ctx Context) (output.Result, int) {
 		}
 		return output.ErrorResult{Command: "init", Message: err.Error(), Exit: 1}, 1
 	}
-	if err := writeInitFile(ctx.Dir, c.InitTemplate); err != nil {
+	wroteMain, err := writeInitFile(ctx.Dir, c.InitTemplate)
+	if err != nil {
 		return output.OkResult{
 			Command: "init",
 			Message: fmt.Sprintf("Initialized .drift/ but failed to write template: %s", err.Error()),
 		}, 0
 	}
+	msg := "Initialized .drift/ and main.drift.xml"
+	if !wroteMain {
+		msg = "Initialized .drift/ (kept existing main.drift.xml)"
+	}
 	return output.OkResult{
 		Command: "init",
-		Message: "Initialized .drift/ and main.drift.xml\nEdit main.drift.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.",
+		Message: msg + "\nEdit main.drift.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.",
 	}, 0
 }
 

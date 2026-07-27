@@ -25,29 +25,24 @@ func (c ResetCommand) Run(ctx Context) (output.Result, int) {
 	var hash string
 	var dryRun bool
 	var overrideFriction bool
-	switch args[1] {
-	case "--dry-run":
-		if len(args) < 3 {
-			return output.ErrorResult{
-				Command: "reset",
-				Message: "usage: drift reset --dry-run <hash>",
-				Exit:    1,
-			}, 1
+	for _, arg := range args[1:] {
+		switch arg {
+		case "--dry-run":
+			dryRun = true
+		case "--dangerously-override-friction":
+			overrideFriction = true
+		default:
+			if hash == "" {
+				hash = arg
+			}
 		}
-		dryRun = true
-		hash = args[2]
-	case "--dangerously-override-friction":
-		if len(args) < 3 {
-			return output.ErrorResult{
-				Command: "reset",
-				Message: "usage: drift reset --dangerously-override-friction <hash>",
-				Exit:    1,
-			}, 1
-		}
-		overrideFriction = true
-		hash = args[2]
-	default:
-		hash = args[1]
+	}
+	if hash == "" {
+		return output.ErrorResult{
+			Command: "reset",
+			Message: "usage:\n  drift reset <hash>     Sync the closure's seed events into baseline\n  drift reset --dry-run <hash>   Preview the change summary without writing\n  drift reset --dangerously-override-friction <hash>   Bypass the rate-limit block\n\nExample: drift reset a3f7b2c1",
+			Exit:    1,
+		}, 1
 	}
 	// D! id=cnobulk range-start
 	if dryRun {

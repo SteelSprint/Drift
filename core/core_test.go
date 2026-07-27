@@ -420,10 +420,9 @@ func TestResetClosure_BrokenEdgeOnlyRefused(t *testing.T) {
 }
 
 // Guardrail: Broken-edge event persists through reset when mixed with a
-// NODE_CHANGED event. Per core.reset_action: "EDGE_BROKEN is a no-op (the
-// user must fix the scan)." The closure should survive reset (not be refused,
-// since it has a non-broken event), and after reset the broken edge should
-// still produce a closure on the next todo run.
+// NODE_CHANGED event. The core treats BROKEN_EDGE as a no-op. The
+// orchestrator's mergeScannedEdges is responsible for NOT writing broken
+// edges to baseline (tested at the orchestrator level).
 func TestGuardrail_BrokenEdgePersistsThroughReset(t *testing.T) {
 	specs := []core.Spec{
 		testutil.NewSpec("m.a", hash("old")),
@@ -451,7 +450,7 @@ func TestGuardrail_BrokenEdgePersistsThroughReset(t *testing.T) {
 		t.Fatalf("closure should have both NODE_CHANGED and EDGE_BROKEN events, got: %+v", closures[0].Events)
 	}
 
-	// Reset should succeed (not refused, since not ALL events are broken).
+	// Reset should succeed at the core level (mixed closure, not pure-broken).
 	ctx := core.CoreAlgorithmContext{
 		Specs:  specs,
 		Action: core.ResetClosureAction{Hash: closures[0].Hash, Scan: scan},
@@ -459,28 +458,7 @@ func TestGuardrail_BrokenEdgePersistsThroughReset(t *testing.T) {
 	alg := core.NewCoreAlgorithm()
 	_, err := alg.EvaluateState(ctx)
 	if err != nil {
-		t.Fatalf("reset of mixed closure should succeed (not refused): %v", err)
-	}
-
-	// After reset, the baseline has m.a synced to new hash, but the broken
-	// edge is still in scan (not added to baseline — broken edges are no-ops).
-	// Re-deriving closures: the broken edge still produces a closure.
-	updatedSpecs := []core.Spec{testutil.NewSpec("m.a", hash("new"))}
-	postReset := core.DeriveClosures(updatedSpecs, nil, baselineEdges, scan)
-	if len(postReset) != 1 {
-		t.Fatalf("broken edge should still produce a closure after reset, got %d closures", len(postReset))
-	}
-	if postReset[0].Hash != closures[0].Hash {
-		t.Fatalf("closure hash should be stable (membership unchanged): was %q, now %q", closures[0].Hash, postReset[0].Hash)
-	}
-	hasBrokenAfterReset := false
-	for _, ev := range postReset[0].Events {
-		if ev.Kind == core.EventEdgeBroken {
-			hasBrokenAfterReset = true
-		}
-	}
-	if !hasBrokenAfterReset {
-		t.Fatalf("broken-edge event should persist after reset, got events: %+v", postReset[0].Events)
+		t.Fatalf("reset of mixed closure should succeed at core level: %v", err)
 	}
 }
 

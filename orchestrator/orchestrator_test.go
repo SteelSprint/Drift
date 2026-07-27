@@ -313,6 +313,154 @@ func TestOrchestrator_ResetClosure_SpecRemoved_DropsInboundEdges(t *testing.T) {
 	testutil.AssertEdgesResolve(t, saved)
 }
 
+// TestOrchestrator_ResetClosure_TypoRefWritesNoEdge covers the "typo route":
+// a spec cites an ID that never existed. The closure mixes NODE_ADDED (the
+// new spec) with BROKEN_EDGE (the dangling ref), so it is resettable; on
+// reset the spec enters baseline but NO edge to the phantom ID may be
+// written. mergeScannedEdges must reject the scan edge because the phantom
+// is absent from the written spec set. This complements
+// TestOrchestrator_ResetClosure_SpecRemoved_DropsInboundEdges (the deletion
+// route): together they exercise mergeScannedEdges against both a spec that
+// was just removed and a spec that never existed.
+func TestOrchestrator_ResetClosure_TypoRefWritesNoEdge(t *testing.T) {
+	store := &fakeStateStore{state: statestore.State{}} // empty baseline
+	specA := testutil.NewSpec("m.a", "hash-a")
+	typoRef := testutil.NewRef("m.a", "m.typo") // m.typo does not exist anywhere
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs: []core.Spec{specA},
+		Edges: []core.Edge{typoRef},
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	testutil.AssertClosureCount(t, state, 1)
+
+	if _, err := orch.ResetClosure(nil, state.Closures[0].Hash); err != nil {
+		t.Fatalf("ResetClosure (mixed NODE_ADDED + BROKEN_EDGE): %v", err)
+	}
+
+	if len(store.saved) != 1 {
+		t.Fatalf("expected 1 save, got %d", len(store.saved))
+	}
+	saved := store.saved[0]
+	if len(saved.Specs) != 1 || saved.Specs[0].ID != "m.a" {
+		t.Fatalf("spec m.a should be in baseline after reset: %+v", saved.Specs)
+	}
+	for _, e := range saved.Edges {
+		if e.From == "m.typo" || e.To == "m.typo" {
+			t.Fatalf("edge to phantom spec m.typo leaked into baseline: %+v", e)
+		}
+	}
+	testutil.AssertEdgesResolve(t, saved)
+}
+
+// TestOrchestrator_ResetClosure_BrokenEdgeOnlyRefused covers the orchestrator
+// mapping for the broken-edge-only refusal: a closure whose events are ONLY
+// broken-edge is refused with ErrResetClosureOnlyBroken. The core-layer guard
+// (core.TestResetClosure_BrokenEdgeOnlyRefused) covers the algorithm; this
+// confirms the orchestrator surfaces it as the user-facing error and writes
+// no state.
+func TestOrchestrator_ResetClosure_BrokenEdgeOnlyRefused(t *testing.T) {
+	specA := testutil.NewSpec("m.a", "hash-a")
+	store := &fakeStateStore{state: statestore.State{
+		Specs: []core.Spec{specA},
+	}}
+	// m.a unchanged; only drift is a brand-new dangling ref to m.typo.
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs: []core.Spec{specA},
+		Edges: []core.Edge{testutil.NewRef("m.a", "m.typo")},
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	testutil.AssertClosureCount(t, state, 1)
+
+	_, err = orch.ResetClosure(nil, state.Closures[0].Hash)
+	if !errors.Is(err, orchestrator.ErrResetClosureOnlyBroken) {
+		t.Fatalf("expected ErrResetClosureOnlyBroken, got %v", err)
+	}
+	if len(store.saved) != 0 {
+		t.Fatalf("broken-edge-only reset must not write state, got %d saves", len(store.saved))
+	}
+}
+
+// TestOrchestrator_Link_SurvivesSubsequentReset covers the third no-regression
+// behaviour — marker→spec edges created by `drift link` must survive a later
+// `drift reset` of an unrelated closure — and exercises the invariant across a
+// sequence of state-writing operations (link → reset), as the report asks:
+// "Applied over sequences of reset / link / unlink ... covers ... the linkInner
+// variant before it becomes reachable." mergeScannedEdges preserves
+// link-style edges (marker source) while recomputing spec-spec edges; if a
+// future change to resetClosureInner or linkInner ever dropped them, this test
+// and the AssertEdgesResolve check would catch it.
+func TestOrchestrator_Link_SurvivesSubsequentReset(t *testing.T) {
+	specA := testutil.NewSpec("m.a", "hash-a")
+	specB := testutil.NewSpec("m.b", "hash-b")
+	marker := testutil.NewMarker("mk", "hash-mk")
+	store := &fakeStateStore{state: statestore.State{
+		Specs:   []core.Spec{specA, specB},
+		Markers: []core.Marker{marker},
+	}}
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs:   []core.Spec{specA, specB},
+		Markers: []core.Marker{marker},
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	// Step 1: link marker mk to spec m.a. The link-style edge must be saved.
+	if _, err := orch.LinkWithSummary(nil, "mk", "m.a"); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	testutil.AssertEdgesResolve(t, store.state)
+	if !edgePresent(store.state.Edges, "mk", "m.a") {
+		t.Fatalf("link edge mk→m.a missing after Link: %+v", store.state.Edges)
+	}
+
+	// Step 2: drift an UNRELATED spec (m.b) and accept the closure. The
+	// link-style edge must survive the reset's edge re-merge.
+	specBDrifted := testutil.NewSpec("m.b", "hash-b-new")
+	sc.result = scanner.ScanResult{
+		Specs:   []core.Spec{specA, specBDrifted},
+		Markers: []core.Marker{marker},
+	}
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	testutil.AssertClosureCount(t, state, 1)
+
+	if _, err := orch.ResetClosure(nil, state.Closures[0].Hash); err != nil {
+		t.Fatalf("ResetClosure for m.b drift: %v", err)
+	}
+
+	// Invariant after the sequence.
+	testutil.AssertEdgesResolve(t, store.state)
+
+	// The link-style edge created in Step 1 must still be present after the
+	// Step 2 reset, and m.b's baseline hash must have synced.
+	if !edgePresent(store.state.Edges, "mk", "m.a") {
+		t.Fatalf("link edge mk→m.a dropped by unrelated reset: %+v", store.state.Edges)
+	}
+	var bHash string
+	for _, s := range store.state.Specs {
+		if s.ID == "m.b" {
+			bHash = s.Hash
+		}
+	}
+	if bHash != "hash-b-new" {
+		t.Fatalf("m.b baseline hash not synced: got %q want hash-b-new", bHash)
+	}
+}
+
+// edgePresent reports whether an edge with the given endpoints exists.
+func edgePresent(edges []core.Edge, from, to string) bool {
+	for _, e := range edges {
+		if e.From == from && e.To == to {
+			return true
+		}
+	}
+	return false
+}
+
 // TestOrchestrator_Todo_NewSpecAdded: spec appears in scan only → closure with NODE_ADDED event.
 func TestOrchestrator_Todo_NewSpecAdded(t *testing.T) {
 	store := &fakeStateStore{state: statestore.State{}} // empty baseline

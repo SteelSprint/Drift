@@ -34,6 +34,7 @@ type jsonTodo struct {
 	Edges           int             `json:"edges"`
 	Closures        []jsonClosure   `json:"closures"`
 	UnlinkedMarkers int             `json:"unlinkedMarkers"`
+	Orphans         []string        `json:"orphans"`
 }
 
 type jsonClosure struct {
@@ -89,13 +90,18 @@ func (p JSONPresenter) Todo(r TodoResult) string {
 	for _, c := range state.Closures {
 		closures = append(closures, closureToJSON(c))
 	}
+	orphans := state.Orphans
+	if orphans == nil {
+		orphans = []string{}
+	}
 	out := jsonTodo{
-		Ok:              len(state.Closures) == 0 && (len(state.Specs) > 0 || len(state.Markers) > 0),
+		Ok:              len(state.Closures) == 0 && len(state.Orphans) == 0 && (len(state.Specs) > 0 || len(state.Markers) > 0),
 		Specs:           len(state.Specs),
 		Markers:         len(state.Markers),
 		Edges:           len(state.Edges),
 		Closures:        closures,
 		UnlinkedMarkers: countUnlinkedMarkers(state),
+		Orphans:         orphans,
 	}
 	return marshal(out)
 }

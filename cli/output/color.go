@@ -93,6 +93,11 @@ func (p ColorPresenter) Todo(r TodoResult) string {
 		sb.WriteString(t.StatusWarn.Apply(warning))
 	}
 
+	if block := orphanSpecsBlock(state); block != "" {
+		sb.WriteString("\n")
+		sb.WriteString(t.StatusWarn.Apply(block))
+	}
+
 	return strings.TrimRight(sb.String(), "\n")
 }
 

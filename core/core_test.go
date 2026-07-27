@@ -534,3 +534,161 @@ func TestGuardrail_ClosureIdentityChangesWithMembership(t *testing.T) {
 		t.Fatalf("closure hash should change when membership changes: both = %q", c1[0].Hash)
 	}
 }
+
+// TestDeriveOrphans_AllReachable: marker links A, A cites B, B cites C → no orphans.
+func TestDeriveOrphans_AllReachable(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("a")),
+		testutil.NewSpec("m.b", hash("b")),
+		testutil.NewSpec("m.c", hash("c")),
+	}
+	baselineEdges := []core.Edge{testutil.NewLink("m.a", "mk")} // marker mk → m.a
+	scanEdges := []core.Edge{
+		testutil.NewRef("m.a", "m.b"),
+		testutil.NewRef("m.b", "m.c"),
+	}
+	orphans := core.DeriveOrphans(specs, baselineEdges, scanEdges)
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans, got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_DirectAndTransitive: a marker-linked spec and its transitive
+// citers are covered; an unlinked spec with no citer is an orphan.
+func TestDeriveOrphans_DirectAndTransitive(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("a")),
+		testutil.NewSpec("m.b", hash("b")),
+		testutil.NewSpec("m.orphan", hash("o")),
+	}
+	baselineEdges := []core.Edge{testutil.NewLink("m.a", "mk")}
+	scanEdges := []core.Edge{testutil.NewRef("m.a", "m.b")}
+	orphans := core.DeriveOrphans(specs, baselineEdges, scanEdges)
+	if len(orphans) != 1 || orphans[0] != "m.orphan" {
+		t.Fatalf("expected [m.orphan], got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_NoMarkers: with no marker-link edges, every spec is an orphan.
+// This is the empty-marker-set case (a fresh project before any drift link).
+func TestDeriveOrphans_NoMarkers(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("a")),
+		testutil.NewSpec("m.b", hash("b")),
+	}
+	orphans := core.DeriveOrphans(specs, nil, []core.Edge{testutil.NewRef("m.a", "m.b")})
+	if len(orphans) != 2 {
+		t.Fatalf("expected 2 orphans when no markers exist, got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_RefCycle: a cycle reachable from a marker covers all its
+// members; a cycle with no marker path is fully orphan. The visited-set must
+// prevent infinite recursion.
+func TestDeriveOrphans_RefCycle(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("a")),
+		testutil.NewSpec("m.b", hash("b")),
+		testutil.NewSpec("m.c", hash("c")),
+		testutil.NewSpec("m.d", hash("d")),
+	}
+	baselineEdges := []core.Edge{testutil.NewLink("m.a", "mk")} // marker → a
+	scanEdges := []core.Edge{
+		testutil.NewRef("m.a", "m.b"),
+		testutil.NewRef("m.b", "m.a"), // cycle a↔b (already reachable)
+		testutil.NewRef("m.c", "m.d"), // disconnected cycle c↔d
+		testutil.NewRef("m.d", "m.c"),
+	}
+	orphans := core.DeriveOrphans(specs, baselineEdges, scanEdges)
+	if len(orphans) != 2 {
+		t.Fatalf("expected 2 orphans [m.c m.d], got %v", orphans)
+	}
+	if orphans[0] != "m.c" || orphans[1] != "m.d" {
+		t.Fatalf("expected [m.c m.d], got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_SelfRef: a self-citation does not make a spec reachable.
+// Only a marker path does.
+func TestDeriveOrphans_SelfRef(t *testing.T) {
+	specs := []core.Spec{testutil.NewSpec("m.a", hash("a"))}
+	scanEdges := []core.Edge{testutil.NewRef("m.a", "m.a")}
+	orphans := core.DeriveOrphans(specs, nil, scanEdges)
+	if len(orphans) != 1 || orphans[0] != "m.a" {
+		t.Fatalf("self-ref without marker path should be orphan, got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_BrokenRefIgnored: a ref to a nonexistent spec is not a
+// reachability path (and is already reported separately as EDGE_BROKEN). The
+// phantom target is simply absent from the spec universe.
+func TestDeriveOrphans_BrokenRefIgnored(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("a")),
+		testutil.NewSpec("m.b", hash("b")),
+	}
+	baselineEdges := []core.Edge{testutil.NewLink("m.a", "mk")}
+	// m.a cites m.phantom (which does not exist as a spec) and m.b (which does).
+	scanEdges := []core.Edge{
+		testutil.NewRef("m.a", "m.phantom"),
+		testutil.NewRef("m.a", "m.b"),
+	}
+	orphans := core.DeriveOrphans(specs, baselineEdges, scanEdges)
+	if len(orphans) != 0 {
+		t.Fatalf("broken ref should not affect reachability of real specs, got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_BaselineRefEdgesIgnored: reachability uses the LIVE scan
+// for ref edges, not stale baseline edges. If m.a→m.b is in baseline but the
+// scan no longer contains it, m.b is NOT reachable through the stale edge.
+func TestDeriveOrphans_BaselineRefEdgesIgnored(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("a")),
+		testutil.NewSpec("m.b", hash("b")),
+	}
+	baselineEdges := []core.Edge{
+		testutil.NewLink("m.a", "mk"),    // marker → m.a (legitimate seed source)
+		testutil.NewRef("m.a", "m.b"),    // stale baseline ref (scan no longer has it)
+	}
+	// Scan has no ref edges at all: m.b has no live path from the marker.
+	orphans := core.DeriveOrphans(specs, baselineEdges, nil)
+	if len(orphans) != 1 || orphans[0] != "m.b" {
+		t.Fatalf("stale baseline ref must not satisfy reachability, got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_DeletedSpecsExcluded: specs flagged Deleted (baseline-only,
+// awaiting NODE_REMOVED reset) are not counted as orphans — they're on their
+// way out and reporting them as orphan would be noise on top of the removal.
+func TestDeriveOrphans_DeletedSpecsExcluded(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.a", hash("a")),
+		{ID: "m.ghost", Hash: hash("g"), Deleted: true},
+	}
+	baselineEdges := []core.Edge{testutil.NewLink("m.a", "mk")}
+	orphans := core.DeriveOrphans(specs, baselineEdges, nil)
+	if len(orphans) != 0 {
+		t.Fatalf("deleted spec should be excluded from orphan universe, got %v", orphans)
+	}
+}
+
+// TestDeriveOrphans_SortedAscending: output is deterministic (sorted) so the
+// CLI presenter and JSON are stable across runs.
+func TestDeriveOrphans_SortedAscending(t *testing.T) {
+	specs := []core.Spec{
+		testutil.NewSpec("m.z", hash("z")),
+		testutil.NewSpec("m.a", hash("a")),
+		testutil.NewSpec("m.m", hash("m")),
+	}
+	orphans := core.DeriveOrphans(specs, nil, nil)
+	want := []string{"m.a", "m.m", "m.z"}
+	if len(orphans) != len(want) {
+		t.Fatalf("expected %v, got %v", want, orphans)
+	}
+	for i, id := range want {
+		if orphans[i] != id {
+			t.Fatalf("orphans not sorted: got %v want %v", orphans, want)
+		}
+	}
+}

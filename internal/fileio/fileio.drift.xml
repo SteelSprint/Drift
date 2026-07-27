@@ -3,7 +3,7 @@
 Overview: Session is the sole gateway for reads and writes to files under .drift/. A Session holds an exclusive advisory lock acquired at construction and released at Close. The Session abstraction structurally enforces "all .drift/ I/O through one locked handle."
 
 Defined terms:
-  Session — see glossary.session
+  Session — see <ref spec="glossary.session">glossary.session</ref>
   Begin   — the constructor function; acquires the lock and returns a *Session
   Close   — the release function; idempotent
   Caller  — the function that invokes Begin and is responsible for calling Close

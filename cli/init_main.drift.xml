@@ -1,3 +1,3 @@
 <main>
-  <spec id="example">This is an example spec. Describe what your code does here.</spec>
+  <spec id="first_spec">Replace this text with a description of what your code does. Then place D! markers on the implementing code: wrap the code region with // D! id=yourmarker range-start and // D! id=yourmarker range-end. Run `drift link yourmarker main.first_spec` to connect them. Run `drift skill` for a comprehensive guide, or hand this project to an LLM coding agent and ask it to place markers and link them.</spec>
 </main>

@@ -127,6 +127,7 @@ type EvaluatedState struct {
 	Markers  []Marker
 	Edges    []Edge
 	Closures []Closure
+	Orphans  []string
 }
 
 var (
@@ -342,15 +343,87 @@ func (algorithm *CoreAlgorithm) evaluateTodoAction(ctx CoreAlgorithmContext, act
 		return EvaluatedState{}, err
 	}
 	closures := DeriveClosures(ctx.Specs, ctx.Markers, ctx.Edges, action.Scan)
+	orphans := DeriveOrphans(ctx.Specs, ctx.Edges, action.Scan.Edges)
 	return EvaluatedState{
 		Specs:    ctx.Specs,
 		Markers:  ctx.Markers,
 		Edges:    ctx.Edges,
 		Closures: closures,
+		Orphans:  orphans,
 	}, nil
 }
 
 // D! id=ctodo range-end
+
+// D! id=coreach range-start
+
+// DeriveOrphans returns the IDs of specs that have no path from any marker,
+// sorted ascending. A spec is reachable iff some marker links to it directly
+// (a marker→spec edge in baselineEdges), or a chain of spec→spec ref edges
+// (from scanEdges) connects it to a marker-linked spec.
+//
+// baselineEdges supplies the marker→spec link edges (user-curated, current via
+// link/unlink). scanEdges supplies the current spec→spec ref edges, walked
+// forward from the marker-linked seeds. Spec→spec edges inside baselineEdges
+// are ignored: reachability reflects the LIVE spec graph (the current scan),
+// not a stale baseline snapshot. Deleted specs (baseline-only, awaiting a
+// NODE_REMOVED reset) are excluded from the orphan universe.
+//
+// This is the static complement of the closure model: a spec is an orphan
+// iff its change-closure would contain no marker, i.e. drift could never
+// enforce it. Cycles and self-refs are harmless (the covered visited-set
+// prevents re-visiting). O(specs + edges).
+func DeriveOrphans(specs []Spec, baselineEdges, scanEdges []Edge) []string {
+	covered := make(map[string]bool, len(specs))
+	queue := make([]string, 0, len(specs))
+
+	// Seed: every spec that is the target of a marker→spec link edge. Only
+	// baseline edges carry link edges (the scanner does not rediscover them);
+	// baseline spec→spec edges are skipped as stale.
+	for _, e := range baselineEdges {
+		if isSpecID(e.From) {
+			continue
+		}
+		if isSpecID(e.To) && !covered[e.To] {
+			covered[e.To] = true
+			queue = append(queue, e.To)
+		}
+	}
+
+	// Forward adjacency from the live scan: spec→spec ref edges only.
+	outgoing := make(map[string][]string)
+	for _, e := range scanEdges {
+		if isSpecID(e.From) && isSpecID(e.To) {
+			outgoing[e.From] = append(outgoing[e.From], e.To)
+		}
+	}
+
+	// BFS forward over ref edges to fixpoint.
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		for _, next := range outgoing[curr] {
+			if !covered[next] {
+				covered[next] = true
+				queue = append(queue, next)
+			}
+		}
+	}
+
+	var orphans []string
+	for _, s := range specs {
+		if s.Deleted {
+			continue
+		}
+		if !covered[s.ID] {
+			orphans = append(orphans, s.ID)
+		}
+	}
+	sort.Strings(orphans)
+	return orphans
+}
+
+// D! id=coreach range-end
 
 // D! id=crst range-start
 // evaluateResetClosureAction locates the closure by hash in the

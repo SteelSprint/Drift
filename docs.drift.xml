@@ -154,9 +154,9 @@ Definition authority: <ref spec="cli.reset_friction_block">cli.reset_friction_bl
 
 <spec id="chapter_01_why_drift_exists">
 Overview: The reader learns what spec drift is and why LLM-assisted
-codebases make it acute. This is a motivation chapter with no commands
+codebases make it acute (<ref spec="business_goals.premise">premise</ref>: LLMs break long-held assumptions about development). This is a motivation chapter with no commands
 and no install. The chapter frames the problem drift solves and
-introduces drift as a sync layer.
+introduces drift as a sync layer. The conceptual foundation is <ref spec="thesis.conceptual_core">thesis.conceptual_core</ref>. This chapter is drift <ref spec="business_goals.communicate">communicating</ref> its value to the community.
 
 Learning objectives: after reading docs/01-why-drift-exists.md, the
 reader can:
@@ -187,7 +187,7 @@ Content requirements:
 Overview: The reader installs drift, gives the binary to their agent,
 and watches the agent bootstrap specs and markers. The chapter frames
 the agent as the primary operator of drift; the human steers through
-specs and reviews in PRs.
+specs and reviews in PRs. This chapter follows the <ref spec="docs.pedagogy">pedagogical rules</ref> governing all docs chapter specs.
 
 Learning objectives: after reading docs/02-getting-started.md, the
 reader can:
@@ -304,6 +304,7 @@ Prerequisites:
   - <ref spec="docs.concept_drift_event">drift event concept</ref>
   - <ref spec="docs.concept_baseline">baseline concept</ref>
   - <ref spec="docs.concept_scan">scan concept</ref>
+  - <ref spec="docs.concept_friction">friction concept</ref>
   - <ref spec="docs.chapter_04_add_feature">chapter 4</ref>
 
 Content requirements:

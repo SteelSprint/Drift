@@ -43,6 +43,11 @@ func (p PlainPresenter) Todo(r TodoResult) string {
 		sb.WriteString(warning)
 	}
 
+	if block := orphanSpecsBlock(state); block != "" {
+		sb.WriteString("\n")
+		sb.WriteString(block)
+	}
+
 	return strings.TrimRight(sb.String(), "\n")
 }
 
@@ -191,6 +196,49 @@ func unlinkedMarkerWarning(state core.EvaluatedState) string {
 		return "1 unlinked marker found — run `drift list` to review."
 	}
 	return fmt.Sprintf("%d unlinked markers found — run `drift list` to review.", unlinked)
+}
+
+// orphanSpecsBlock returns the grouped orphan-specs block, or "" when there
+// are none. Orphans are specs with no path from any marker (see
+// core.reachability). Grouped by module; local IDs listed under each module
+// heading. The three remediations are exhaustive and exclusive.
+func orphanSpecsBlock(state core.EvaluatedState) string {
+	if len(state.Orphans) == 0 {
+		return ""
+	}
+	moduleOf := make(map[string]string, len(state.Specs))
+	for _, s := range state.Specs {
+		moduleOf[s.ID] = s.Module
+	}
+	byModule := make(map[string][]string)
+	for _, id := range state.Orphans {
+		mod := moduleOf[id]
+		if mod == "" {
+			mod = "unknown"
+		}
+		localID := id
+		if i := strings.Index(id, "."); i >= 0 {
+			localID = id[i+1:]
+		}
+		byModule[mod] = append(byModule[mod], localID)
+	}
+	modules := make([]string, 0, len(byModule))
+	for m := range byModule {
+		modules = append(modules, m)
+	}
+	sort.Strings(modules)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%d orphan specs (no path from any marker):\n", len(state.Orphans)))
+	for _, m := range modules {
+		ids := byModule[m]
+		sort.Strings(ids)
+		sb.WriteString(fmt.Sprintf("  %s (%d):\n", m, len(ids)))
+		for _, id := range ids {
+			sb.WriteString("    " + id + "\n")
+		}
+	}
+	sb.WriteString("Resolve each by: place a D! marker + drift link, add a <ref> from a reachable spec, or delete the spec.")
+	return sb.String()
 }
 
 // D! id=cfmt range-end

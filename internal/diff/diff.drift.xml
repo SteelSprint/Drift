@@ -26,7 +26,7 @@ Algorithm:
   (iv)  Group ops into hunks of up to 3 context lines each side (buildHunks).
   (v)   Format each hunk header + body (formatHunkHeader, formatRange).
 
-See also: cli.diff_command, output.diff_seed_label.
+See also: cli.diff_command, <ref spec="output.diff_seed_label">output.diff_seed_label</ref>.
 </spec>
 
 <spec id="range_format">

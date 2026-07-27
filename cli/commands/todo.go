@@ -18,7 +18,7 @@ func (c TodoCommand) Run(ctx Context) (output.Result, int) {
 		return output.ErrorResult{Command: "todo", Message: err.Error(), Exit: 2}, 2
 	}
 	code := 0
-	if len(state.Closures) > 0 || hasUnlinkedMarkers(state) {
+	if len(state.Closures) > 0 || hasUnlinkedMarkers(state) || len(state.Orphans) > 0 {
 		code = 1
 	}
 	return output.TodoResult{State: state}, code

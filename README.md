@@ -65,12 +65,3 @@ decision in this repo has a spec. `make build` runs `drift todo`
 as a gate: if any spec drifted from its code, the build fails. No
 exceptions. [Browse the specs](docs.drift.xml).
 <!-- D! id=selfhost range-end -->
-
-## Prior art
-
-I built this without knowing about [fiberplane/drift](https://github.com/fiberplane/drift)
-or [spec-kit-sync](https://github.com/bgervin/spec-kit-sync), both of which
-attack the same problem and one of which has the same name. That's on me for not
-searching properly. See [PRIOR_ART.md](./PRIOR_ART.md) for what they do, how this
-differs, and where their approach is better than mine.
-

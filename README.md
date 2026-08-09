@@ -1,16 +1,38 @@
-# Drift is a sync layer between your specs and your code
+# Drift lets your agent move fast and break less
 
-**Drift is a sync layer between your specs and your code. Your agent
-writes both. Drift keeps them aligned.**
+You prompt an agent. It writes code fast — and quietly drifts away
+from what you asked for. Every edit adds a small assumption you never
+approved; over a long task, they pile up. Drift catches that.
 
-You prompt your agent like you already do. The agent writes specs
-(capturing your intent) and code (implementing it). Drift connects
-them and keeps them in sync. When future edits break alignment, the
-agent catches it, and fixes it before you do.
+Drift makes your agent:
 
-Specs are plain-English rules in XML files. Markers are comment lines
-that wrap the implementing code. Any language, any text file. Single
-static binary, zero dependencies.
+- **More accurate.** It checks its own work against your rules and requirements,
+  before telling you it's done.
+- **Fewer prompts.** Say what you want once; the agent keeps it
+  in mind across every edit after.
+- **Better memory.** Your project's rules and requirements live in the repo and are statically linked to your code.
+- **Fewer mistakes.** When a change breaks a rule, the agent
+  finds out before you do.
+- **Pushback when it matters.** Ask for something that contradicts
+  your own requirements, and the agent flags it: *"Are you sure? This goes
+  against what you wanted earlier."*
+- **Long tasks that stay reliable.** Steps get checked much more often, so a
+  50-step task doesn't quietly pile up 50 small wrong turns.
+- **Work that outlives the conversation.** Close the tab, start
+  fresh, hand it to another agent — the requirements are still there, no
+  re-explaining required.
+
+## No new workflow to learn
+
+You keep prompting the way you already do. Drift is a tool your agent
+picks up, not one you have to learn. The agent writes the specs, places
+the markers, runs the checks, and resolves any drift — your job is to
+review.
+
+Behind the scenes: **specs** are your rules and requirements in plain English, **markers**
+wrap the code that implements each requirement, and **drift** is the signal
+that fires when the two disagree. Start with [Why drift exists](docs/01-why-drift-exists.md)
+for the full picture.
 
 ## Quickstart
 

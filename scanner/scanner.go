@@ -104,6 +104,7 @@ var markerPattern = regexp.MustCompile(`D!\s+id=([A-Za-z][A-Za-z0-9_]*)\s+(range
 var ignoreSpanPattern = regexp.MustCompile(`D!\s+instruction=(ignore-span-start|ignore-span-end)`)
 // D! id=signor range-end
 
+// D! id=sint range-start
 type ScanResult struct {
 	Specs   []core.Spec
 	Markers []core.Marker
@@ -126,7 +127,9 @@ func NewFileScanner(dir string) *FileScanner {
 func (s *FileScanner) Dir() string {
 	return s.dir
 }
+// D! id=sint range-end
 
+// D! id=sscn2 range-start
 func (s *FileScanner) Scan() (ScanResult, error) {
 	ignore, err := loadDriftIgnore(s.dir)
 	if err != nil {
@@ -142,7 +145,9 @@ func (s *FileScanner) Scan() (ScanResult, error) {
 	}
 	return ScanResult{Specs: specs, Markers: markers, Edges: edges}, nil
 }
+// D! id=sscn2 range-end
 
+// D! id=sxmld range-start
 type specFileXML struct {
 	XMLName xml.Name
 	Name    string       `xml:"name,attr"`
@@ -161,6 +166,7 @@ type specElem struct {
 	Attr    []xml.Attr `xml:",any,attr"`
 	Content string     `xml:",innerxml"`
 }
+// D! id=sxmld range-end
 
 // D! id=sspec range-start
 func (s *FileScanner) scanSpecs() ([]core.Spec, []core.Edge, error) {
@@ -193,6 +199,7 @@ type importLoader struct {
 	rootDir    string
 }
 
+// D! id=simpl range-start
 func (l *importLoader) load(absPath string) ([]core.Spec, []core.Edge, error) {
 	absPath, err := filepath.Abs(absPath)
 	if err != nil {
@@ -332,6 +339,7 @@ func (l *importLoader) load(absPath string) ([]core.Spec, []core.Edge, error) {
 
 	return specs, edges, nil
 }
+// D! id=simpl range-end
 
 // D! id=smark range-start
 func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
@@ -390,6 +398,7 @@ type rawMarkerDecl struct {
 	index  int    // 0-indexed line position in file
 }
 
+// D! id=smpair range-start
 func parseMarkerFile(path, storePath string) ([]core.Marker, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -523,6 +532,7 @@ func parseMarkerFile(path, storePath string) ([]core.Marker, error) {
 	}
 	return markers, nil
 }
+// D! id=smpair range-end
 
 // blankMarkerDecl strips the D! declaration from a line, leaving only the comment prefix.
 // e.g. a marker declaration line "id=foo range-start" becomes just the comment prefix
@@ -544,6 +554,7 @@ func sha1Hex(content string) string {
 
 // D! id=shash range-end
 
+// D! id=signorf range-start
 type driftIgnore struct {
 	patterns []ignorePattern
 }
@@ -605,6 +616,7 @@ func (ig *driftIgnore) matches(relPath string, isDir bool) bool {
 	}
 	return false
 }
+// D! id=signorf range-end
 
 func relPath(rootDir, absPath string) string {
 	rel, err := filepath.Rel(rootDir, absPath)

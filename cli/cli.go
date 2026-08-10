@@ -14,6 +14,7 @@ import (
 	"drift/statestore"
 )
 
+// D! id=cembed range-start
 //go:embed skill.md
 var SkillContent string
 
@@ -22,7 +23,9 @@ var HelpContent string
 
 //go:embed init_main.drift.xml
 var initMainDriftXML string
+// D! id=cembed range-end
 
+// D! id=crun range-start
 // Run is the legacy entry point that preserves the original
 // (args, dir) -> (string, int) signature. It delegates to RunWithRender
 // with PlainPresenter. ~50 existing test sites call Run directly; keeping
@@ -44,6 +47,7 @@ func RunAuto(args []string, dir string) (string, int) {
 	}
 	return RunWithRender(args, dir, presenter)
 }
+// D! id=crun range-end
 
 // RunWithRender dispatches a command via the Registry, builds a typed Result,
 // and renders it via the supplied Presenter. The flow is:
@@ -106,6 +110,7 @@ func RunWithRender(args []string, dir string, presenter output.Presenter) (strin
 
 // D! id=cdisp range-end
 
+// D! id=cstrip range-start
 // stripGlobalFlags removes recognized global flags (--json, --no-color,
 // --color=...) from args. These flags are handled before dispatch and must
 // not appear in any command's recognized flag list or trigger
@@ -123,3 +128,4 @@ func stripGlobalFlags(args []string) []string {
 	}
 	return out
 }
+// D! id=cstrip range-end

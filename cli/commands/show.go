@@ -34,6 +34,7 @@ func (c ShowCommand) Run(ctx Context) (output.Result, int) {
 	return result, code
 }
 
+// D! id=cflagh range-start
 // hasFlag reports whether flag appears in args (1..n).
 func hasFlag(args []string, flag string) bool {
 	for _, a := range args[1:] {
@@ -43,6 +44,7 @@ func hasFlag(args []string, flag string) bool {
 	}
 	return false
 }
+// D! id=cflagh range-end
 
 // D! id=cshow range-end
 

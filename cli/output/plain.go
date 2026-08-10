@@ -341,6 +341,7 @@ func (p PlainPresenter) List(r ListResult) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// D! id=osorth range-start
 func sortSpecsByID(specs []core.Spec) {
 	for i := 1; i < len(specs); i++ {
 		for j := i; j > 0 && specs[j-1].ID > specs[j].ID; j-- {
@@ -356,9 +357,11 @@ func sortMarkersByID(markers []core.Marker) {
 		}
 	}
 }
+// D! id=osorth range-end
 
 // D! id=ofmtl range-end
 
+// D! id=oshow range-start
 func (p PlainPresenter) Show(r ShowResult) string {
 	var sb strings.Builder
 
@@ -448,7 +451,9 @@ func (p PlainPresenter) Show(r ShowResult) string {
 
 	return strings.TrimRight(sb.String(), "\n")
 }
+// D! id=oshow range-end
 
+// D! id=oclas range-start
 // classifyClosureSpecs walks the closure edges from the seed in both directions
 // to identify which specs are ancestors (can reach the seed via outgoing edges)
 // and which are descendants (reachable from the seed via outgoing edges).
@@ -514,7 +519,9 @@ func classifyClosureSpecs(r ShowResult, seedID string) (ancestors, descendants [
 	sort.Slice(descendants, func(i, j int) bool { return descendants[i].ID < descendants[j].ID })
 	return ancestors, descendants
 }
+// D! id=oclas range-end
 
+// D! id=osec range-start
 func renderSpecSection(sb *strings.Builder, n ShowNode) {
 	sb.WriteString(fmt.Sprintf("\n%s (%s)\n", n.ID, n.Filepath))
 	sb.WriteString(fmt.Sprintf("Hash: %s\n", n.Hash))
@@ -544,6 +551,7 @@ func renderMarkerSection(sb *strings.Builder, n ShowNode) {
 	sb.WriteString(n.Content)
 	sb.WriteString("\n")
 }
+// D! id=osec range-end
 
 // D! id=cdifffmt range-start
 func (p PlainPresenter) DiffClosure(r DiffClosureResult) string {

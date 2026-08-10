@@ -76,6 +76,7 @@ func (c ConfigCommand) configTheme(ctx Context) (output.Result, int) {
 	}, 0
 }
 
+// D! id=cthml range-start
 func listThemeNames() string {
 	names := make([]string, 0, len(output.AllThemes))
 	for name := range output.AllThemes {
@@ -84,7 +85,9 @@ func listThemeNames() string {
 	sort.Strings(names)
 	return strings.Join(names, ", ")
 }
+// D! id=cthml range-end
 
+// D! id=cgit range-start
 // ensureGitignore creates .drift/.gitignore if it doesn't exist, listing
 // user-settings.xml and state.lock so personal preferences and runtime
 // artifacts are never accidentally committed.
@@ -97,6 +100,7 @@ func ensureGitignore(dir string) {
 	os.MkdirAll(filepath.Join(dir, ".drift"), 0755)
 	os.WriteFile(path, []byte(content), 0644)
 }
+// D! id=cgit range-end
 
 func (c ConfigCommand) Meta() Meta {
 	return Meta{

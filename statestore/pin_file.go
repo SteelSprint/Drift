@@ -21,6 +21,7 @@ var ErrStateVersionUnsupported = errors.New("state.xml version unsupported; dele
 
 // D! id=pnope range-end
 
+// D! id=pshape range-start
 // State is the in-memory shape of .drift/state.xml. Edges is the unified
 // list of both link-style (marker→spec) and ref-style (spec→spec) edges.
 // State.xml v4 carries baseline only — no per-edge resolutions.
@@ -50,7 +51,9 @@ func NewFileStateStore(dir string) *FileStateStore {
 func (s *FileStateStore) Dir() string {
 	return s.dir
 }
+// D! id=pshape range-end
 
+// D! id=pinit range-start
 func (s *FileStateStore) Initialized() (bool, error) {
 	_, err := os.Stat(filepath.Join(s.dir, ".drift", stateFileName))
 	if err == nil {
@@ -61,7 +64,9 @@ func (s *FileStateStore) Initialized() (bool, error) {
 	}
 	return false, err
 }
+// D! id=pinit range-end
 
+// D! id=pxmld range-start
 // stateFileXML serializes .drift/state.xml. version=4 is the
 // provenance-closure format: baseline only, no <edgeResolutions>.
 // v3 (with resolutions) and earlier are refused on Load.
@@ -92,6 +97,7 @@ type edgeXML struct {
 	From string `xml:"from,attr"`
 	To   string `xml:"to,attr"`
 }
+// D! id=pxmld range-end
 
 // D! id=pload range-start
 func (s *FileStateStore) Load(sess *fileio.Session) (State, error) {
@@ -195,6 +201,7 @@ func (s *FileStateStore) Save(sess *fileio.Session, state State) error {
 
 // D! id=psave range-end
 
+// D! id=pval range-start
 // ErrDanglingEdge is returned by Save when an edge endpoint does not resolve
 // to any spec or marker in the same state. This invariant previously held
 // only implicitly and was violated by reset accepting a spec deletion while
@@ -226,3 +233,4 @@ func validateEdgeEndpoints(state State) error {
 	}
 	return nil
 }
+// D! id=pval range-end

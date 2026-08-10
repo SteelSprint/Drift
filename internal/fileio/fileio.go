@@ -138,6 +138,7 @@ func (s *Session) checkOpen() error {
 	return nil
 }
 
+// D! id=fname range-start
 // validName rejects empty names, absolute paths, and names containing a path
 // separator — Session only reads/writes direct children of .drift/.
 func validName(name string) error {
@@ -154,3 +155,4 @@ func validName(name string) error {
 	}
 	return nil
 }
+// D! id=fname range-end

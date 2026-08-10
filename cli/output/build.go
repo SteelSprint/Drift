@@ -239,6 +239,7 @@ func BuildShowResult(state core.EvaluatedState, dir, id string) (ShowResult, err
 	}, nil
 }
 
+// D! id=oidpred range-start
 func isSpecID(id string) bool {
 	return containsDot(id)
 }
@@ -251,6 +252,7 @@ func containsDot(s string) bool {
 	}
 	return false
 }
+// D! id=oidpred range-end
 
 // D! id=oblds range-end
 
@@ -296,6 +298,7 @@ func DiffEdgeExists(state core.EvaluatedState, markerID, specID string) bool {
 	return false
 }
 
+// D! id=osorte range-start
 // sortEdgesByFromTo sorts a slice of edges lexicographically by (From, To).
 // Used by the List presenters to produce diff-stable output across runs
 // (state-store mutations may otherwise shuffle the slice). See
@@ -312,5 +315,6 @@ func sortEdgesByFromTo(edges []core.Edge) {
 		}
 	}
 }
+// D! id=osorte range-end
 
 // D! id=oblde range-end

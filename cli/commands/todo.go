@@ -41,6 +41,7 @@ func hasUnlinkedMarkers(state core.EvaluatedState) bool {
 	return false
 }
 
+// D! id=cspidc range-start
 func isSpecIDLocal(id string) bool {
 	first := strings.Index(id, ".")
 	if first < 0 {
@@ -48,6 +49,7 @@ func isSpecIDLocal(id string) bool {
 	}
 	return strings.Index(id[first+1:], ".") < 0
 }
+// D! id=cspidc range-end
 
 // D! id=ctodocmd range-end
 

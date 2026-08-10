@@ -8,6 +8,7 @@ import (
 	"drift/internal/fileio"
 )
 
+// D! id=fconst range-start
 // Friction rate-limit constants (see cli.reset_friction_block).
 const (
 	frictionWindow   = 30 * time.Second
@@ -15,7 +16,9 @@ const (
 	frictionPruneAge = 60 * time.Second
 	frictionFileName = "friction.json"
 )
+// D! id=fconst range-end
 
+// D! id=fover range-start
 // frictionOverrideSquawk is written to stderr when a reset proceeds under
 // --dangerously-override-friction. Not in the JSON changeSummary.Message —
 // that field is the caller-supplied lead-in ("Closure HASH resolved.").
@@ -25,13 +28,16 @@ const frictionOverrideSquawk = "WARNING: bypassing friction rate limit at user r
 // `warning` field when a reset proceeded under override, so programmatic
 // consumers can detect the bypass without parsing stderr.
 const frictionWarningField = "bypass-friction"
+// D! id=fover range-end
 
+// D! id=fshape range-start
 // frictionFile is the on-disk telemetry shape: a list of Unix-second
 // timestamps of recent successful non-dry-run resets. Missing/empty/malformed
 // file is treated as zero timestamps (permissive — see R6).
 type frictionFile struct {
 	Resets []int64 `json:"resets"`
 }
+// D! id=fshape range-end
 
 // D! id=frblk range-start
 // checkFriction loads the friction telemetry file via the Session and returns
@@ -106,6 +112,7 @@ func recordReset(sess *fileio.Session) error {
 
 // D! id=frrec range-end
 
+// D! id=ferr range-start
 var errFrictionBlocked = simpleError("rate limit: 3 closures resolved in the last 30s. Drift's friction principle expects per-closure review — the intended workflow is `drift todo` → `drift diff --all` → `drift reset <hash>` one closure at a time, with each closure reviewed before it is reset.")
 
 // simpleError wraps a string as an error without exposing the friction
@@ -113,3 +120,4 @@ var errFrictionBlocked = simpleError("rate limit: 3 closures resolved in the las
 type simpleError string
 
 func (s simpleError) Error() string { return string(s) }
+// D! id=ferr range-end

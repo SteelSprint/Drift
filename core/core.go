@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// D! id=ctypes range-start
 type CoreAlgorithm struct{}
 
 func NewCoreAlgorithm() *CoreAlgorithm {
@@ -146,6 +147,7 @@ var (
 	ErrClosureNotFound        = errors.New("closure hash not found in derived closures")
 	ErrBrokenEdgeNotResettable = errors.New("closure contains only broken-edge events, which require scan fix")
 )
+// D! id=ctypes range-end
 
 // D! id=cval range-start
 func (ctx CoreAlgorithmContext) Validate() error {
@@ -323,6 +325,7 @@ func validateScanCoversAllNodes(scan Scan, specs []Spec, markers []Marker) error
 
 // D! id=cscn range-end
 
+// D! id=ceval range-start
 func (algorithm *CoreAlgorithm) EvaluateState(ctx CoreAlgorithmContext) (EvaluatedState, error) {
 	if err := ctx.Validate(); err != nil {
 		return EvaluatedState{}, err
@@ -336,6 +339,7 @@ func (algorithm *CoreAlgorithm) EvaluateState(ctx CoreAlgorithmContext) (Evaluat
 		return EvaluatedState{}, fmt.Errorf("%w: %T", ErrUnknownAction, ctx.Action)
 	}
 }
+// D! id=ceval range-end
 
 // D! id=ctodo range-start
 func (algorithm *CoreAlgorithm) evaluateTodoAction(ctx CoreAlgorithmContext, action TodoAction) (EvaluatedState, error) {
@@ -815,6 +819,7 @@ func eventLess(a, b DriftEvent) bool {
 
 // D! id=cdrv range-end
 
+// D! id=cid range-start
 // canonicalEdgeKey returns an undirected canonicalization of an edge's
 // endpoints: min(from,to) + separator + max(from,to). Two edges that
 // differ only in direction produce the same key.
@@ -851,7 +856,9 @@ func makeNodeRef(id string, specsByID map[string]*Spec, markersByID map[string]*
 	}
 	return NodeRef{ID: id}
 }
+// D! id=cid range-end
 
+// D! id=ccopy range-start
 // --- helpers ---
 
 func copySpecsToMutableMap(specs []Spec) map[string]*Spec {
@@ -887,7 +894,9 @@ func markersFromMutableMap(markersByID map[string]*Marker) []Marker {
 	}
 	return out
 }
+// D! id=ccopy range-end
 
+// D! id=cedge range-start
 func addEdgeIfMissing(edges []Edge, e Edge) []Edge {
 	for _, existing := range edges {
 		if existing == e {
@@ -922,3 +931,4 @@ func removeEdge(edges []Edge, target Edge) []Edge {
 	}
 	return out
 }
+// D! id=cedge range-end

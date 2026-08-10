@@ -76,4 +76,5 @@ Requirements:
 
 See also: fileio.session.
 </spec>
+<spec id="name_validation">validName(name) is the path-safety check that gates both Session.Read and Session.Write. It rejects the empty string, the literal "." and ".." names, and any name containing a path separator (either os.PathSeparator OR '/' — the explicit '/' check makes the function behave identically on Windows and Unix so a Unix-authored state file with a Windows-illegal name is still rejected). The check guarantees that Read and Write only ever touch direct children of .drift/ — a name like "../state.xml" or "subdir/state.xml" is refused, preventing path traversal and ensuring every .drift/ I/O stays inside the locked directory. validName runs AFTER checkOpen (a closed Session rejects all calls) and BEFORE the os call. The error messages are descriptive (name the offending input) so callers can surface them without translation. See fileio.read.R3, fileio.write_atomicity.R6.</spec>
 </module>

@@ -12,6 +12,7 @@ import (
 	"drift/statestore"
 )
 
+// D! id=oerr range-start
 var (
 	ErrLinkMarkerNotFound      = fmt.Errorf("link references unknown marker")
 	ErrLinkSpecNotFound        = fmt.Errorf("link references unknown spec")
@@ -24,7 +25,9 @@ var (
 	ErrResetClosureOnlyBroken  = fmt.Errorf("closure contains only broken-edge events; fix the spec text or restore the missing spec")
 	markerSyntax               = "D" + "! id=<shortcode>"
 )
+// D! id=oerr range-end
 
+// D! id=octor range-start
 type Orchestrator struct {
 	stateStore statestore.StateStore
 	scanner    scanner.Scanner
@@ -40,7 +43,9 @@ func NewOrchestrator(stateStore statestore.StateStore, scanner scanner.Scanner, 
 		baselines:  baselines,
 	}
 }
+// D! id=octor range-end
 
+// D! id=otypes range-start
 // DiffSide describes one side (spec or marker) of a drift event for diffing.
 type DiffSide struct {
 	ID           string
@@ -88,7 +93,9 @@ type EdgeChange struct {
 	To   string
 	Kind string // "added" / "removed"
 }
+// D! id=otypes range-end
 
+// D! id=owbase range-start
 // writeBaseline writes a content-addressed baseline entry for the given
 // spec or marker using its current scanned hash. Best-effort.
 func (o *Orchestrator) writeBaseline(sess *fileio.Session, scannedHash, filepath, specID string, startLine, endLine int, isSpec bool) error {
@@ -115,6 +122,7 @@ func (o *Orchestrator) resolvePath(p string) string {
 	}
 	return filepath.Join(o.scanner.Dir(), p)
 }
+// D! id=owbase range-end
 
 // D! id=oinit range-start
 func (o *Orchestrator) Init(sess *fileio.Session) error {
@@ -270,6 +278,7 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 
 // D! id=orest range-end
 
+// D! id=olookup range-start
 func findSpecByID(specs []core.Spec, id string) (core.Spec, bool) {
 	for _, s := range specs {
 		if s.ID == id {
@@ -287,6 +296,7 @@ func findMarkerByID(markers []core.Marker, id string) (core.Marker, bool) {
 	}
 	return core.Marker{}, false
 }
+// D! id=olookup range-end
 
 // D! id=olink range-start
 // Link constructs a link-style Edge (marker stores edge to spec) and appends
@@ -468,6 +478,7 @@ func (o *Orchestrator) unlinkInner(sess *fileio.Session, markerID, specID string
 	return summary, nil
 }
 
+// D! id=ocsum2 range-start
 // computeChangeSummary diffs two statestore.State values and returns a
 // ChangeSummary describing the mutations. Used by reset/link/unlink in both
 // preview (dry-run) and post-apply forms. See output.change_summary_format.
@@ -557,6 +568,7 @@ func computeChangeSummary(before, after statestore.State, operation string) Chan
 
 	return summary
 }
+// D! id=ocsum2 range-end
 
 // D! id=ounlnk range-end
 
@@ -882,6 +894,7 @@ func scanHashForMarker(scanResult scanner.ScanResult, id string) string {
 
 // D! id=odiff range-end
 
+// D! id=oedge range-start
 // mergeScannedEdges returns baseline edges with all spec-spec edges replaced
 // by the scan's spec-spec edges. Link-style edges (marker-spec) are preserved
 // from baseline because they are user-curated, not auto-discovered. Scan
@@ -909,7 +922,9 @@ func isSpecID(id string) bool {
 	}
 	return strings.Index(id[first+1:], ".") < 0
 }
+// D! id=oedge range-end
 
+// D! id=oscan range-start
 func buildKnownSpecIDs(specLists ...[]core.Spec) map[string]bool {
 	var total int
 	for _, sl := range specLists {
@@ -959,3 +974,4 @@ func buildScan(scanResult scanner.ScanResult, reconciledSpecs []core.Spec, recon
 		Edges:        scanResult.Edges,
 	}
 }
+// D! id=oscan range-end

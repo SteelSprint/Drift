@@ -130,4 +130,94 @@ See also: cli.reset_format, cli.no_bulk_reset, principles.friction, fileio.sessi
 <spec id="friction_override_constants">frictionOverrideSquawk is the fixed stderr line written when a reset proceeds under --dangerously-override-friction (see cli.reset_friction_block R2). It is NOT placed in the JSON changeSummary.Message — that field is the caller-supplied lead-in ("Closure HASH resolved."). frictionWarningField ("bypass-friction") is the value placed in the JSON changeSummary `warning` field so programmatic consumers can detect a bypass without parsing stderr. The two constants together implement the "loud but parseable" contract: stderr squawk for human review, structured warning field for LLM/CI consumers. Neither constant is referenced in the block error message (R1 forbids advertising the override there). See cli.reset_friction_block, output.change_summary_format.</spec>
 <spec id="friction_telemetry_shape">frictionFile is the on-disk JSON shape of .drift/friction.json: a single field Resets []int64 listing Unix-second timestamps of recent successful non-dry-run resets. The encoder is encoding/json with the default tag (`json:"resets"`). A missing, empty, or malformed file is treated as zero timestamps by both checkFriction (permissive — see R6) and recordReset (which starts fresh with just the new timestamp). The shape is intentionally minimal — no metadata, no schema version, no operation IDs — because telemetry is not authoritative and any unparseable file is treated as zero. See cli.reset_friction_block, cli.friction_constants.</spec>
 <spec id="friction_error_type">errFrictionBlocked is the sentinel error returned by checkFriction when the rate limit is exceeded. Its message names the friction principle and the intended workflow (todo → diff --all → reset one closure at a time) but MUST NOT name --dangerously-override-friction (see cli.reset_friction_block R1). The error is a simpleError — a private string-newtype with an Error() method — so callers cannot Unwrap it or inspect internal state, which prevents the friction internals from becoming part of the public API surface. simpleError is the only error wrapper in cli/commands that does not come from fmt.Errorf or errors.New; the wrapping pattern exists so future telemetry-driven decisions (rate changes, cooldown logic) can stay behind the simpleError interface. See cli.reset_friction_block.</spec>
+<spec id="coverage_command">
+Overview: `drift coverage` reports how completely markers blanket the codebase. It is the structural complement of `drift todo`: todo reports what drifted, coverage reports where drift is blind. Coverage % is necessary but not sufficient for spec-code sync (see cli.todo_alignment_vs_correctness).
+
+Defined terms:
+  text file          — any file the scanner would scan for markers (subject to drift.ignore, the binary-extension blocklist, and null-byte detection; see scanner.text_file_detection)
+  marker range       — the half-open set of lines strictly between a marker's range-start and range-end (exclusive of both marker lines); see scanner.marker_discovery
+  covered line       — a non-blank line that falls inside at least one marker range. Overlapping or nested ranges count the line once.
+  total line         — a non-blank line in any text file under the project root (excluding .drift/, drift.ignore-matched paths, and spec files *.drift.xml)
+  coverage %         — coveredLines / totalLines * 100, rounded to a whole percent. A file with 0 total lines has coverage % defined as 100 (vacuously covered; cannot be a gap).
+  gap                — totalLines − coveredLines for a single file (or directory aggregate). Used as the primary sort key.
+  unlinked marker    — a non-deleted marker with no link-style edge from it (same definition as cli.unlinked_warning)
+  orphan spec        — a spec with no path from any marker (same definition as core.reachability)
+
+Command shape:
+  drift coverage                      Per-file table, sorted by gap descending
+  drift coverage --by-file            Per-directory aggregate table, sorted by directory path
+  drift coverage --threshold N        Exit 1 when any file's coverage % is below N (CI gate)
+  drift coverage --json               JSON output (structured; --no-color and --color= apply as usual)
+  drift coverage --by-file --threshold N --json   flags combine
+
+Requirements:
+  R1. coverage MUST walk the same file set the scanner walks (drift.ignore + text_file_detection), excluding .drift/ and *.drift.xml spec files. The .drift.xml exclusion is essential: spec files are not implementation code and would inflate coverage artificially.
+  R2. coverage MUST count a line as covered iff it is non-blank AND falls strictly between some marker's range-start and range-end in the same file. A line covered by multiple overlapping markers counts once.
+  R3. coverage MUST count total lines as the non-blank line count of each scanned text file. Blank lines (whitespace-only) do not contribute to either total or covered counts.
+  R4. Per-file coverage % MUST be computed as coveredLines / totalLines * 100, rounded to the nearest whole percent. A file with 0 total lines MUST report coverage % = 100 (so empty files never trigger the threshold gate and never appear in the gap table).
+  R5. The default (no-flag) output MUST be a per-file table sorted by gap (totalLines − coveredLines) descending, then by filepath ascending as a tie-breaker. The table shows filepath, total lines, covered lines, coverage %, and the count of specs linked to that file's markers.
+  R6. The output MUST include a header summary line with files-scanned count, total lines, covered lines, and overall coverage %.
+  R7. The output MUST include two summary blocks at the bottom: "Unlinked markers" (count + IDs, truncated if long) and "Orphan specs" (count + IDs, truncated if long). These remind the reviewer that high coverage % does not imply the specs are linked or reachable. Empty blocks print "Unlinked markers: 0" / "Orphan specs: 0".
+  R8. The output MUST include a "Threshold gate" footer line. Without --threshold: "Threshold gate: not set (informational only)". With --threshold N: "Threshold gate: passed" or "Threshold gate: FAILED (K files below N%)".
+  R9. coverage MUST NOT modify state — no Load→modify→Save cycle, no baseline writes, no friction recording. It is a read-only report like `drift list`. See principles.friction.
+  R10. coverage MUST accept the global flags --json, --no-color, --color={auto,always,never} like every other command (see output.global_flags). The --json form produces a structured object consumable by LLM agents and CI tooling.
+
+Exit codes:
+  0 — report rendered (informational mode, no --threshold)
+  0 — report rendered AND --threshold passed (every file &gt;= N%)
+  1 — report rendered AND --threshold FAILED (at least one file &lt; N%)
+  1 — unlinked markers or orphan specs present AND --threshold set (the threshold gate treats unlinked markers as 0%-coverage gaps; see cli.coverage_threshold_gate R3)
+  2 — error (bad --threshold value, scan error, corrupt state)
+
+See also: cli.coverage_line_counting, cli.coverage_by_directory, cli.coverage_threshold_gate, cli.unlinked_warning, core.reachability, scanner.text_file_detection.
+</spec>
+<spec id="coverage_line_counting">
+Overview: The line-counting rules determine what counts as "covered" and "total". They are factored into a single spec so an audit can verify the algorithm matches the description independent of the output shape.
+
+Defined terms:
+  non-blank line — a line that contains at least one non-whitespace byte. whitespace-only lines (spaces, tabs, trailing newlines) do not count.
+  marker range   — the half-open interval [rangeStartLine+1, rangeEndLine-1] in 1-indexed line numbers, matching the byte range the scanner hashes (see scanner.marker_discovery, scanner.marker_blanking).
+  overlap        — a line that falls inside two or more marker ranges (nested or partially overlapping markers). Counts once.
+
+Requirements:
+  R1. The covered-line count for a file MUST be the cardinality of the union of all marker ranges in that file, intersected with the non-blank line set. Equivalently: a line counts iff it is non-blank AND strictly inside at least one marker range.
+  R2. The total-line count for a file MUST be the count of non-blank lines in the file. The algorithm MAY short-circuit on files with no markers (coveredLines = 0, totalLines = non-blank count).
+  R3. Files excluded from the scanner (drift.ignore matches, binary-extension blocklist, null-byte detection failures) MUST be excluded from coverage entirely — they do not appear in the table and do not contribute to the overall totals. The header's "files scanned" count excludes them.
+  R4. *.drift.xml spec files MUST be excluded from coverage even though the scanner reads them. Spec text is the contract, not the implementation; counting it as "covered" would inflate the numbers and obscure real gaps.
+  R5. .drift/ contents (state.xml, baselines.bin, user-settings.xml, friction.json, theme.xml) MUST be excluded. These are runtime artifacts, not implementation code.
+  R6. Deleted markers (no longer on disk) MUST NOT contribute covered lines. Their baseline record may still exist, but the on-disk range is gone.
+  R7. Unlinked markers (on disk but with no link edge in baseline) MUST still contribute covered lines for the purpose of the per-file coverage % — they are real markers wrapping real code, even if the link edge is missing. The unlinked status is reported separately in the summary block (see cli.coverage_command R7) so reviewers see both numbers.
+  R8. Coverage computation MUST be deterministic across runs given the same file tree. No reliance on map iteration order, no reading modified timestamps, no concurrency.
+
+See also: cli.coverage_command, scanner.text_file_detection, scanner.marker_discovery, scanner.marker_blanking.
+</spec>
+<spec id="coverage_by_directory">
+Overview: `drift coverage --by-file` (named --by-file for historical reasons; the actual aggregation is per-directory) switches the table from per-file rows to per-directory aggregates. Useful for spotting whole untracked packages — e.g. "eval/ is 0% covered" — without reading individual file rows.
+
+Defined terms:
+  directory aggregate — the union of all files whose relative path starts with "dir/". Top-level files (no slash in the relative path) aggregate under "" (rendered as "." in the table).
+
+Requirements:
+  R1. With --by-file, the output MUST be a per-directory table sorted by directory path ascending. The columns are directory, total lines, covered lines, coverage %, and count of specs linked to markers in that directory tree.
+  R2. A directory's coverage % is the SUM of covered lines divided by the SUM of total lines across all files in that directory tree (NOT the average of per-file percentages). This prevents a tiny 0%-coverage file in a big directory from being hidden by averaging.
+  R3. The directory walk MUST be recursive — "cli/" includes "cli/commands/", "cli/output/", etc. The aggregate is reported only at the top level under each parent (NOT nested per subdirectory). Subdirectory detail requires running without --by-file.
+  R4. The header summary, unlinked-markers block, orphan-specs block, and threshold-gate footer MUST appear in --by-file mode identically to default mode. Only the middle table changes shape.
+  R5. The --by-file and --threshold flags MUST combine. With both, the threshold gate evaluates per-directory: exit 1 iff any directory's aggregate coverage % is below N. See cli.coverage_threshold_gate R4.
+
+See also: cli.coverage_command, cli.coverage_threshold_gate.
+</spec>
+<spec id="coverage_threshold_gate">
+Overview: `--threshold N` (N is an integer 0-100) turns `drift coverage` from an informational report into a CI gate. The flag is the structural analog of test-coverage floors (`go test -coverprofile` + threshold checks) and adapts the same pattern to spec coverage.
+
+Requirements:
+  R1. `--threshold N` MUST accept N as an integer in the range [0, 100]. A non-integer, out-of-range, or missing value returns a usage error with exit code 2 (see cli.coverage_command exit codes). The error message MUST name the offending value.
+  R2. Without --threshold, coverage MUST exit 0 unconditionally (informational mode). With --threshold N, coverage MUST exit 1 iff at least one row in the active table (per-file by default, per-directory with --by-file) has coverage % strictly less than N.
+  R3. Unlinked markers and orphan specs MUST NOT automatically fail the threshold gate by themselves (they are reported separately per cli.coverage_command R7). However, a file containing only unlinked markers has its covered lines counted normally (see cli.coverage_line_counting R7) — the threshold is applied to the percentage, not to link status.
+  R4. With --by-file AND --threshold N, the threshold evaluates against the per-directory aggregate percentages (see cli.coverage_by_directory R2). A single low-coverage file in a well-covered directory does not fail the gate; the aggregate must drop below N.
+  R5. The footer line MUST name the threshold value and the outcome: "Threshold gate: passed (all files ≥ N%)" or "Threshold gate: FAILED (K files below N%)". The list of failing files is already in the table above; the footer just counts them.
+  R6. The threshold gate is a soft signal, not a hard correctness check. Drift does NOT verify that the coverage reflects meaningful spec-code alignment (see cli.todo_alignment_vs_correctness). A project at 100% coverage can still have semantically empty specs (see cli.spec_audit_pattern for the audit that catches that class of issue).
+  R7. The --threshold flag MUST be advertised ONLY by the coverage command (added to its Meta().Flags; other commands reject it via cli.unknown_flag_rejection). It MUST be documented in skill.md, help.txt, and the coverage command's Usage text. There is no override flag — the threshold is informational, not a friction mechanism.
+
+See also: cli.coverage_command, cli.coverage_line_counting, cli.coverage_by_directory, cli.unlinked_warning, cli.todo_alignment_vs_correctness.
+</spec>
 </module>

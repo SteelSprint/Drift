@@ -14,11 +14,24 @@ Specs and markers are symmetric nodes in a directed citation graph. Both can dri
 ## The workflow (always follow this)
 
 1. **`drift todo`** — see which closures drifted (each with an 8-character hash).
-2. **`drift diff <hash>`** — review every node in the closure. `drift diff --all` reviews every closure in one pass.
+2. **`drift diff --all`** — the better starting point: review every closure in one pass. Use `drift diff <hash>` for a single closure.
 3. **For each closure:** decide whether the *code* is wrong (fix the code), the *spec* is wrong (update the spec), or the *citation* is wrong (fix the `<ref>` target).
 4. **`drift reset <hash>`** — resolve ONE closure at a time, only after reviewing it.
 
-**NEVER batch-reset.** There is no `drift reset --all`. This friction is the point — blind reset defeats the tool.
+**NEVER batch-reset — the rule is one closure per REVIEW, not one invocation per command.** There is no `drift reset --all`, but there is also no scripted way to reset. Do not loop, script, or pipe `drift reset`. Do not collect closure hashes up front and resolve them in sequence. Each closure must be individually reviewed (read the diff) before its reset. What this looks like when done wrong:
+
+```powershell
+# WRONG — every invocation resets exactly one closure, no --all exists,
+# and yet not one closure was reviewed:
+for ($i=0; $i -lt 8; $i++) {
+  $h = (drift todo | Select-String 'Closure (\w{8})').Matches.Groups[1].Value
+  drift reset $h
+}
+```
+
+A rate limit blocks the 4th reset within any 30-second window. That limit exists because agents have tried the above; treat hitting it as a signal to stop and actually review.
+
+**Review your own closures.** A closure raised by your own edit in this same session still requires reading the diff before reset. The question is not "did I intend this change" but "are the code, the tests, and the spec still consistent with each other after it". Reviewing self-created closures is what catches deleted `<ref>` targets, contradicted counts, and spec-vs-marker disagreements that hash comparison alone cannot see.
 
 **`drift todo` exit 1 means unfinished work.** Exit 0 requires both (a) all markers linked and (b) no closures derived.
 
@@ -78,11 +91,20 @@ When you extract helpers or move code across a marker boundary:
 
 ## Linking
 
-`drift link <marker> <module.spec>` connects a marker to a spec. After linking, drift tracks the marker's hash and the spec's hash; if either changes, drift derives a closure.
+`drift link <marker> <module.spec>` connects a marker to a spec.
 
 ```sh
 drift link auth_login auth.login
 ```
+
+What link writes — and nothing more:
+
+- The `marker → spec` edge, appended to the existing baseline edges.
+- The **new** marker's registration (baseline hash + content snapshot), if the marker is not yet tracked.
+
+Link NEVER baselines spec content. A pending, un-reviewed edit to the target spec (or to any other spec) survives the link and still appears in `drift todo`. A newly linked spec therefore shows up as a `NODE_ADDED` closure — review it (`drift diff`) and reset it to establish the baseline.
+
+Ordering rule: link the marker **before** editing the spec text it points at, or review and resolve the spec's pending closure first. Prefer `drift link --dry-run <marker> <spec>` first and read the change summary — it exits 3 and writes nothing.
 
 ## Citing other specs
 
@@ -96,6 +118,20 @@ See <ref spec="auth.hash_password">hash_password</ref> for the canonical hashing
 - Refs are stripped from spec content before hashing. Only the label text contributes to the hash.
 - First time you add a ref, `drift todo` derives a closure with an `EDGE_ADDED` event. Review and `drift reset <hash>` to baseline it.
 - Future changes to the *cited* spec propagate along the citer chain: every transitively-citing spec appears in the closure, plus every marker linked to those specs.
+
+### No directed cycles
+
+The spec-spec ref graph must stay acyclic. If A cites B and B cites A (directly or through a chain), closure derivation cannot order the citer walk and `drift todo` fails with:
+
+```
+edge graph contains a directed cycle: m.a → m.b → m.a
+```
+
+This is fatal — no closures are derived until the cycle is broken. Cross-referencing two related specs in both directions reads like good technical writing but creates exactly this failure, and LLM agents do it by default. Discipline that works:
+
+- Assign specs to layers and let refs point in one direction only (implementation cites requirement cites intent).
+- For a genuine back-reference, name the other spec in **plain text** instead of a `<ref>` tag — readability is preserved and the graph stays acyclic.
+- When the cycle error appears, remove one ref from the cycle, then re-run `drift todo`.
 
 ## Closure derivation
 
@@ -179,7 +215,9 @@ Every command supports three modes:
 
 - **Plain** (default when piped) — stable text, no ANSI.
 - **Color** (default in TTY) — themed ANSI + syntax highlighting.
-- **JSON** (`--json`) — structured output. LLM agents should use this for reliable parsing.
+- **JSON** (`--json`) — structured output.
+
+JSON guidance for agents: use `--json` where you want structure to parse — `drift todo --json` for closure hashes, `drift list --json` for inventory. Do NOT default to it for `drift diff`: the human-readable unified diff is the review artifact, and reading it is the review step. Parsing the diff as JSON to skip reading it defeats the point.
 
 ## Theming
 
@@ -208,6 +246,16 @@ drift config theme              # show current theme
 ## Ignoring files
 
 The scanner auto-detects text files and scans them for markers. To exclude files from scanning (e.g. generated code, vendored dependencies), create a `drift.ignore` file at the project root with one pattern per line. Patterns use `.gitignore` syntax.
+
+## Line endings
+
+All hashing is content-addressed — the exact bytes matter. A CRLF↔LF conversion rewrites many hashes at once and produces phantom `NODE_CHANGED` closures with no semantic change behind them (~20 phantom events from one bad checkout is typical). Pin line endings for drift-tracked files in `.gitattributes` at the project root:
+
+```
+*.drift.xml text eol=lf
+```
+
+Apply the same pinning to marker-bearing source files per your language's convention. This matters most on mixed teams — a tool developed on Linux and consumed on Windows will otherwise churn.
 
 ## Why no bulk reset?
 

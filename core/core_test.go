@@ -423,9 +423,9 @@ func TestResetClosure_BrokenEdgeOnlyRefused(t *testing.T) {
 }
 
 // Guardrail: Broken-edge event persists through reset when mixed with a
-// NODE_CHANGED event. The core treats BROKEN_EDGE as a no-op. The
-// orchestrator's mergeScannedEdges is responsible for NOT writing broken
-// edges to baseline (tested at the orchestrator level).
+// NODE_CHANGED event. The core treats BROKEN_EDGE as a no-op and never
+// derives an EDGE_ADDED for a broken target, so no broken edge can enter
+// the event-synced edge set reset saves.
 func TestGuardrail_BrokenEdgePersistsThroughReset(t *testing.T) {
 	specs := []core.Spec{
 		testutil.NewSpec("m.a", hash("old")),
@@ -464,7 +464,7 @@ func TestGuardrail_BrokenEdgePersistsThroughReset(t *testing.T) {
 		t.Fatalf("reset of mixed closure should succeed at core level: %v", err)
 	}
 	// Broken edges must not appear in the evaluated state's edge list — the
-	// orchestrator's mergeScannedEdges is responsible for the same at save.
+	// event-synced edges reset saves cannot contain one.
 	testutil.AssertEdgesResolve(t, testutil.EvaluatedToState(evaluated))
 	for _, e := range evaluated.Edges {
 		if e.To == "m.missing" {

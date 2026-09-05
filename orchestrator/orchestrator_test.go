@@ -165,6 +165,194 @@ func TestOrchestrator_Link(t *testing.T) {
 	testutil.AssertEdgesResolve(t, store.state)
 }
 
+// TestOrchestrator_Link_PreservesPendingSpecDrift is the red test for the
+// reported defect: `drift link` used to copy the target spec's scan hash over
+// its baseline hash (and rewrite the spec's content baseline), silently
+// absorbing a pending, never-reviewed spec edit. The link write must be
+// scoped to the edge plus the new marker's registration; the pending
+// NODE_CHANGED closure must survive the link exactly as it survives an
+// unlink. See orch.link, principles.friction.
+func TestOrchestrator_Link_PreservesPendingSpecDrift(t *testing.T) {
+	baselineSpec := testutil.NewSpec("m.a", "old")
+	scannedSpec := testutil.NewSpec("m.a", "new") // pending, unreviewed edit
+	cval := testutil.NewMarker("cval", "hash-m")
+	cnew := testutil.NewMarker("cnew", "hash-new")
+	store := &fakeStateStore{state: statestore.State{
+		Specs:   []core.Spec{baselineSpec},
+		Markers: []core.Marker{cval},
+		Edges:   []core.Edge{testutil.NewLink("m.a", "cval")},
+	}}
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs:   []core.Spec{scannedSpec},
+		Markers: []core.Marker{cval, cnew},
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	// Sanity: the pending edit derives a closure before the link. (The
+	// not-yet-linked marker cnew derives its own separate NODE_ADDED
+	// closure — that is the unlinked-marker state, not part of this test.)
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	mClosure := testutil.FindClosureContainingNode(t, state, "m.a")
+	if mClosure.Events[0].Kind != core.EventNodeChanged {
+		t.Fatalf("want NODE_CHANGED for m.a, got %v", mClosure.Events[0].Kind)
+	}
+
+	summary, err := orch.LinkWithSummary(nil, "cnew", "m.a")
+	testutil.AssertNoError(t, err)
+
+	// The target spec's baseline hash must be untouched by the link.
+	found := false
+	for _, s := range store.state.Specs {
+		if s.ID == "m.a" {
+			found = true
+			if s.Hash != "old" {
+				t.Fatalf("link absorbed pending spec edit: baseline hash = %q, want %q", s.Hash, "old")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("spec m.a missing from saved state: %+v", store.state.Specs)
+	}
+
+	// The link edge was added; the pre-existing link edge survived.
+	if !edgePresent(store.state.Edges, "cnew", "m.a") {
+		t.Fatalf("link edge cnew→m.a missing: %+v", store.state.Edges)
+	}
+	if !edgePresent(store.state.Edges, "cval", "m.a") {
+		t.Fatalf("pre-existing edge cval→m.a dropped: %+v", store.state.Edges)
+	}
+	testutil.AssertEdgesResolve(t, store.state)
+
+	// New marker registered with its scan hash; existing marker untouched.
+	registeredNew, registeredVal := false, false
+	for _, m := range store.state.Markers {
+		switch m.ID {
+		case "cnew":
+			registeredNew = true
+			if m.Hash != "hash-new" {
+				t.Fatalf("new marker cnew not registered: hash = %q, want %q", m.Hash, "hash-new")
+			}
+		case "cval":
+			registeredVal = true
+			if m.Hash != "hash-m" {
+				t.Fatalf("existing marker cval modified: hash = %q, want %q", m.Hash, "hash-m")
+			}
+		}
+	}
+	if !registeredNew || !registeredVal {
+		t.Fatalf("marker missing from saved state: %+v", store.state.Markers)
+	}
+
+	// The summary must not claim a spec content change.
+	for _, nc := range summary.NodeChanges {
+		if nc.ID == "m.a" && nc.Kind == "changed" {
+			t.Fatalf("summary claims spec content change: %+v", summary.NodeChanges)
+		}
+	}
+
+	// The pending closure must survive the link.
+	state2, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	testutil.AssertClosureCount(t, state2, 1)
+	testutil.AssertNodeInClosure(t, state2.Closures[0], "m.a")
+	if state2.Closures[0].Events[0].Kind != core.EventNodeChanged {
+		t.Fatalf("want NODE_CHANGED, got %v", state2.Closures[0].Events[0].Kind)
+	}
+}
+
+// TestOrchestrator_Link_KeepsDriftedMarkerBaseline: an EXISTING marker with
+// pending, never-reviewed content drift must not have its baseline hash
+// absorbed when it is linked to another spec. Only a NEW marker (empty
+// baseline hash) is registered by link.
+func TestOrchestrator_Link_KeepsDriftedMarkerBaseline(t *testing.T) {
+	specA := testutil.NewSpec("m.a", "hash-a")
+	specB := testutil.NewSpec("m.b", "hash-b")
+	cvalBaselined := testutil.NewMarker("cval", "hm-old")
+	cvalScanned := testutil.NewMarker("cval", "hm-new") // pending marker edit
+	store := &fakeStateStore{state: statestore.State{
+		Specs:   []core.Spec{specA, specB},
+		Markers: []core.Marker{cvalBaselined},
+		Edges:   []core.Edge{testutil.NewLink("m.a", "cval")},
+	}}
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs:   []core.Spec{specA, specB},
+		Markers: []core.Marker{cvalScanned},
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	if _, err := orch.LinkWithSummary(nil, "cval", "m.b"); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+
+	for _, m := range store.state.Markers {
+		if m.ID == "cval" && m.Hash != "hm-old" {
+			t.Fatalf("link absorbed pending marker edit: baseline hash = %q, want %q", m.Hash, "hm-old")
+		}
+	}
+	if !edgePresent(store.state.Edges, "cval", "m.a") || !edgePresent(store.state.Edges, "cval", "m.b") {
+		t.Fatalf("expected both link edges, got: %+v", store.state.Edges)
+	}
+
+	// The marker's pending closure must survive.
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	testutil.AssertClosureCount(t, state, 1)
+	testutil.AssertNodeInClosure(t, state.Closures[0], "cval")
+}
+
+// TestOrchestrator_Link_DoesNotAbsorbPendingEdgeAdded: a pending, never-
+// reviewed spec-spec ref (EDGE_ADDED closure seeded at the citing spec) must
+// survive a link to an unrelated clean spec. Link used to merge ALL scanned
+// spec-spec edges into baseline, silently baselining the pending ref.
+// See orch.link, principles.friction.
+func TestOrchestrator_Link_DoesNotAbsorbPendingEdgeAdded(t *testing.T) {
+	specA := testutil.NewSpec("m.a", "hash-a")
+	specB := testutil.NewSpec("m.b", "hash-b")
+	cval := testutil.NewMarker("cval", "hash-m")
+	cnew := testutil.NewMarker("cnew", "hash-new")
+	store := &fakeStateStore{state: statestore.State{
+		Specs:   []core.Spec{specA, specB},
+		Markers: []core.Marker{cval},
+		Edges:   []core.Edge{testutil.NewLink("m.a", "cval")},
+	}}
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs:   []core.Spec{specA, specB},
+		Markers: []core.Marker{cval, cnew},
+		Edges:   []core.Edge{testutil.NewRef("m.b", "m.a")}, // pending ref, unreviewed
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	// Sanity: the pending ref derives an EDGE_ADDED closure before the link.
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	bClosure := testutil.FindClosureContainingNode(t, state, "m.b")
+	if bClosure.Events[0].Kind != core.EventEdgeAdded {
+		t.Fatalf("want EDGE_ADDED for m.b, got %v", bClosure.Events[0].Kind)
+	}
+
+	if _, err := orch.LinkWithSummary(nil, "cnew", "m.a"); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+
+	// The pending ref must NOT enter the baseline; the link edge must.
+	if edgePresent(store.state.Edges, "m.b", "m.a") {
+		t.Fatalf("link absorbed pending ref m.b→m.a into baseline: %+v", store.state.Edges)
+	}
+	if !edgePresent(store.state.Edges, "cval", "m.a") || !edgePresent(store.state.Edges, "cnew", "m.a") {
+		t.Fatalf("expected link edges preserved, got: %+v", store.state.Edges)
+	}
+	testutil.AssertEdgesResolve(t, store.state)
+
+	// The pending closure must survive the link.
+	state2, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	bClosure2 := testutil.FindClosureContainingNode(t, state2, "m.b")
+	if bClosure2.Events[0].Kind != core.EventEdgeAdded {
+		t.Fatalf("want EDGE_ADDED to survive link, got %v", bClosure2.Events[0].Kind)
+	}
+}
+
 // TestOrchestrator_Unlink: unlink removes the edge.
 func TestOrchestrator_Unlink(t *testing.T) {
 	spec := testutil.NewSpec("m.a", "hash-a")
@@ -317,11 +505,12 @@ func TestOrchestrator_ResetClosure_SpecRemoved_DropsInboundEdges(t *testing.T) {
 // a spec cites an ID that never existed. The closure mixes NODE_ADDED (the
 // new spec) with BROKEN_EDGE (the dangling ref), so it is resettable; on
 // reset the spec enters baseline but NO edge to the phantom ID may be
-// written. mergeScannedEdges must reject the scan edge because the phantom
-// is absent from the written spec set. This complements
+// written. The core never derives an EDGE_ADDED event for a broken target,
+// and reset saves only event-synced edges, so the phantom edge is never
+// written. This complements
 // TestOrchestrator_ResetClosure_SpecRemoved_DropsInboundEdges (the deletion
-// route): together they exercise mergeScannedEdges against both a spec that
-// was just removed and a spec that never existed.
+// route): together they exercise the no-phantom-edge invariant against both
+// a spec that was just removed and a spec that never existed.
 func TestOrchestrator_ResetClosure_TypoRefWritesNoEdge(t *testing.T) {
 	store := &fakeStateStore{state: statestore.State{}} // empty baseline
 	specA := testutil.NewSpec("m.a", "hash-a")
@@ -390,9 +579,9 @@ func TestOrchestrator_ResetClosure_BrokenEdgeOnlyRefused(t *testing.T) {
 // `drift reset` of an unrelated closure — and exercises the invariant across a
 // sequence of state-writing operations (link → reset), as the report asks:
 // "Applied over sequences of reset / link / unlink ... covers ... the linkInner
-// variant before it becomes reachable." mergeScannedEdges preserves
-// link-style edges (marker source) while recomputing spec-spec edges; if a
-// future change to resetClosureInner or linkInner ever dropped them, this test
+// variant before it becomes reachable." Reset saves the core's event-synced
+// edges, which include all link-style baseline edges; if a future change to
+// resetClosureInner or linkInner ever dropped them, this test
 // and the AssertEdgesResolve check would catch it.
 func TestOrchestrator_Link_SurvivesSubsequentReset(t *testing.T) {
 	specA := testutil.NewSpec("m.a", "hash-a")
@@ -495,6 +684,113 @@ func TestOrchestrator_ResetClosure_NewSpecAdded(t *testing.T) {
 
 	if len(store.state.Specs) != 1 || store.state.Specs[0].Hash != "hash-a" {
 		t.Fatalf("baseline not established: %+v", store.state.Specs)
+	}
+}
+
+// TestOrchestrator_ResetClosure_PreservesPendingEdgeAdded: resetting closure
+// A (spec drift) must not baseline a pending, never-reviewed ref edge that
+// belongs to closure B. Reset syncs ONLY the target closure's seed events —
+// resetting one closure never affects another. See model.provenance closure
+// properties, orch.reset_closure, principles.friction.
+func TestOrchestrator_ResetClosure_PreservesPendingEdgeAdded(t *testing.T) {
+	s1 := testutil.NewSpec("m.s1", "old1")
+	s2 := testutil.NewSpec("m.s2", "s2")
+	s3 := testutil.NewSpec("m.s3", "s3")
+	baselineEdges := []core.Edge{
+		testutil.NewRef("m.s3", "m.s1"),
+		testutil.NewRef("m.s3", "m.s2"),
+	}
+	store := &fakeStateStore{state: statestore.State{
+		Specs: []core.Spec{s1, s2, s3},
+		Edges: baselineEdges,
+	}}
+	scanS1 := testutil.NewSpec("m.s1", "new1") // drifted — closure A
+	s4 := testutil.NewSpec("m.s4", "s4")       // new spec
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs: []core.Spec{scanS1, s2, s3, s4},
+		Edges: append(append([]core.Edge(nil), baselineEdges...),
+			testutil.NewRef("m.s4", "m.s1")), // pending ref — closure B
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	s1Closure := testutil.FindClosureContainingNode(t, state, "m.s1")
+	for _, ev := range s1Closure.Events {
+		if ev.Kind != core.EventNodeChanged {
+			t.Fatalf("closure A should carry only the NODE_CHANGED seed, got %v", ev.Kind)
+		}
+	}
+
+	if _, err := orch.ResetClosure(nil, s1Closure.Hash); err != nil {
+		t.Fatalf("ResetClosure: %v", err)
+	}
+
+	// The pending ref m.s4→m.s1 must NOT enter the baseline.
+	if edgePresent(store.state.Edges, "m.s4", "m.s1") {
+		t.Fatalf("reset absorbed pending ref m.s4→m.s1 into baseline: %+v", store.state.Edges)
+	}
+	if !edgePresent(store.state.Edges, "m.s3", "m.s1") || !edgePresent(store.state.Edges, "m.s3", "m.s2") {
+		t.Fatalf("baseline ref edges dropped by reset: %+v", store.state.Edges)
+	}
+	testutil.AssertEdgesResolve(t, store.state)
+
+	// Closure B (NODE_ADDED m.s4 + EDGE_ADDED m.s4→m.s1) must survive.
+	state2, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	bClosure := testutil.FindClosureContainingNode(t, state2, "m.s4")
+	kinds := map[core.EventKind]bool{}
+	for _, ev := range bClosure.Events {
+		kinds[ev.Kind] = true
+	}
+	if !kinds[core.EventEdgeAdded] {
+		t.Fatalf("EDGE_ADDED closure did not survive the unrelated reset: %+v", bClosure.Events)
+	}
+}
+
+// TestOrchestrator_ResetClosure_PreservesPendingEdgeRemoved: resetting
+// closure A must not silently drop a baseline ref edge whose removal is
+// still pending review as closure B (EDGE_REMOVED). The edge stays in the
+// baseline until ITS closure is reviewed and reset.
+func TestOrchestrator_ResetClosure_PreservesPendingEdgeRemoved(t *testing.T) {
+	s1 := testutil.NewSpec("m.s1", "old1")
+	s2 := testutil.NewSpec("m.s2", "s2")
+	s3 := testutil.NewSpec("m.s3", "s3")
+	baselineEdges := []core.Edge{
+		testutil.NewRef("m.s3", "m.s1"),
+		testutil.NewRef("m.s3", "m.s2"), // removed from scan — pending EDGE_REMOVED
+	}
+	store := &fakeStateStore{state: statestore.State{
+		Specs: []core.Spec{s1, s2, s3},
+		Edges: baselineEdges,
+	}}
+	scanS1 := testutil.NewSpec("m.s1", "new1") // drifted — closure A
+	sc := &fakeScanner{result: scanner.ScanResult{
+		Specs: []core.Spec{scanS1, s2, s3},
+		Edges: []core.Edge{testutil.NewRef("m.s3", "m.s1")},
+	}}
+	orch := orchestrator.NewOrchestrator(store, sc, nil)
+
+	state, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	s1Closure := testutil.FindClosureContainingNode(t, state, "m.s1")
+
+	if _, err := orch.ResetClosure(nil, s1Closure.Hash); err != nil {
+		t.Fatalf("ResetClosure: %v", err)
+	}
+
+	// The removed ref's edge must STAY in the baseline until its own
+	// EDGE_REMOVED closure is reviewed and reset.
+	if !edgePresent(store.state.Edges, "m.s3", "m.s2") {
+		t.Fatalf("reset dropped baseline edge m.s3→m.s2 with unreviewed EDGE_REMOVED: %+v", store.state.Edges)
+	}
+
+	// Closure B (EDGE_REMOVED) must survive.
+	state2, err := orch.Todo(nil)
+	testutil.AssertNoError(t, err)
+	bClosure := testutil.FindClosureContainingNode(t, state2, "m.s3")
+	if bClosure.Events[0].Kind != core.EventEdgeRemoved {
+		t.Fatalf("want EDGE_REMOVED to survive, got %v", bClosure.Events[0].Kind)
 	}
 }
 

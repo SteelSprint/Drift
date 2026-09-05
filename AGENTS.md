@@ -9,7 +9,7 @@ Drift is a spec-drift detection tool for LLM coding agents. Specs describe behav
 3. **For each closure:** decide whether the *code* is wrong (fix the code), the *spec* is wrong (update the spec), or the *citation* is wrong (fix the `<ref>` target)
 4. **`drift reset <hash>`** — resolve ONE closure at a time, only after reviewing it
 
-**NEVER batch-reset.** There is no `drift reset --all`. This friction is the point — blind reset defeats the tool. A runtime rate-limit layer (`cli.reset_friction_block`) additionally blocks the 4th reset within any 30-second window; `--dangerously-override-friction` bypasses it but is not advertised in error output.
+**NEVER batch-reset — the rule is one closure per REVIEW, not one invocation per command.** There is no `drift reset --all`, and there is no scripted way to reset either: do not loop, script, or pipe `drift reset`, and do not collect hashes up front to resolve in sequence. Each closure is individually reviewed before its reset. A runtime rate-limit layer (`cli.reset_friction_block`) additionally blocks the 4th reset within any 30-second window; `--dangerously-override-friction` bypasses it but is not advertised in error output.
 
 **`drift todo` exit 1 means unfinished work.** Exit 0 requires both (a) all markers linked and (b) no closures derived. Unlinked markers are actionable drift.
 
@@ -102,8 +102,8 @@ If the spec you changed is cited by other specs (via `<ref>`), every spec that t
 
 1. Add `<spec id="localid">description</spec>` to the relevant `*.drift.xml` module file (local ID must NOT contain a dot)
 2. Wrap the implementing code region with `// D! id=<shortcode> range-start` / `range-end`
-3. `drift link <shortcode> <module.localid>`
-4. `drift todo` — should report clean
+3. `drift link <shortcode> <module.localid>` — registers the new marker and appends the edge only; it never baselines spec content
+4. `drift todo` — the new spec appears as a NODE_ADDED closure; review it (`drift diff <hash>`) and `drift reset <hash>` to establish the baseline, then todo reports clean
 
 ## Citing other specs
 

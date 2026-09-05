@@ -240,13 +240,19 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
 
-	// Filter against the spec set being WRITTEN, not the pre-evaluation set:
-	// using reconciledSpecs here re-admits edges to NODE_REMOVED specs.
-	savedEdges := mergeScannedEdges(evaluated.Edges, scanResult.Edges, buildKnownSpecIDs(evaluated.Specs))
+	// The saved Edges are exactly the event-synced set the core returned:
+	// baseline edges plus only the target closure's own EDGE_ADDED /
+	// EDGE_REMOVED / NODE_REMOVED effects. The core guarantees every edge
+	// endpoint resolves (EDGE_ADDED requires the To spec in scan;
+	// NODE_REMOVED filters edges touching the removed node), so no scan-edge
+	// merge is needed — and none is permitted: resetting one closure must
+	// never baseline or drop another closure's pending edge events. See
+	// model.provenance closure properties, orch.reset_closure,
+	// principles.friction.
 	afterState := statestore.State{
 		Specs:   evaluated.Specs,
 		Markers: evaluated.Markers,
-		Edges:   savedEdges,
+		Edges:   evaluated.Edges,
 	}
 
 	if save {
@@ -300,8 +306,14 @@ func findMarkerByID(markers []core.Marker, id string) (core.Marker, bool) {
 
 // D! id=olink range-start
 // Link constructs a link-style Edge (marker stores edge to spec) and appends
-// it to baseline. The edge kind is implicit from endpoint types: marker IDs
-// contain no dot, spec IDs contain exactly one.
+// it to the existing baseline edges. The write is scoped to the link itself:
+// a NEW marker (empty baseline hash) is registered with its scan hash and a
+// content snapshot; nothing else is baselined. Link never modifies any
+// spec's baseline hash or content and never absorbs an existing marker's
+// pending drift or an unrelated pending ref edge, so pending
+// NODE_CHANGED/NODE_ADDED/EDGE_ADDED/EDGE_REMOVED closures survive a link
+// exactly as they survive an unlink. The edge kind is implicit from endpoint
+// types: marker IDs contain no dot, spec IDs contain exactly one.
 func (o *Orchestrator) Link(sess *fileio.Session, markerID, specID string) error {
 	_, err := o.LinkWithSummary(sess, markerID, specID)
 	return err
@@ -376,47 +388,47 @@ func (o *Orchestrator) linkInner(sess *fileio.Session, markerID, specID string, 
 		}
 	}
 
-	mergedEdges := mergeScannedEdges(beforeState.Edges, scanResult.Edges, buildKnownSpecIDs(reconciledSpecs, scanResult.Specs))
+	// The write is scoped to the link: append the new edge to the EXISTING
+	// baseline edges. Scanned spec-spec edges are NOT merged here — pending
+	// EDGE_ADDED/EDGE_REMOVED closures must survive a link and be resolved
+	// through review. See orch.link, principles.friction.
+	afterEdges := append(append([]core.Edge(nil), beforeState.Edges...), core.Edge{From: markerID, To: specID})
 
-	scanSpecHashes := make(map[string]string, len(scanResult.Specs))
-	for _, s := range scanResult.Specs {
-		scanSpecHashes[s.ID] = s.Hash
-	}
-	scanMarkerHashes := make(map[string]string, len(scanResult.Markers))
-	for _, m := range scanResult.Markers {
-		scanMarkerHashes[m.ID] = m.Hash
-	}
-	for i := range reconciledSpecs {
-		if reconciledSpecs[i].ID == specID && scanSpecHashes[specID] != "" {
-			reconciledSpecs[i].Hash = scanSpecHashes[specID]
-		}
-	}
+	// Register ONLY a new marker (empty baseline hash) by copying its scan
+	// hash. Link never touches any spec's baseline hash — a pending spec
+	// edit must survive the link. See orch.link, principles.friction.
+	markerRegistered := false
 	for i := range reconciledMarkers {
-		if reconciledMarkers[i].ID == markerID && scanMarkerHashes[markerID] != "" {
-			reconciledMarkers[i].Hash = scanMarkerHashes[markerID]
+		if reconciledMarkers[i].ID == markerID {
+			if reconciledMarkers[i].Hash == "" {
+				for _, m := range scanResult.Markers {
+					if m.ID == markerID && m.Hash != "" {
+						reconciledMarkers[i].Hash = m.Hash
+						markerRegistered = true
+						break
+					}
+				}
+			}
+			break
 		}
 	}
 
 	afterState := statestore.State{
 		Specs:   reconciledSpecs,
 		Markers: reconciledMarkers,
-		Edges:   append(mergedEdges, core.Edge{From: markerID, To: specID}),
+		Edges:   afterEdges,
 	}
 
 	if save {
 		if err := o.stateStore.Save(sess, afterState); err != nil {
 			return ChangeSummary{}, err
 		}
-		for _, s := range scanResult.Specs {
-			if s.ID == specID {
-				_ = o.writeBaseline(sess, s.Hash, s.Filepath, specID, 0, 0, true)
-				break
-			}
-		}
-		for _, m := range scanResult.Markers {
-			if m.ID == markerID {
-				_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber+1, m.EndLineNumber, false)
-				break
+		if markerRegistered {
+			for _, m := range scanResult.Markers {
+				if m.ID == markerID {
+					_ = o.writeBaseline(sess, m.Hash, m.Filepath, "", m.LineNumber+1, m.EndLineNumber, false)
+					break
+				}
 			}
 		}
 	}
@@ -894,51 +906,7 @@ func scanHashForMarker(scanResult scanner.ScanResult, id string) string {
 
 // D! id=odiff range-end
 
-// D! id=oedge range-start
-// mergeScannedEdges returns baseline edges with all spec-spec edges replaced
-// by the scan's spec-spec edges. Link-style edges (marker-spec) are preserved
-// from baseline because they are user-curated, not auto-discovered. Scan
-// edges whose To target doesn't resolve to a known spec are rejected to
-// prevent broken refs from corrupting the baseline.
-func mergeScannedEdges(baselineEdges, scanEdges []core.Edge, knownSpecIDs map[string]bool) []core.Edge {
-	out := make([]core.Edge, 0, len(baselineEdges)+len(scanEdges))
-	for _, e := range baselineEdges {
-		if !isSpecID(e.From) {
-			out = append(out, e)
-		}
-	}
-	for _, e := range scanEdges {
-		if isSpecID(e.From) && isSpecID(e.To) && knownSpecIDs[e.To] {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-func isSpecID(id string) bool {
-	first := strings.Index(id, ".")
-	if first < 0 {
-		return false
-	}
-	return strings.Index(id[first+1:], ".") < 0
-}
-// D! id=oedge range-end
-
 // D! id=oscan range-start
-func buildKnownSpecIDs(specLists ...[]core.Spec) map[string]bool {
-	var total int
-	for _, sl := range specLists {
-		total += len(sl)
-	}
-	m := make(map[string]bool, total)
-	for _, sl := range specLists {
-		for _, s := range sl {
-			m[s.ID] = true
-		}
-	}
-	return m
-}
-
 func buildScan(scanResult scanner.ScanResult, reconciledSpecs []core.Spec, reconciledMarkers []core.Marker) core.Scan {
 	specHashes := make(map[string]string, len(scanResult.Specs))
 	for _, s := range scanResult.Specs {

@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -35,6 +36,27 @@ func TestSkill_ContainsMarkerPlacement(t *testing.T) {
 	}
 }
 
+// TestSkill_ContainsReportedClarifications asserts the guide sections added
+// from field feedback: directed cycles (LLMs create them by default), the
+// line-endings pinning note (content-addressed hashing + CRLF/LF churn), the
+// scoped link contract (link never baselines spec content), and the
+// review-terms batch-reset rule (no loops/scripts/pipes).
+func TestSkill_ContainsReportedClarifications(t *testing.T) {
+	for _, want := range []string{
+		"## No directed cycles",
+		"edge graph contains a directed cycle",
+		"## Line endings",
+		".gitattributes",
+		"Link NEVER baselines spec content",
+		"one closure per REVIEW",
+		"Review your own closures",
+	} {
+		if !strings.Contains(cli.SkillContent, want) {
+			t.Fatalf("skill.md missing expected content %q", want)
+		}
+	}
+}
+
 // TestCLI_ClosureWorkflow exercises the closure-driven UX end-to-end:
 // init → link → drift → todo shows closures → reset by hash → clean.
 func TestCLI_ClosureWorkflow(t *testing.T) {
@@ -58,8 +80,19 @@ func TestCLI_ClosureWorkflow(t *testing.T) {
 		t.Fatalf("link: code=%d out=%s", code, out)
 	}
 
-	// Baseline should be clean.
+	// The new spec is pending review — link registers the marker only and
+	// never baselines spec content (see orch.link). Review and reset the
+	// NODE_ADDED closure to establish the baseline.
 	out, code := run("todo")
+	if code != 1 {
+		t.Fatalf("new-spec todo: code=%d out=%s", code, out)
+	}
+	if out, code := run("reset", firstClosureHash(t, out)); code != 0 {
+		t.Fatalf("baseline reset: code=%d out=%s", code, out)
+	}
+
+	// Baseline should be clean.
+	out, code = run("todo")
 	if code != 0 {
 		t.Fatalf("clean todo: code=%d out=%s", code, out)
 	}
@@ -82,25 +115,8 @@ func TestCLI_ClosureWorkflow(t *testing.T) {
 		t.Fatalf("expected closure output: %s", out)
 	}
 
-	// Extract hash from output.
-	lines := strings.Split(out, "\n")
-	var hash string
-	for _, l := range lines {
-		if strings.Contains(l, "Closure ") {
-			// "Closure abc12345  (...)"
-			parts := strings.SplitN(l, " ", 3)
-			if len(parts) >= 2 {
-				hash = parts[1]
-			}
-			break
-		}
-	}
-	if hash == "" {
-		t.Fatalf("could not extract closure hash from output:\n%s", out)
-	}
-
 	// Reset by hash.
-	out, code = run("reset", hash)
+	out, code = run("reset", firstClosureHash(t, out))
 	if code != 0 {
 		t.Fatalf("reset: code=%d out=%s", code, out)
 	}
@@ -484,5 +500,197 @@ func TestCLI_UnlinkDryRun(t *testing.T) {
 	after, _ := os.ReadFile(statePath)
 	if string(before) != string(after) {
 		t.Fatalf("dry-run unlink mutated state.xml")
+	}
+}
+
+// TestCLI_LinkPreservesPendingSpecDrift reproduces the reported defect
+// end-to-end: establish a clean baseline, edit a spec, confirm `drift todo`
+// flags it, then create a NEW marker and link it to that spec. The link must
+// not absorb the pending edit — the NODE_CHANGED closure must survive (todo
+// still exits 1). Pre-fix, link baselined the spec's content and todo
+// reported clean, exit 0.
+func TestCLI_LinkPreservesPendingSpecDrift(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="x">X behavior.</spec>
+</module>`)
+	testutil.WriteCodeFile(t, dir, "code.go",
+		"// D! id=cx range-start\npackage main\n// D! id=cx range-end\n")
+
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	runJSON := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.JSONPresenter{})
+	}
+
+	if _, code := run("init"); code != 0 {
+		t.Fatal("init failed")
+	}
+	if _, code := run("link", "cx", "m.x"); code != 0 {
+		t.Fatal("link failed")
+	}
+
+	// Establish a reviewed baseline. Post-fix, a newly linked spec stays
+	// pending (NODE_ADDED) until reviewed — review and reset it. Pre-fix the
+	// link already baselined the spec, so todo is clean here and this is a
+	// no-op.
+	out, code := runJSON("todo")
+	if code != 0 && code != 1 {
+		t.Fatalf("todo: code=%d\n%s", code, out)
+	}
+	if code == 1 {
+		var parsed struct {
+			Closures []struct {
+				Hash string `json:"hash"`
+			} `json:"closures"`
+		}
+		if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+			t.Fatalf("json parse: %v\n%s", err, out)
+		}
+		for _, c := range parsed.Closures {
+			if out, code := run("reset", c.Hash); code != 0 {
+				t.Fatalf("reset %s: code=%d\n%s", c.Hash, code, out)
+			}
+		}
+	}
+	if out, code := run("todo"); code != 0 {
+		t.Fatalf("baseline todo not clean: code=%d\n%s", code, out)
+	}
+
+	// Edit the spec — pending, never reviewed.
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="x">X behavior. Additional sentence.</spec>
+</module>`)
+	out, code = run("todo")
+	if code != 1 {
+		t.Fatalf("pending edit not flagged: code=%d\n%s", code, out)
+	}
+
+	// Create a NEW marker in a new file (the report's step 4)...
+	testutil.WriteCodeFile(t, dir, "code2.go",
+		"// D! id=cm range-start\npackage main\n// D! id=cm range-end\n")
+
+	// ...and link it to the spec carrying the pending edit (step 5).
+	out, code = run("link", "cm", "m.x")
+	if code != 0 {
+		t.Fatalf("link: code=%d\n%s", code, out)
+	}
+
+	// The pending edit must survive the link (step 6).
+	out, code = run("todo")
+	if code != 1 {
+		t.Fatalf("link absorbed the pending spec edit (todo exit %d, want 1):\n%s", code, out)
+	}
+	if !strings.Contains(out, "NODE-CHANGED") || !strings.Contains(out, "m.x") {
+		t.Fatalf("expected surviving NODE_CHANGED closure for m.x:\n%s", out)
+	}
+}
+
+// firstClosureHash extracts the first closure hash from plain `drift todo`
+// output ("Closure abc12345  (...)"). Fails the test when no hash is found.
+func firstClosureHash(t *testing.T, out string) string {
+	t.Helper()
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "Closure ") {
+			parts := strings.SplitN(l, " ", 3)
+			if len(parts) >= 2 {
+				return parts[1]
+			}
+		}
+	}
+	t.Fatalf("could not extract closure hash from output:\n%s", out)
+	return ""
+}
+
+// TestCLI_LinkPreservesPendingRefEdge reproduces the report's "wider blast
+// radius": a pending, never-reviewed spec-spec ref (EDGE_ADDED closure) must
+// survive a link whose target spec is clean. Pre-fix, link merged ALL
+// scanned spec-spec edges into baseline and the pending ref was never
+// reviewed.
+func TestCLI_LinkPreservesPendingRefEdge(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A behavior.</spec>
+<spec id="b">B behavior.</spec>
+</module>`)
+	testutil.WriteCodeFile(t, dir, "code.go",
+		"// D! id=ca range-start\npackage main\n// D! id=ca range-end\n")
+	testutil.WriteCodeFile(t, dir, "code2.go",
+		"// D! id=cb range-start\npackage main\n// D! id=cb range-end\n")
+
+	run := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.PlainPresenter{})
+	}
+	runJSON := func(args ...string) (string, int) {
+		return cli.RunWithRender(args, dir, output.JSONPresenter{})
+	}
+
+	if _, code := run("init"); code != 0 {
+		t.Fatal("init failed")
+	}
+	if _, code := run("link", "ca", "m.a"); code != 0 {
+		t.Fatal("link ca failed")
+	}
+	if _, code := run("link", "cb", "m.b"); code != 0 {
+		t.Fatal("link cb failed")
+	}
+
+	// Establish a reviewed baseline (reset the NODE_ADDED closures for both
+	// newly linked specs).
+	out, code := runJSON("todo")
+	if code != 0 && code != 1 {
+		t.Fatalf("todo: code=%d\n%s", code, out)
+	}
+	if code == 1 {
+		var parsed struct {
+			Closures []struct {
+				Hash string `json:"hash"`
+			} `json:"closures"`
+		}
+		if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+			t.Fatalf("json parse: %v\n%s", err, out)
+		}
+		for _, c := range parsed.Closures {
+			if out, code := run("reset", c.Hash); code != 0 {
+				t.Fatalf("reset %s: code=%d\n%s", c.Hash, code, out)
+			}
+		}
+	}
+	if out, code := run("todo"); code != 0 {
+		t.Fatalf("baseline todo not clean: code=%d\n%s", code, out)
+	}
+
+	// Add a ref in m.b citing m.a — a pending, unreviewed EDGE_ADDED. The
+	// self-closing form is stripped entirely from the canonical hash, so the
+	// ref edge is the ONLY pending drift.
+	testutil.WriteSpecFile(t, dir, "main.drift.xml",
+		`<module name="m">
+<spec id="a">A behavior.</spec>
+<spec id="b">B behavior.<ref spec="m.a" /></spec>
+</module>`)
+	out, code = run("todo")
+	if code != 1 {
+		t.Fatalf("pending ref not flagged: code=%d\n%s", code, out)
+	}
+
+	// Create a NEW marker and link it to the CLEAN spec m.a.
+	testutil.WriteCodeFile(t, dir, "code3.go",
+		"// D! id=cn range-start\npackage main\n// D! id=cn range-end\n")
+	out, code = run("link", "cn", "m.a")
+	if code != 0 {
+		t.Fatalf("link: code=%d\n%s", code, out)
+	}
+
+	// The pending ref closure must survive the link.
+	out, code = run("todo")
+	if code != 1 {
+		t.Fatalf("link absorbed the pending ref edge (todo exit %d, want 1):\n%s", code, out)
+	}
+	if !strings.Contains(out, "EDGE-ADDED") || !strings.Contains(out, "m.b") {
+		t.Fatalf("expected surviving EDGE_ADDED closure for m.b:\n%s", out)
 	}
 }

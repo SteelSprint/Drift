@@ -372,3 +372,58 @@ After all subagents return, the harness runs a synthesis LLM pass over the K JSO
 
 <!-- D! id=skillaudit range-end -->
 
+
+## Design patterns
+
+Repeatable workflows for building with drift and using drift with LLM coding
+agents. This section is the interim home for patterns; they graduate to the
+drift book later. Each pattern: when to use, numbered steps, expected yield,
+pitfalls. Do not delete existing patterns when adding new ones.
+
+### Pattern: parallelized spec audit
+
+**When to use.** Periodic maintenance on a mature drift project (monthly, or
+after a large change wave). Hash drift was all resolved (`drift todo` clean)
+but specs may still be semantically stale — text that never changed while the
+code under it moved. Hash comparison cannot see this; only reading can.
+
+**Steps.**
+
+1. **Inventory the closure graph (once, cheap).** `drift list --json` gives
+   every spec, marker, and edge. Run union-find over the edges to partition
+   specs into citation-closure components (groups of specs that transitively
+   cite each other). Expect a power-law: a few big closures, many singletons.
+   Never split a closure across agents; a walker must see its whole closure.
+2. **Build the audit index (once).** One entry per spec: spec id, spec file,
+   linked marker with file:line region, cited-by/cites lists. Specs sharing a
+   marker share the region — audit it once, split the verdicts. Pass each
+   subagent only its slice of the index.
+3. **Walk closures in parallel.** One subagent per bundle (target ~10-25
+   specs, singletons bundled by code area so marker regions are read once).
+   Each walker: extracts RFC 2119 requirements per spec, grades against the
+   marker region (`aligned` / `misaligned` / `unclear` with file:line
+   evidence) or, for no-marker conceptual specs, checks internal consistency
+   and citers (`holds` / `violated` / `unclear`). Diagnose only — no fixes,
+   no drift mutations.
+4. **Synthesize across closures (once).** One pass over all verdict tables:
+   cross-closure contradictions (the parallel walkers cannot see each
+   other's slices), dedupe, triage by fix direction (fix code / fix spec /
+   fix marker placement / human review).
+5. **Close the loop.** Every accepted fix is a normal drift event: `drift
+   todo` → `drift diff <hash>` → `drift reset <hash>`. Findings land in a
+   report file first; nothing is fixed inline.
+
+**Expected yield.** On a 200-spec project: ~9 subagents in one parallel wave;
+typically ~80% aligned, with a handful of misaligned or stale-but-stable
+specs — text whose hash never changed while the code moved. That last class
+is invisible to `drift todo` and is the audit's whole reason to exist.
+
+**Pitfalls.**
+
+- Splitting a closure across walkers loses cross-references; keep closures
+  whole, or split only the giant closure by file area and rely on synthesis
+  for cross-slice contradictions.
+- Letting walkers "just fix it" destroys the review trail; findings only,
+  then fix through the normal per-closure workflow.
+- Partitioning by spec count instead of closures spreads a closure's specs
+  across agents, so nobody reads the whole citation context.

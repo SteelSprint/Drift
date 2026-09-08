@@ -10,6 +10,7 @@ type Presenter interface {
 	Todo(TodoResult) string
 	List(ListResult) string
 	Show(ShowResult) string
+	Coverage(CoverageResult) string
 	DiffClosure(DiffClosureResult) string
 	DiffAll(DiffAllResult) string
 	ChangeSummary(ChangeSummaryResult) string
@@ -28,6 +29,8 @@ func Render(p Presenter, r Result) string {
 		return p.List(v)
 	case ShowResult:
 		return p.Show(v)
+	case CoverageResult:
+		return p.Coverage(v)
 	case DiffClosureResult:
 		return p.DiffClosure(v)
 	case DiffAllResult:

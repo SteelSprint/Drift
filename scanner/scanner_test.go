@@ -1617,3 +1617,81 @@ func realSkipme() {}
 		}
 	})
 }
+
+func TestScannerFilesWalked(t *testing.T) {
+	t.Run("records_all_scanned_text_files_relative_sorted", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "zeta.go", "package main\n")
+		testutil.WriteCodeFile(t, dir, "alpha.go", "package main\n")
+		os.Mkdir(filepath.Join(dir, "sub"), 0755)
+		testutil.WriteCodeFile(t, filepath.Join(dir, "sub"), "mid.go", "package sub\n")
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		want := []string{"alpha.go", "sub/mid.go", "zeta.go"}
+		if len(result.FilesWalked) != len(want) {
+			t.Fatalf("expected %d files walked, got %d: %v", len(want), len(result.FilesWalked), result.FilesWalked)
+		}
+		for i, w := range want {
+			if result.FilesWalked[i] != w {
+				t.Fatalf("expected FilesWalked[%d]=%q, got %q (all: %v)", i, w, result.FilesWalked[i], result.FilesWalked)
+			}
+		}
+	})
+
+	t.Run("excludes_ignored_and_binary_and_drift_dir", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteIgnoreFile(t, dir, "*_test.go\n")
+		testutil.WriteCodeFile(t, dir, "main.go", testutil.MarkerStart("keep")+`
+func a() {}
+`+testutil.MarkerEnd("keep")+`
+`)
+		testutil.WriteCodeFile(t, dir, "main_test.go", "package main\n")
+		os.Mkdir(filepath.Join(dir, ".drift"), 0755)
+		os.WriteFile(filepath.Join(dir, ".drift", "state.xml"), []byte("<state></state>\n"), 0644)
+		testutil.WriteCodeFile(t, dir, "logo.png", "\x89PNG\r\n\x1a\nbinary")
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		want := []string{"drift.ignore", "main.go"}
+		if len(result.FilesWalked) != len(want) {
+			t.Fatalf("expected %d files walked, got %d: %v", len(want), len(result.FilesWalked), result.FilesWalked)
+		}
+		for i, w := range want {
+			if result.FilesWalked[i] != w {
+				t.Fatalf("expected FilesWalked[%d]=%q, got %q (all: %v)", i, w, result.FilesWalked[i], result.FilesWalked)
+			}
+		}
+	})
+
+	t.Run("includes_files_without_markers", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main></main>`)
+		testutil.WriteCodeFile(t, dir, "marked.go", testutil.MarkerStart("m")+`
+x
+`+testutil.MarkerEnd("m")+`
+`)
+		testutil.WriteCodeFile(t, dir, "plain.go", "package main\n")
+		testutil.WriteSpecFile(t, dir, "README.md", "# Doc\n")
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		want := []string{"README.md", "marked.go", "plain.go"}
+		if len(result.FilesWalked) != len(want) {
+			t.Fatalf("expected %d files walked, got %d: %v", len(want), len(result.FilesWalked), result.FilesWalked)
+		}
+		for i, w := range want {
+			if result.FilesWalked[i] != w {
+				t.Fatalf("expected FilesWalked[%d]=%q, got %q (all: %v)", i, w, result.FilesWalked[i], result.FilesWalked)
+			}
+		}
+	})
+}

@@ -104,6 +104,13 @@ type ChangeSummaryResult struct {
 	Warning  string // optional bypass notice (e.g. "bypass-friction"); empty in normal operation
 }
 
+// CoverageResult carries the read-only coverage report built by the
+// orchestrator. Files holds one entry per walked file (sorted by path);
+// Totals aggregates the code/markdown buckets plus the spec-layer size.
+type CoverageResult struct {
+	Report orchestrator.CoverageReport
+}
+
 // OkResult is a generic success message for commands that don't produce
 // structured data (init, link, unlink, reset).
 type OkResult struct {
@@ -131,6 +138,7 @@ type VersionResult struct {
 
 func (TodoResult) isResult()         {}
 func (ListResult) isResult()         {}
+func (CoverageResult) isResult()     {}
 func (DiffClosureResult) isResult()  {}
 func (DiffAllResult) isResult()      {}
 func (ChangeSummaryResult) isResult() {}

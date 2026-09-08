@@ -593,3 +593,51 @@ func (p ColorPresenter) Version(r VersionResult) string {
 }
 
 // D! id=ocol range-end
+
+// D! id=ocpcov range-start
+func (p ColorPresenter) Coverage(r CoverageResult) string {
+	t := p.Theme
+	tot := r.Report.Totals
+	if tot.FilesWalked == 0 {
+		return "No files walked. Run `drift init` and create spec files first."
+	}
+
+	withMarkers, without := buildCoverageRows(r.Report.Files)
+
+	var sb strings.Builder
+	sb.WriteString(t.SectionHeader.Apply("Spec coverage") + "\n\n")
+	sb.WriteString(t.SectionHeader.Apply("Files with markers:") + "\n")
+	sb.WriteString(fmt.Sprintf("  %-42s %10s %10s %8s\n", "path", "covered", "linked", "markers"))
+	for _, row := range withMarkers {
+		sb.WriteString(fmt.Sprintf("  %s %10s %10s %8d\n",
+			t.Filepath.Apply(fmt.Sprintf("%-42s", row.label)),
+			fmt.Sprintf("%d/%d", row.coveredAny, row.total),
+			fmt.Sprintf("%d/%d", row.linked, row.total),
+			row.markers))
+	}
+
+	if len(without) > 0 {
+		sb.WriteString("\n" + t.StatusWarn.Apply("Without markers:") + "\n")
+		for _, row := range without {
+			sb.WriteString(fmt.Sprintf("  %s %10s\n", t.Filepath.Apply(fmt.Sprintf("%-42s", row.label)), fmt.Sprintf("%d lines", row.total)))
+		}
+	}
+
+	pct := func(n, d int) string {
+		if d == 0 {
+			return "n/a"
+		}
+		return fmt.Sprintf("%.1f%%", 100*float64(n)/float64(d))
+	}
+	sb.WriteString("\n" + t.SectionHeader.Apply("Totals:") + "\n")
+	sb.WriteString(fmt.Sprintf("  code      %s/%d lines covered (%s), linked %d (%s)\n",
+		t.StatusOK.Apply(fmt.Sprintf("%d", tot.CodeCoveredAny)), tot.CodeTotal, pct(tot.CodeCoveredAny, tot.CodeTotal),
+		tot.CodeCoveredLinked, pct(tot.CodeCoveredLinked, tot.CodeTotal)))
+	sb.WriteString(fmt.Sprintf("  markdown  %s/%d lines covered (%s), linked %d (%s)\n",
+		t.StatusOK.Apply(fmt.Sprintf("%d", tot.MdCoveredAny)), tot.MdTotal, pct(tot.MdCoveredAny, tot.MdTotal),
+		tot.MdCoveredLinked, pct(tot.MdCoveredLinked, tot.MdTotal)))
+	sb.WriteString(fmt.Sprintf("  spec layer %d lines | files walked %d | markers %d (%d linked)\n",
+		tot.SpecLines, tot.FilesWalked, tot.MarkersTotal, tot.MarkersLinked))
+	return strings.TrimRight(sb.String(), "\n")
+}
+// D! id=ocpcov range-end

@@ -702,3 +702,50 @@ func (p PlainPresenter) Text(r TextResult) string {
 func (p PlainPresenter) Version(r VersionResult) string {
 	return "drift version " + r.Version
 }
+
+// D! id=opcov range-start
+func (p PlainPresenter) Coverage(r CoverageResult) string {
+	t := r.Report.Totals
+	if t.FilesWalked == 0 {
+		return "No files walked. Run `drift init` and create spec files first."
+	}
+
+	withMarkers, without := buildCoverageRows(r.Report.Files)
+
+	var sb strings.Builder
+	sb.WriteString("Spec coverage\n\n")
+	sb.WriteString("Files with markers:\n")
+	sb.WriteString(fmt.Sprintf("  %-42s %10s %10s %8s\n", "path", "covered", "linked", "markers"))
+	for _, row := range withMarkers {
+		sb.WriteString(fmt.Sprintf("  %-42s %10s %10s %8d\n",
+			row.label,
+			fmt.Sprintf("%d/%d", row.coveredAny, row.total),
+			fmt.Sprintf("%d/%d", row.linked, row.total),
+			row.markers))
+	}
+
+	if len(without) > 0 {
+		sb.WriteString("\nWithout markers:\n")
+		for _, row := range without {
+			sb.WriteString(fmt.Sprintf("  %-42s %10s\n", row.label, fmt.Sprintf("%d lines", row.total)))
+		}
+	}
+
+	pct := func(n, d int) string {
+		if d == 0 {
+			return "n/a"
+		}
+		return fmt.Sprintf("%.1f%%", 100*float64(n)/float64(d))
+	}
+	sb.WriteString("\nTotals:\n")
+	sb.WriteString(fmt.Sprintf("  code      %d/%d lines covered (%s), linked %d (%s)\n",
+		t.CodeCoveredAny, t.CodeTotal, pct(t.CodeCoveredAny, t.CodeTotal),
+		t.CodeCoveredLinked, pct(t.CodeCoveredLinked, t.CodeTotal)))
+	sb.WriteString(fmt.Sprintf("  markdown  %d/%d lines covered (%s), linked %d (%s)\n",
+		t.MdCoveredAny, t.MdTotal, pct(t.MdCoveredAny, t.MdTotal),
+		t.MdCoveredLinked, pct(t.MdCoveredLinked, t.MdTotal)))
+	sb.WriteString(fmt.Sprintf("  spec layer %d lines | files walked %d | markers %d (%d linked)\n",
+		t.SpecLines, t.FilesWalked, t.MarkersTotal, t.MarkersLinked))
+	return strings.TrimRight(sb.String(), "\n")
+}
+// D! id=opcov range-end

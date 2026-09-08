@@ -18,18 +18,19 @@ import (
 // embedded content (help text, skill guide, init template) receive it via
 // struct fields set here from the package-level embeds in cli.go.
 var Registry = map[string]commands.Command{
-	"init":    commands.InitCommand{InitTemplate: initMainDriftXML},
-	"todo":    commands.TodoCommand{},
-	"list":    commands.ListCommand{},
-	"show":    commands.ShowCommand{},
-	"diff":    commands.DiffCommand{},
-	"link":    commands.LinkCommand{},
-	"unlink":  commands.UnlinkCommand{},
-	"reset":   commands.ResetCommand{},
-	"help":    commands.HelpCommand{Text: HelpContent},
-	"skill":   commands.SkillCommand{Text: SkillContent},
-	"version": commands.VersionCommand{},
-	"config":  commands.ConfigCommand{},
+	"init":      commands.InitCommand{InitTemplate: initMainDriftXML},
+	"todo":      commands.TodoCommand{},
+	"list":      commands.ListCommand{},
+	"show":      commands.ShowCommand{},
+	"coverage":  commands.CoverageCommand{},
+	"diff":      commands.DiffCommand{},
+	"link":      commands.LinkCommand{},
+	"unlink":    commands.UnlinkCommand{},
+	"reset":     commands.ResetCommand{},
+	"help":      commands.HelpCommand{Text: HelpContent},
+	"skill":     commands.SkillCommand{Text: SkillContent},
+	"version":   commands.VersionCommand{},
+	"config":    commands.ConfigCommand{},
 }
 
 // D! id=oreg range-end

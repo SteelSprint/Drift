@@ -572,3 +572,66 @@ func (p JSONPresenter) Version(r VersionResult) string {
 }
 
 // D! id=ojson range-end
+
+// D! id=ojcov range-start
+// --- Coverage ---
+
+type jsonCoverageFile struct {
+	Path          string `json:"path"`
+	TotalLines    int    `json:"totalLines"`
+	CoveredAny    int    `json:"coveredAny"`
+	CoveredLinked int    `json:"coveredLinked"`
+	Markers       int    `json:"markers"`
+	LinkedMarkers int    `json:"linkedMarkers"`
+	IsMarkdown    bool   `json:"isMarkdown"`
+}
+
+type jsonCoverageTotals struct {
+	FilesWalked       int `json:"filesWalked"`
+	SpecLines         int `json:"specLines"`
+	CodeTotal         int `json:"codeTotal"`
+	CodeCoveredAny    int `json:"codeCoveredAny"`
+	CodeCoveredLinked int `json:"codeCoveredLinked"`
+	MdTotal           int `json:"mdTotal"`
+	MdCoveredAny      int `json:"mdCoveredAny"`
+	MdCoveredLinked   int `json:"mdCoveredLinked"`
+	MarkersTotal      int `json:"markersTotal"`
+	MarkersLinked     int `json:"markersLinked"`
+}
+
+type jsonCoverage struct {
+	Files  []jsonCoverageFile  `json:"files"`
+	Totals jsonCoverageTotals  `json:"totals"`
+}
+// D! id=ojcov range-end
+
+func (p JSONPresenter) Coverage(r CoverageResult) string {
+	files := make([]jsonCoverageFile, 0, len(r.Report.Files))
+	for _, f := range r.Report.Files {
+		files = append(files, jsonCoverageFile{
+			Path:          f.Path,
+			TotalLines:    f.TotalLines,
+			CoveredAny:    f.CoveredAny,
+			CoveredLinked: f.CoveredLinked,
+			Markers:       f.Markers,
+			LinkedMarkers: f.LinkedMarkers,
+			IsMarkdown:    f.IsMarkdown,
+		})
+	}
+	t := r.Report.Totals
+	return marshal(jsonCoverage{
+		Files: files,
+		Totals: jsonCoverageTotals{
+			FilesWalked:       t.FilesWalked,
+			SpecLines:         t.SpecLines,
+			CodeTotal:         t.CodeTotal,
+			CodeCoveredAny:    t.CodeCoveredAny,
+			CodeCoveredLinked: t.CodeCoveredLinked,
+			MdTotal:           t.MdTotal,
+			MdCoveredAny:      t.MdCoveredAny,
+			MdCoveredLinked:   t.MdCoveredLinked,
+			MarkersTotal:      t.MarkersTotal,
+			MarkersLinked:     t.MarkersLinked,
+		},
+	})
+}

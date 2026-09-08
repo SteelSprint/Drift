@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"drift/core"
@@ -106,9 +107,10 @@ var ignoreSpanPattern = regexp.MustCompile(`D!\s+instruction=(ignore-span-start|
 
 // D! id=sint range-start
 type ScanResult struct {
-	Specs   []core.Spec
-	Markers []core.Marker
-	Edges   []core.Edge
+	Specs       []core.Spec
+	Markers     []core.Marker
+	Edges       []core.Edge
+	FilesWalked []string
 }
 
 type Scanner interface {
@@ -139,11 +141,11 @@ func (s *FileScanner) Scan() (ScanResult, error) {
 	if err != nil {
 		return ScanResult{}, err
 	}
-	markers, err := s.scanMarkers(ignore)
+	markers, walked, err := s.scanMarkers(ignore)
 	if err != nil {
 		return ScanResult{}, err
 	}
-	return ScanResult{Specs: specs, Markers: markers, Edges: edges}, nil
+	return ScanResult{Specs: specs, Markers: markers, Edges: edges, FilesWalked: walked}, nil
 }
 // D! id=sscn2 range-end
 
@@ -342,9 +344,10 @@ func (l *importLoader) load(absPath string) ([]core.Spec, []core.Edge, error) {
 // D! id=simpl range-end
 
 // D! id=smark range-start
-func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
+func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, []string, error) {
 	var markers []core.Marker
 	seenIDs := make(map[string]bool)
+	var walked []string
 
 	err := filepath.WalkDir(s.dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -358,6 +361,12 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
 			return nil
 		}
 		if d.IsDir() {
+			// .drift/ holds drift's own state — never a marker host
+			// (see text_file_detection: the .drift/ directory is excluded
+			// from scanning, independent of user ignore patterns).
+			if d.Name() == ".drift" {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !isTextFile(path) {
@@ -368,6 +377,7 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
 		if strings.HasSuffix(relPath, ".drift.xml") {
 			return nil
 		}
+		walked = append(walked, filepath.ToSlash(relPath))
 		fileMarkers, err := parseMarkerFile(path, relPath)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
@@ -384,9 +394,10 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return markers, nil
+	sort.Strings(walked)
+	return markers, walked, nil
 }
 
 // D! id=smark range-end

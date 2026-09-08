@@ -153,6 +153,7 @@ Closures are strictly disjoint across seeds. Two seeds produce two closures, eve
 | `drift todo --json` | JSON output (closure hash, nodes, edges, events). |
 | `drift list [--verbose]` | List specs, markers, edges, sync state. |
 | `drift show <marker\|spec>` | Show full citation closure of a spec or marker — ancestors, descendants, linked markers, all edges, all content. Add `--no-content` for a graph overview without the content bytes. |
+| `drift coverage` | Read-only spec coverage report: lines covered by marker ranges, code vs markdown vs spec layer. Always exits 0; `--json` for build tools. |
 | `drift diff <hash>` | Show unified diffs for every node in the closure. |
 | `drift diff --all` | Show diffs for all closures. |
 | `drift link <marker> <module.spec>` | Create a link edge. |
@@ -296,6 +297,10 @@ drift todo --json
 
 # Set theme.
 drift config theme gruvbox
+
+# Check spec coverage (read-only, always exit 0).
+drift coverage
+drift coverage --json
 ```
 
 ## Cookbook

@@ -10,13 +10,13 @@ import (
 	"drift/internal/fileio"
 )
 
-
 // D! id=ocov range-start
 
 // CoverageFile reports coverage for one walked file. CoveredAny counts the
 // union of all marker interiors; CoveredLinked counts the union of interiors
-// of markers linked to a spec in the baseline. Percentages are a presenter
-// concern — this layer carries raw counts only.
+// of markers linked to a spec in the baseline. There is no file-type
+// classification — drift is language-agnostic (see principles.language_agnostic).
+// Percentages are a presenter concern; this layer carries raw counts only.
 type CoverageFile struct {
 	Path          string
 	TotalLines    int
@@ -24,24 +24,25 @@ type CoverageFile struct {
 	CoveredLinked int
 	Markers       int
 	LinkedMarkers int
-	IsMarkdown    bool
 }
 
-// CoverageTotals aggregates the per-file numbers plus the spec-layer size.
+// CoverageTotals aggregates the per-file numbers plus the spec layer.
 // SpecLines is the raw line count of the unique *.drift.xml files in the
 // import chain — the size of the spec layer, reported separately from the
-// walked (denominator) files.
+// walked files. SpecsTotal/SpecsLinked count non-deleted scan specs and
+// those named by a baseline link-style edge (spec is enforced); their
+// difference is the count of visible-but-unenforced specs.
 type CoverageTotals struct {
 	FilesWalked       int
+	FilesWithMarkers  int
 	SpecLines         int
-	CodeTotal         int
-	CodeCoveredAny    int
-	CodeCoveredLinked int
-	MdTotal           int
-	MdCoveredAny      int
-	MdCoveredLinked   int
+	TotalLines        int
+	CoveredAny        int
+	CoveredLinked     int
 	MarkersTotal      int
 	MarkersLinked     int
+	SpecsTotal        int
+	SpecsLinked       int
 }
 
 // CoverageReport is the full coverage picture: one entry per walked file
@@ -50,8 +51,6 @@ type CoverageReport struct {
 	Files  []CoverageFile
 	Totals CoverageTotals
 }
-
-
 
 // Coverage reports how many lines marker ranges cover. It loads the baseline
 // (for link edges), scans (reusing the scanner walk, so drift.ignore and
@@ -62,7 +61,8 @@ type CoverageReport struct {
 // (end − start − 1), matching the scanner's half-open hashing semantics.
 // Nested and overlapping markers are unioned per file, never double-counted.
 // A marker counts as linked when a baseline link-style edge (marker → spec)
-// names it; unlinked markers count toward CoveredAny only.
+// names it; unlinked markers count toward CoveredAny only. A spec counts as
+// linked when a baseline link-style edge names it on the To side.
 func (o *Orchestrator) Coverage(sess *fileio.Session) (CoverageReport, error) {
 	state, err := o.stateStore.Load(sess)
 	if err != nil {
@@ -75,12 +75,14 @@ func (o *Orchestrator) Coverage(sess *fileio.Session) (CoverageReport, error) {
 	}
 
 	// Baseline link-style edges (From is a marker — no dot) define which
-	// markers are enforced by a spec. Ref edges are spec→spec and never
-	// contribute to marker linkage.
-	linked := map[string]bool{}
+	// markers and specs are enforced. Ref edges are spec→spec and never
+	// contribute to linkage.
+	linkedMarkers := map[string]bool{}
+	linkedSpecs := map[string]bool{}
 	for _, e := range state.Edges {
 		if !isSpecIDOrch(e.From) && isSpecIDOrch(e.To) {
-			linked[e.From] = true
+			linkedMarkers[e.From] = true
+			linkedSpecs[e.To] = true
 		}
 	}
 
@@ -90,7 +92,12 @@ func (o *Orchestrator) Coverage(sess *fileio.Session) (CoverageReport, error) {
 		markersByFile[m.Filepath] = append(markersByFile[m.Filepath], m)
 	}
 
-	report := CoverageReport{Totals: CoverageTotals{FilesWalked: len(scanResult.FilesWalked)}}
+	report := CoverageReport{
+		Totals: CoverageTotals{
+			FilesWalked: len(scanResult.FilesWalked),
+			SpecsTotal:  len(scanResult.Specs),
+		},
+	}
 	seen := map[string]bool{}
 	for _, rel := range scanResult.FilesWalked {
 		if seen[rel] {
@@ -102,35 +109,34 @@ func (o *Orchestrator) Coverage(sess *fileio.Session) (CoverageReport, error) {
 			return CoverageReport{}, err
 		}
 		fileMarkers := markersByFile[rel]
-		cf := CoverageFile{
-			Path:       rel,
-			TotalLines: total,
-			IsMarkdown: isMarkdownPath(rel),
-		}
+		cf := CoverageFile{Path: rel, TotalLines: total}
 		var anyIvs, linkedIvs []lineInterval
 		for _, m := range fileMarkers {
 			iv := lineInterval{start: m.LineNumber, end: m.EndLineNumber}
 			anyIvs = append(anyIvs, iv)
 			cf.Markers++
 			report.Totals.MarkersTotal++
-			if linked[m.ID] {
+			if linkedMarkers[m.ID] {
 				linkedIvs = append(linkedIvs, iv)
 				cf.LinkedMarkers++
 				report.Totals.MarkersLinked++
 			}
 		}
+		if cf.Markers > 0 {
+			report.Totals.FilesWithMarkers++
+		}
 		cf.CoveredAny = coveredLines(anyIvs)
 		cf.CoveredLinked = coveredLines(linkedIvs)
 
 		report.Files = append(report.Files, cf)
-		if cf.IsMarkdown {
-			report.Totals.MdTotal += cf.TotalLines
-			report.Totals.MdCoveredAny += cf.CoveredAny
-			report.Totals.MdCoveredLinked += cf.CoveredLinked
-		} else {
-			report.Totals.CodeTotal += cf.TotalLines
-			report.Totals.CodeCoveredAny += cf.CoveredAny
-			report.Totals.CodeCoveredLinked += cf.CoveredLinked
+		report.Totals.TotalLines += cf.TotalLines
+		report.Totals.CoveredAny += cf.CoveredAny
+		report.Totals.CoveredLinked += cf.CoveredLinked
+	}
+
+	for _, s := range scanResult.Specs {
+		if linkedSpecs[s.ID] {
+			report.Totals.SpecsLinked++
 		}
 	}
 
@@ -140,8 +146,6 @@ func (o *Orchestrator) Coverage(sess *fileio.Session) (CoverageReport, error) {
 	}
 	return report, nil
 }
-
-
 
 // lineInterval is one marker span; covered lines are its interior
 // (start+1 .. end-1).
@@ -193,17 +197,6 @@ func countLines(path string) (int, error) {
 		n++
 	}
 	return n, nil
-}
-
-// isMarkdownPath reports whether a relative path is a markdown file (.md or
-// .mdx, case-insensitive). Markdown files are reported in their own buckets
-// because prose coverage and code coverage read differently.
-func isMarkdownPath(rel string) bool {
-	switch strings.ToLower(filepath.Ext(rel)) {
-	case ".md", ".mdx":
-		return true
-	}
-	return false
 }
 
 // specLineCount sums the raw line counts of the unique *.drift.xml files in

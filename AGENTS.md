@@ -153,6 +153,7 @@ For scripting or LLM consumption, use `--json` or `--no-color`.
 | Resolve one closure | `drift reset <hash>` |
 | List everything | `drift list --verbose` |
 | Show citation closure of one entity | `drift show <marker\|spec>` (add `--no-content` for graph overview) |
+| Spec coverage report | `drift coverage` (add `--json` for build tools; read-only, exit 0) |
 | Full guide | `drift skill` |
 | Command reference | `drift help` |
 | Structured output | `drift todo --json` |

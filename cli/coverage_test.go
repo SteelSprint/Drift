@@ -13,10 +13,10 @@ import (
 )
 
 // setupCoverageProject builds a small drift project:
-//   - main.drift.xml with one spec (m.validate)
+//   - main.drift.xml with three specs (two linked, one orphan)
 //   - code.go with a linked marker (3 interior lines)
 //   - doc.md with a linked marker (1 interior line)
-//   - plain.go with no markers
+//   - plain.go and a clean subtree (lib/) with no markers
 // and baselines everything so todo is clean.
 func setupCoverageProject(t *testing.T) string {
 	t.Helper()
@@ -25,6 +25,7 @@ func setupCoverageProject(t *testing.T) string {
 		`<module name="m">
 <spec id="validate">Validate input.</spec>
 <spec id="doc">Document the validation flow.</spec>
+<spec id="orphan">Nobody wraps this one.</spec>
 </module>`)
 	testutil.WriteCodeFile(t, dir, "code.go",
 		"package main\n"+
@@ -35,6 +36,10 @@ func setupCoverageProject(t *testing.T) string {
 			"// D! id=cval range-end\n"+
 			"// tail\n")
 	testutil.WriteCodeFile(t, dir, "plain.go", "package main\n\nfunc plain() {}\n")
+	if err := os.Mkdir(filepath.Join(dir, "lib"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteCodeFile(t, filepath.Join(dir, "lib"), "util.go", "package lib\n")
 	testutil.WriteSpecFile(t, dir, "doc.md",
 		"# Doc\n"+
 			"<!-- D! id=cdoc range-start -->\n"+
@@ -55,10 +60,9 @@ func setupCoverageProject(t *testing.T) string {
 		t.Fatalf("link cdoc: code=%d out=%s", code, out)
 	}
 	out, code := run("todo")
-	if code != 1 {
-		t.Fatalf("todo after link: code=%d out=%s", code, out)
-	}
-	// Resolve the NODE_ADDED closures one at a time until clean.
+	// Resolve the NODE_ADDED closures one at a time until clean. The fixture
+	// keeps one deliberate orphan spec (m.orphan) which cannot be resolved —
+	// it exists to exercise the unlinked-spec stats — so exit 1 remains.
 	for code == 1 && strings.Contains(out, "Closure") {
 		out, code = run("reset", firstClosureHash(t, out))
 		if code != 0 {
@@ -66,13 +70,14 @@ func setupCoverageProject(t *testing.T) string {
 		}
 		out, code = run("todo")
 	}
-	if code != 0 {
+	if code == 1 && !strings.Contains(out, "orphan specs") {
 		t.Fatalf("todo not clean after baseline: code=%d out=%s", code, out)
 	}
 	return dir
 }
 
-// TestCoverage_Command: read-only report, exit 0, per-file rows and totals.
+// TestCoverage_Command: Jest-style stat block, legend, per-file rows with
+// symbols, closing line.
 func TestCoverage_Command(t *testing.T) {
 	dir := setupCoverageProject(t)
 
@@ -81,21 +86,42 @@ func TestCoverage_Command(t *testing.T) {
 		t.Fatalf("coverage: code=%d out=%s", code, out)
 	}
 
-	// Per-file rows for marker-bearing files.
-	if !strings.Contains(out, "code.go") || !strings.Contains(out, "doc.md") {
-		t.Fatalf("coverage output missing marker files:\n%s", out)
+	// Stat block with labels.
+	for _, want := range []string{
+		"Specs", "2 linked to a marker", "1 without a marker",
+		"Markers", "Lines", "covered", "linked", "Files",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stat block missing %q:\n%s", want, out)
+		}
 	}
-	// Zero-marker files appear (all walked files are in the report).
-	if !strings.Contains(out, "plain.go") {
-		t.Fatalf("coverage output missing zero-marker file plain.go:\n%s", out)
+	// Legend explaining the terms.
+	for _, want := range []string{
+		"what this means",
+		"lines inside a marker range",
+		"visible but unenforced",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("legend missing %q:\n%s", want, out)
+		}
 	}
-	// Markdown and code totals both present.
-	if !strings.Contains(out, "markdown") || !strings.Contains(out, "code") {
-		t.Fatalf("coverage output missing markdown/code totals:\n%s", out)
+	// Per-file rows: marker files with ✓, zero-marker file with ✗.
+	if !strings.Contains(out, "✓") || !strings.Contains(out, "code.go") || !strings.Contains(out, "doc.md") {
+		t.Fatalf("marker rows missing:\n%s", out)
 	}
-	// Spec lines reported (the .drift.xml layer).
-	if !strings.Contains(out, "spec layer") {
-		t.Fatalf("coverage output missing spec layer total:\n%s", out)
+	if !strings.Contains(out, "✗") || !strings.Contains(out, "plain.go") {
+		t.Fatalf("zero-marker row missing:\n%s", out)
+	}
+	// Collapsed subtree row for the clean lib/ directory.
+	if !strings.Contains(out, "lib/*") {
+		t.Fatalf("collapsed subtree row missing:\n%s", out)
+	}
+	// Closing interpretive line.
+	if !strings.Contains(out, "Checked 4 files") {
+		t.Fatalf("closing line missing:\n%s", out)
+	}
+	if !strings.Contains(out, "% of lines are under spec protection") {
+		t.Fatalf("closing protection line missing:\n%s", out)
 	}
 }
 
@@ -127,6 +153,19 @@ func TestCoverage_ExitAlwaysZero(t *testing.T) {
 	}
 }
 
+// TestCoverage_NotInitialized: prescriptive error naming the fix surfaces
+// from the state store (coverage adds no duplicate message).
+func TestCoverage_NotInitialized(t *testing.T) {
+	dir := t.TempDir()
+	out, code := cli.RunWithRender([]string{"coverage"}, dir, output.PlainPresenter{})
+	if code != 1 {
+		t.Fatalf("not-initialized: code=%d out=%s", code, out)
+	}
+	if !strings.Contains(out, "not found") || !strings.Contains(out, "drift init") {
+		t.Fatalf("expected prescriptive not-initialized error, got:\n%s", out)
+	}
+}
+
 // TestCoverage_UnknownFlagRejected: coverage accepts no flags beyond globals.
 func TestCoverage_UnknownFlagRejected(t *testing.T) {
 	dir := setupCoverageProject(t)
@@ -140,7 +179,8 @@ func TestCoverage_UnknownFlagRejected(t *testing.T) {
 }
 
 // TestCoverage_JSONShape: --json output parses and carries per-file entries
-// (including zero-marker files) plus totals.
+// (including zero-marker files) plus unified totals with spec counts. No
+// file-type classification, no percentages, no presentation fields.
 func TestCoverage_JSONShape(t *testing.T) {
 	dir := setupCoverageProject(t)
 
@@ -157,27 +197,26 @@ func TestCoverage_JSONShape(t *testing.T) {
 			CoveredLinked int    `json:"coveredLinked"`
 			Markers       int    `json:"markers"`
 			LinkedMarkers int    `json:"linkedMarkers"`
-			IsMarkdown    bool   `json:"isMarkdown"`
 		} `json:"files"`
 		Totals struct {
 			FilesWalked       int `json:"filesWalked"`
-			SpecLines         int `json:"specLines"`
-			CodeTotal         int `json:"codeTotal"`
-			CodeCoveredAny    int `json:"codeCoveredAny"`
-			CodeCoveredLinked int `json:"codeCoveredLinked"`
-			MdTotal           int `json:"mdTotal"`
-			MdCoveredAny      int `json:"mdCoveredAny"`
-			MdCoveredLinked   int `json:"mdCoveredLinked"`
+			FilesWithMarkers  int `json:"filesWithMarkers"`
+			TotalLines        int `json:"totalLines"`
+			CoveredAny        int `json:"coveredAny"`
+			CoveredLinked     int `json:"coveredLinked"`
 			MarkersTotal      int `json:"markersTotal"`
 			MarkersLinked     int `json:"markersLinked"`
+			SpecLines         int `json:"specLines"`
+			SpecsTotal        int `json:"specsTotal"`
+			SpecsLinked       int `json:"specsLinked"`
 		} `json:"totals"`
 	}
 	if err := json.Unmarshal([]byte(out), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, out)
 	}
 
-	if len(doc.Files) != 3 {
-		t.Fatalf("expected 3 files in JSON, got %d: %s", len(doc.Files), out)
+	if len(doc.Files) != 4 {
+		t.Fatalf("expected 4 files in JSON, got %d: %s", len(doc.Files), out)
 	}
 	byPath := map[string]int{}
 	for _, f := range doc.Files {
@@ -186,34 +225,38 @@ func TestCoverage_JSONShape(t *testing.T) {
 	if byPath["code.go"] != 7 {
 		t.Fatalf("code.go totalLines = %d, want 7", byPath["code.go"])
 	}
-	if _, ok := byPath["plain.go"]; !ok {
-		t.Fatalf("plain.go missing from JSON files array")
+	if _, ok := byPath["lib/util.go"]; !ok {
+		t.Fatalf("lib/util.go missing from JSON files array (all walked files expected)")
 	}
 	if _, ok := byPath["main.drift.xml"]; ok {
 		t.Fatalf(".drift.xml must not appear in files array")
 	}
+	for _, f := range doc.Files {
+		if f.Path == "code.go" && (f.CoveredAny != 3 || f.LinkedMarkers != 1) {
+			t.Fatalf("code.go numbers = %+v", f)
+		}
+	}
 
 	tot := doc.Totals
-	if tot.FilesWalked != 3 {
-		t.Fatalf("filesWalked = %d, want 3", tot.FilesWalked)
+	if tot.FilesWalked != 4 || tot.FilesWithMarkers != 2 {
+		t.Fatalf("file counts = %+v, want walked 4 withMarkers 2", tot)
 	}
-	// code.go: 7 lines, marker interior = lines 3-5 = 3 covered
-	if tot.CodeTotal != 10 || tot.CodeCoveredAny != 3 || tot.CodeCoveredLinked != 3 {
-		t.Fatalf("code totals = %+v, want total 10 covered 3/3", tot)
+	// code.go 7 + plain.go 3 + lib/util.go 1 + doc.md 5 = 16; covered 3+1=4.
+	if tot.TotalLines != 16 || tot.CoveredAny != 4 || tot.CoveredLinked != 4 {
+		t.Fatalf("line totals = %+v, want total 16 covered 4/4", tot)
 	}
-	// doc.md: 5 lines, marker interior = 1
-	if tot.MdTotal != 5 || tot.MdCoveredAny != 1 || tot.MdCoveredLinked != 1 {
-		t.Fatalf("md totals = %+v, want total 5 covered 1/1", tot)
+	if tot.SpecLines != 5 {
+		t.Fatalf("specLines = %d, want 5", tot.SpecLines)
 	}
-	if tot.SpecLines != 4 {
-		t.Fatalf("specLines = %d, want 4", tot.SpecLines)
+	if tot.SpecsTotal != 3 || tot.SpecsLinked != 2 {
+		t.Fatalf("spec counts = %d/%d, want 3/2", tot.SpecsTotal, tot.SpecsLinked)
 	}
 	if tot.MarkersTotal != 2 || tot.MarkersLinked != 2 {
 		t.Fatalf("markers = %d/%d, want 2/2", tot.MarkersTotal, tot.MarkersLinked)
 	}
 }
 
-// TestHelpListsCoverage: the help text mentions the coverage command.
+// TestHelp_MentionsCoverage: the help text mentions the coverage command.
 func TestHelp_MentionsCoverage(t *testing.T) {
 	out, code := cli.RunWithRender(nil, t.TempDir(), output.PlainPresenter{})
 	if code != 0 {

@@ -1,6 +1,7 @@
 package output
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -56,22 +57,22 @@ func buildCoverageRows(files []orchestrator.CoverageFile) (withMarkers, without 
 		return found
 	}
 
-	// Collapse point for a marker-free file: the shallowest ancestor
-	// directory (including its own) whose subtree is marker-free.
+	// Collapse point for a marker-free file: the SHALLOWEST ancestor
+	// directory (including its own) whose subtree is marker-free. The walk
+	// continues upward while ancestors are also clean and keeps the shallowest
+	// one; "" means no clean ancestor exists (root is mixed) → individual row.
 	collapseDir := func(rel string) string {
+		shallowest := ""
 		dir := filepath.ToSlash(filepath.Dir(rel))
-		for {
+		for dir != "." && dir != "/" && dir != "" {
 			if !subtreeHasMarkers(dir) {
-				return dir
-			}
-			if dir == "." || dir == "/" {
-				return ""
+				shallowest = dir
+			} else {
+				break
 			}
 			dir = filepath.ToSlash(filepath.Dir(dir))
-			if dir == "." {
-				return ""
-			}
 		}
+		return shallowest
 	}
 
 	collapsedTotals := map[string]int{}
@@ -129,3 +130,27 @@ func sortCoverageRows(rows []coverageRow) {
 }
 
 // D! id=ocovrows range-end
+
+// formatInt renders an integer with thousands separators (12,345) for the
+// human-readable stat block. JSON keeps raw ints.
+func formatInt(n int) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var parts []string
+	for len(s) > 3 {
+		parts = append([]string{s[len(s)-3:]}, parts...)
+		s = s[:len(s)-3]
+	}
+	parts = append([]string{s}, parts...)
+	return strings.Join(parts, ",")
+}
+
+// plural returns "s" for n != 1.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}

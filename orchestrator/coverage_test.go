@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 
 	"drift/core"
@@ -24,10 +23,14 @@ type coverageScanner struct {
 func (f *coverageScanner) Scan() (scanner.ScanResult, error) { return f.result, nil }
 func (f *coverageScanner) Dir() string                       { return f.dir }
 
-// coverageFixture builds a temp project dir and an orchestrator whose scanner
-// reports the given markers and walked files; the walked files are written to
-// disk so Coverage can count lines.
+// newCoverageFixture builds a temp project dir and an orchestrator whose
+// scanner reports the given markers and walked files; the walked files are
+// written to disk so Coverage can count lines.
 func newCoverageFixture(t *testing.T, edges []core.Edge, markers []core.Marker, files map[string]string) *orchestrator.Orchestrator {
+	return newCoverageFixtureWithSpecs(t, edges, markers, nil, files)
+}
+
+func newCoverageFixtureWithSpecs(t *testing.T, edges []core.Edge, markers []core.Marker, specs []core.Spec, files map[string]string) *orchestrator.Orchestrator {
 	t.Helper()
 	dir := t.TempDir()
 	for name, content := range files {
@@ -46,6 +49,7 @@ func newCoverageFixture(t *testing.T, edges []core.Edge, markers []core.Marker, 
 	sort.Strings(walked)
 	store := &fakeStateStore{state: statestore.State{Edges: edges}}
 	sc := &coverageScanner{dir: dir, result: scanner.ScanResult{
+		Specs:       specs,
 		Markers:     markers,
 		FilesWalked: walked,
 	}}
@@ -89,7 +93,7 @@ func TestOrchestrator_Coverage_SingleMarker(t *testing.T) {
 		t.Fatalf("TotalLines = %d, want 8", cf.TotalLines)
 	}
 	if cf.CoveredAny != 4 {
-		t.Fatalf("CoveredAny = %d, want 4 (interior of lines 2-6)", cf.CoveredAny)
+		t.Fatalf("CoveredAny = %d, want 4 (interior of lines 2-7)", cf.CoveredAny)
 	}
 	if cf.CoveredLinked != 4 {
 		t.Fatalf("CoveredLinked = %d, want 4 (marker linked)", cf.CoveredLinked)
@@ -97,8 +101,8 @@ func TestOrchestrator_Coverage_SingleMarker(t *testing.T) {
 	if cf.Markers != 1 || cf.LinkedMarkers != 1 {
 		t.Fatalf("Markers=%d LinkedMarkers=%d, want 1/1", cf.Markers, cf.LinkedMarkers)
 	}
-	if report.Totals.CodeTotal != 8 || report.Totals.CodeCoveredAny != 4 || report.Totals.CodeCoveredLinked != 4 {
-		t.Fatalf("code totals wrong: %+v", report.Totals)
+	if report.Totals.TotalLines != 8 || report.Totals.CoveredAny != 4 || report.Totals.CoveredLinked != 4 {
+		t.Fatalf("totals wrong: %+v", report.Totals)
 	}
 }
 
@@ -148,7 +152,7 @@ func TestOrchestrator_Coverage_LinkedVsUnlinked(t *testing.T) {
 		"// D! id=clink range-start\nx\ny\n// D! id=clink range-end\n" +
 		"l5\n" +
 		"// D! id=cfree range-start\nz\n// D! id=cfree range-end\n" +
-		"l8\n"
+		"l8\nl9\nl10\n"
 	orch := newCoverageFixture(t,
 		[]core.Edge{testutil.NewLink("m.a", "clink")},
 		[]core.Marker{
@@ -160,8 +164,8 @@ func TestOrchestrator_Coverage_LinkedVsUnlinked(t *testing.T) {
 	report, err := orch.Coverage(nil)
 	testutil.AssertNoError(t, err)
 	cf := findCoverageFile(t, report.Files, "split.go")
-	if cf.TotalLines != 10 {
-		t.Fatalf("TotalLines = %d, want 10", cf.TotalLines)
+	if cf.TotalLines != 12 {
+		t.Fatalf("TotalLines = %d, want 12", cf.TotalLines)
 	}
 	if cf.CoveredAny != 3 {
 		t.Fatalf("CoveredAny = %d, want 3 (2+1)", cf.CoveredAny)
@@ -177,37 +181,70 @@ func TestOrchestrator_Coverage_LinkedVsUnlinked(t *testing.T) {
 	}
 }
 
-// TestOrchestrator_Coverage_MarkdownSplit: .md/.mdx files are reported in the
-// markdown buckets, everything else in code buckets.
-func TestOrchestrator_Coverage_MarkdownSplit(t *testing.T) {
+// TestOrchestrator_Coverage_LanguageAgnostic: one bucket for every walked
+// file — no markdown/code distinction. .md and Makefile land in the same
+// totals.
+func TestOrchestrator_Coverage_LanguageAgnostic(t *testing.T) {
 	mdContent := "# Doc\n" +
 		"<!-- D! id=cdoc range-start -->\nprose\n<!-- D! id=cdoc range-end -->\n" +
 		"tail\n"
 	orch := newCoverageFixture(t,
 		[]core.Edge{
 			testutil.NewLink("m.a", "cdoc"),
-			testutil.NewLink("m.b", "cguide"),
+			testutil.NewLink("m.b", "cmk"),
 		},
 		[]core.Marker{
 			markerAt("cdoc", "doc.md", 2, 4),
-			markerAt("cguide", "guide.mdx", 2, 4),
+			markerAt("cmk", "Makefile", 1, 3),
 		},
 		map[string]string{
-			"doc.md":    mdContent,
-			"guide.mdx": strings.ReplaceAll(mdContent, "cdoc", "cguide"),
-			"code.go":   "p\nq\nr\n",
+			"doc.md":   mdContent,
+			"Makefile": "all:\n\ttrue\n",
+		},
+	)
+	// Makefile: 2 lines on disk; marker spans 1-3 (end past EOF), interior = line 2 → 1 covered.
+	// doc.md: 5 lines; marker lines 2-4, interior = line 3 → 1 covered.
+	report, err := orch.Coverage(nil)
+	testutil.AssertNoError(t, err)
+	if report.Totals.TotalLines != 7 {
+		t.Fatalf("TotalLines = %d, want 7 (5+2)", report.Totals.TotalLines)
+	}
+	if report.Totals.CoveredAny != 2 {
+		t.Fatalf("CoveredAny = %d, want 2", report.Totals.CoveredAny)
+	}
+	mk := findCoverageFile(t, report.Files, "Makefile")
+	if mk.CoveredAny != 1 || mk.TotalLines != 2 {
+		t.Fatalf("Makefile: covered=%d total=%d, want 1/2", mk.CoveredAny, mk.TotalLines)
+	}
+}
+
+// TestOrchestrator_Coverage_SpecsLinked: SpecsTotal counts non-deleted scan
+// specs; SpecsLinked counts those named by a baseline link-style edge To.
+func TestOrchestrator_Coverage_SpecsLinked(t *testing.T) {
+	orch := newCoverageFixtureWithSpecs(t,
+		[]core.Edge{
+			testutil.NewLink("m.a", "cval"),
+			testutil.NewRef("m.a", "m.b"),
+		},
+		[]core.Marker{markerAt("cval", "main.go", 1, 3)},
+		[]core.Spec{
+			testutil.NewSpecWithLocation("m.a", "h1", "main.drift.xml", 1),
+			testutil.NewSpecWithLocation("m.b", "h2", "main.drift.xml", 2),
+			testutil.NewSpecWithLocation("m.c", "h3", "main.drift.xml", 3),
+		},
+		map[string]string{
+			"main.go":        "x\ny\n",
+			"main.drift.xml": "<main>\n<a/>\n<b/>\n</main>\n",
 		},
 	)
 	report, err := orch.Coverage(nil)
 	testutil.AssertNoError(t, err)
-	if report.Totals.MdTotal != 10 {
-		t.Fatalf("MdTotal = %d, want 10 (5+5)", report.Totals.MdTotal)
+	// m.a linked via cval; m.b cited but NOT linked (ref edge only); m.c orphan.
+	if report.Totals.SpecsTotal != 3 {
+		t.Fatalf("SpecsTotal = %d, want 3", report.Totals.SpecsTotal)
 	}
-	if report.Totals.MdCoveredAny != 2 {
-		t.Fatalf("MdCoveredAny = %d, want 2", report.Totals.MdCoveredAny)
-	}
-	if report.Totals.CodeTotal != 3 || report.Totals.CodeCoveredAny != 0 {
-		t.Fatalf("code totals wrong: %+v", report.Totals)
+	if report.Totals.SpecsLinked != 1 {
+		t.Fatalf("SpecsLinked = %d, want 1 (only m.a)", report.Totals.SpecsLinked)
 	}
 }
 
@@ -264,6 +301,9 @@ func TestOrchestrator_Coverage_EmptyAndZeroInterior(t *testing.T) {
 	}
 	if report.Totals.FilesWalked != 2 {
 		t.Fatalf("FilesWalked = %d, want 2", report.Totals.FilesWalked)
+	}
+	if report.Totals.FilesWithMarkers != 1 {
+		t.Fatalf("FilesWithMarkers = %d, want 1", report.Totals.FilesWithMarkers)
 	}
 }
 

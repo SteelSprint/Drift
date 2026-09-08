@@ -714,22 +714,6 @@ func (p PlainPresenter) Coverage(r CoverageResult) string {
 
 	var sb strings.Builder
 	sb.WriteString("Spec coverage\n\n")
-	sb.WriteString("Files with markers:\n")
-	sb.WriteString(fmt.Sprintf("  %-42s %10s %10s %8s\n", "path", "covered", "linked", "markers"))
-	for _, row := range withMarkers {
-		sb.WriteString(fmt.Sprintf("  %-42s %10s %10s %8d\n",
-			row.label,
-			fmt.Sprintf("%d/%d", row.coveredAny, row.total),
-			fmt.Sprintf("%d/%d", row.linked, row.total),
-			row.markers))
-	}
-
-	if len(without) > 0 {
-		sb.WriteString("\nWithout markers:\n")
-		for _, row := range without {
-			sb.WriteString(fmt.Sprintf("  %-42s %10s\n", row.label, fmt.Sprintf("%d lines", row.total)))
-		}
-	}
 
 	pct := func(n, d int) string {
 		if d == 0 {
@@ -737,15 +721,51 @@ func (p PlainPresenter) Coverage(r CoverageResult) string {
 		}
 		return fmt.Sprintf("%.1f%%", 100*float64(n)/float64(d))
 	}
-	sb.WriteString("\nTotals:\n")
-	sb.WriteString(fmt.Sprintf("  code      %d/%d lines covered (%s), linked %d (%s)\n",
-		t.CodeCoveredAny, t.CodeTotal, pct(t.CodeCoveredAny, t.CodeTotal),
-		t.CodeCoveredLinked, pct(t.CodeCoveredLinked, t.CodeTotal)))
-	sb.WriteString(fmt.Sprintf("  markdown  %d/%d lines covered (%s), linked %d (%s)\n",
-		t.MdCoveredAny, t.MdTotal, pct(t.MdCoveredAny, t.MdTotal),
-		t.MdCoveredLinked, pct(t.MdCoveredLinked, t.MdTotal)))
-	sb.WriteString(fmt.Sprintf("  spec layer %d lines | files walked %d | markers %d (%d linked)\n",
-		t.SpecLines, t.FilesWalked, t.MarkersTotal, t.MarkersLinked))
+	unlinkedSpecs := t.SpecsTotal - t.SpecsLinked
+	sb.WriteString(fmt.Sprintf("  Specs     %d linked to a marker", t.SpecsLinked))
+	if unlinkedSpecs > 0 {
+		sb.WriteString(fmt.Sprintf(" · %d without a marker", unlinkedSpecs))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("  Markers   %d total · %d linked\n", t.MarkersTotal, t.MarkersLinked))
+	sb.WriteString(fmt.Sprintf("  Lines     %s of %s covered (%s) · %s linked (%s)\n",
+		formatInt(t.CoveredAny), formatInt(t.TotalLines), pct(t.CoveredAny, t.TotalLines),
+		formatInt(t.CoveredLinked), pct(t.CoveredLinked, t.TotalLines)))
+	sb.WriteString(fmt.Sprintf("  Files     %d of %d contain markers · %d lines of spec text\n",
+		t.FilesWithMarkers, t.FilesWalked, t.SpecLines))
+
+	sb.WriteString("\n  what this means:\n")
+	sb.WriteString("  covered — lines inside a marker range; drift detects edits to them\n")
+	sb.WriteString("  linked  — subset whose marker is tied to a spec; changes here open\n")
+	sb.WriteString("            closures that pull in the spec and its citers\n")
+	if unlinkedSpecs > 0 {
+		sb.WriteString("  specs without markers are visible but unenforced — wrap their code\n")
+		sb.WriteString("  in a marker and run `drift link`\n")
+	}
+
+	sb.WriteString("\nCovered files:\n")
+	for _, row := range withMarkers {
+		sb.WriteString(fmt.Sprintf("  ✓ %s %s %s\n",
+			fmt.Sprintf("%-42s", row.label),
+			fmt.Sprintf("%10s", fmt.Sprintf("%d/%d", row.coveredAny, row.total)),
+			fmt.Sprintf("%d marker%s", row.markers, plural(row.markers))))
+	}
+	if len(without) > 0 {
+		sb.WriteString("Without markers:\n")
+		for _, row := range without {
+			sym := "✗"
+			if row.collapsed {
+				sym = "·"
+			}
+			sb.WriteString(fmt.Sprintf("  %s %s %s\n",
+				sym,
+				fmt.Sprintf("%-42s", row.label),
+				fmt.Sprintf("%d lines", row.total)))
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\nChecked %d files. %s of lines are under spec protection.\n",
+		t.FilesWalked, pct(t.CoveredAny, t.TotalLines)))
 	return strings.TrimRight(sb.String(), "\n")
 }
 // D! id=opcov range-end

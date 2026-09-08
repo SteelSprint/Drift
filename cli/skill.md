@@ -153,7 +153,7 @@ Closures are strictly disjoint across seeds. Two seeds produce two closures, eve
 | `drift todo --json` | JSON output (closure hash, nodes, edges, events). |
 | `drift list [--verbose]` | List specs, markers, edges, sync state. |
 | `drift show <marker\|spec>` | Show full citation closure of a spec or marker — ancestors, descendants, linked markers, all edges, all content. Add `--no-content` for a graph overview without the content bytes. |
-| `drift coverage` | Read-only spec coverage report: lines covered by marker ranges, code vs markdown vs spec layer. Always exits 0; `--json` for build tools. |
+| `drift coverage` | Read-only spec coverage report: lines covered by marker ranges, spec-enforced vs unenforced, plus the size of the spec layer. Exits 0 on every successful run (drift status is `drift todo`'s job); exit 1 on error. `--json` for build tools. |
 | `drift diff <hash>` | Show unified diffs for every node in the closure. |
 | `drift diff --all` | Show diffs for all closures. |
 | `drift link <marker> <module.spec>` | Create a link edge. |
@@ -218,7 +218,7 @@ Every command supports three modes:
 - **Color** (default in TTY) — themed ANSI + syntax highlighting.
 - **JSON** (`--json`) — structured output.
 
-JSON guidance for agents: use `--json` where you want structure to parse — `drift todo --json` for closure hashes, `drift list --json` for inventory. Do NOT default to it for `drift diff`: the human-readable unified diff is the review artifact, and reading it is the review step. Parsing the diff as JSON to skip reading it defeats the point.
+JSON guidance for agents: use `--json` where you want structure to parse — `drift todo --json` for closure hashes, `drift list --json` for inventory, `drift coverage --json` for coverage numbers in build tools (raw counts only, no presentation fields). Do NOT default to it for `drift diff`: the human-readable unified diff is the review artifact, and reading it is the review step. Parsing the diff as JSON to skip reading it defeats the point.
 
 ## Theming
 

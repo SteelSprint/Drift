@@ -574,8 +574,6 @@ func (p JSONPresenter) Version(r VersionResult) string {
 // D! id=ojson range-end
 
 // D! id=ojcov range-start
-// --- Coverage ---
-
 type jsonCoverageFile struct {
 	Path          string `json:"path"`
 	TotalLines    int    `json:"totalLines"`
@@ -583,27 +581,25 @@ type jsonCoverageFile struct {
 	CoveredLinked int    `json:"coveredLinked"`
 	Markers       int    `json:"markers"`
 	LinkedMarkers int    `json:"linkedMarkers"`
-	IsMarkdown    bool   `json:"isMarkdown"`
 }
 
 type jsonCoverageTotals struct {
 	FilesWalked       int `json:"filesWalked"`
-	SpecLines         int `json:"specLines"`
-	CodeTotal         int `json:"codeTotal"`
-	CodeCoveredAny    int `json:"codeCoveredAny"`
-	CodeCoveredLinked int `json:"codeCoveredLinked"`
-	MdTotal           int `json:"mdTotal"`
-	MdCoveredAny      int `json:"mdCoveredAny"`
-	MdCoveredLinked   int `json:"mdCoveredLinked"`
+	FilesWithMarkers  int `json:"filesWithMarkers"`
+	TotalLines        int `json:"totalLines"`
+	CoveredAny        int `json:"coveredAny"`
+	CoveredLinked     int `json:"coveredLinked"`
 	MarkersTotal      int `json:"markersTotal"`
 	MarkersLinked     int `json:"markersLinked"`
+	SpecLines         int `json:"specLines"`
+	SpecsTotal        int `json:"specsTotal"`
+	SpecsLinked       int `json:"specsLinked"`
 }
 
 type jsonCoverage struct {
-	Files  []jsonCoverageFile  `json:"files"`
-	Totals jsonCoverageTotals  `json:"totals"`
+	Files  []jsonCoverageFile `json:"files"`
+	Totals jsonCoverageTotals `json:"totals"`
 }
-// D! id=ojcov range-end
 
 func (p JSONPresenter) Coverage(r CoverageResult) string {
 	files := make([]jsonCoverageFile, 0, len(r.Report.Files))
@@ -615,7 +611,6 @@ func (p JSONPresenter) Coverage(r CoverageResult) string {
 			CoveredLinked: f.CoveredLinked,
 			Markers:       f.Markers,
 			LinkedMarkers: f.LinkedMarkers,
-			IsMarkdown:    f.IsMarkdown,
 		})
 	}
 	t := r.Report.Totals
@@ -623,15 +618,16 @@ func (p JSONPresenter) Coverage(r CoverageResult) string {
 		Files: files,
 		Totals: jsonCoverageTotals{
 			FilesWalked:       t.FilesWalked,
-			SpecLines:         t.SpecLines,
-			CodeTotal:         t.CodeTotal,
-			CodeCoveredAny:    t.CodeCoveredAny,
-			CodeCoveredLinked: t.CodeCoveredLinked,
-			MdTotal:           t.MdTotal,
-			MdCoveredAny:      t.MdCoveredAny,
-			MdCoveredLinked:   t.MdCoveredLinked,
+			FilesWithMarkers:  t.FilesWithMarkers,
+			TotalLines:        t.TotalLines,
+			CoveredAny:        t.CoveredAny,
+			CoveredLinked:     t.CoveredLinked,
 			MarkersTotal:      t.MarkersTotal,
 			MarkersLinked:     t.MarkersLinked,
+			SpecLines:         t.SpecLines,
+			SpecsTotal:        t.SpecsTotal,
+			SpecsLinked:       t.SpecsLinked,
 		},
 	})
 }
+// D! id=ojcov range-end

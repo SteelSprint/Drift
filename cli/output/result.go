@@ -109,7 +109,29 @@ type ChangeSummaryResult struct {
 // Totals aggregates the code/markdown buckets plus the spec-layer size.
 type CoverageResult struct {
 	Report orchestrator.CoverageReport
+	// Check carries the coverage-policy verdict when .drift/coverage.xml is
+	// configured; nil when no config exists. Additive — presenters render it
+	// after the existing report, JSON fields are omitempty. See
+	// cli.coverage_config.
+	Check *CoverageCheckResult
 }
+
+// CoverageCheckResult is the applied coverage policy: the global target and
+// the per-path failures (empty when the check passes).
+type CoverageCheckResult struct {
+	Target   int
+	Failures []CoverageFailure
+}
+
+// CoverageFailure is one path group below its target.
+type CoverageFailure struct {
+	Group  string // pattern, or "(global)" for unmatched files
+	Actual int    // percent covered
+	Target int
+}
+
+// Passed reports whether every path group meets its target.
+func (c *CoverageCheckResult) Passed() bool { return len(c.Failures) == 0 }
 
 // OkResult is a generic success message for commands that don't produce
 // structured data (init, link, unlink, reset).

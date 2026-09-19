@@ -766,6 +766,16 @@ func (p PlainPresenter) Coverage(r CoverageResult) string {
 
 	sb.WriteString(fmt.Sprintf("\nChecked %d files. %s of lines are under spec protection.\n",
 		t.FilesWalked, pct(t.CoveredAny, t.TotalLines)))
+	if r.Check != nil {
+		verb := "PASS"
+		if !r.Check.Passed() {
+			verb = "FAIL"
+		}
+		sb.WriteString(fmt.Sprintf("\nTarget: %d%% — %s\n", r.Check.Target, verb))
+		for _, f := range r.Check.Failures {
+			sb.WriteString(fmt.Sprintf("  %s: %d%% vs target %d%%\n", f.Group, f.Actual, f.Target))
+		}
+	}
 	return strings.TrimRight(sb.String(), "\n")
 }
 // D! id=opcov range-end

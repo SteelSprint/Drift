@@ -1,0 +1,4 @@
+<coverage>
+  <!-- 2026-09-19 baseline: 63%. Target is the AGENTS.md commitment. -->
+  <target lines="80"/>
+</coverage>

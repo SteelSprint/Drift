@@ -659,6 +659,20 @@ func (p ColorPresenter) Coverage(r CoverageResult) string {
 
 	sb.WriteString(fmt.Sprintf("\nChecked %d files. %s of lines are under spec protection.\n",
 		tot.FilesWalked, pct(tot.CoveredAny, tot.TotalLines)))
+	if r.Check != nil {
+		verb := t.StatusOK.Apply("PASS")
+		if !r.Check.Passed() {
+			verb = t.StatusError.Apply("FAIL")
+		}
+		sb.WriteString(fmt.Sprintf("\n%s\n", t.SectionHeader.Apply(fmt.Sprintf("Target: %d%% — %s", r.Check.Target, verb))))
+		for _, f := range r.Check.Failures {
+			sb.WriteString(fmt.Sprintf("  %s: %s vs %s\n",
+				t.Filepath.Apply(f.Group),
+				t.StatusError.Apply(fmt.Sprintf("%d%%", f.Actual)),
+				fmt.Sprintf("target %d%%", f.Target)))
+		}
+	}
 	return strings.TrimRight(sb.String(), "\n")
 }
+
 // D! id=ocpcov range-end

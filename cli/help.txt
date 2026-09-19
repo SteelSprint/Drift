@@ -12,7 +12,8 @@ Commands:
   show <marker|spec>            Show full citation closure of a spec or marker
                                 (--no-content: graph overview without content bytes)
   coverage                      Report spec coverage: lines covered by markers,
-                                code vs markdown vs spec layer (read-only, exit 0)
+                                code vs markdown vs spec layer (read-only, exit 0);
+                                --check enforces .drift/coverage.xml targets
   diff <hash>                   Show what changed for every node in the closure
   diff --all                    Show diffs for ALL closures at once (review before reset)
   link <marker> <module.spec>   Connect a marker to a spec (link-style edge)

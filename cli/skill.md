@@ -156,6 +156,7 @@ Closures are strictly disjoint across seeds. Two seeds produce two closures, eve
 | `drift list [--verbose]` | List specs, markers, edges, sync state. |
 | `drift show <marker\|spec>` | Show full citation closure of a spec or marker — ancestors, descendants, linked markers, all edges, all content. Add `--no-content` for a graph overview without the content bytes. |
 | `drift coverage` | Read-only spec coverage report: lines covered by marker ranges, spec-enforced vs unenforced, plus the size of the spec layer. Exits 0 on every successful run (drift status is `drift todo`'s job); exit 1 on error. `--json` for build tools. |
+| `drift coverage --check` | Build gate: with `.drift/coverage.xml` configured, exits 1 while any path group is below its target. The file is optional, committed, hand-written: `<coverage><target lines="80"/><path pattern="cmd/" target="90"/></coverage>`. |
 | `drift diff <hash>` | Show unified diffs for every node in the closure. |
 | `drift diff --all` | Show diffs for all closures. |
 | `drift link <marker> <module.spec>` | Create a link edge. |
@@ -242,6 +243,7 @@ drift config theme              # show current theme
 - `state.xml` — baseline (v4). Specs, markers, edges. No resolutions table. Commit to git.
 - `baselines.bin` — gob-encoded packfile of content-addressed baseline snapshots. Commit to git.
 - `theme.xml` — project-level custom theme. Commit to git.
+- `coverage.xml` — optional project coverage policy (global + per-path targets; `drift coverage --check` enforces). Commit to git.
 - `user-settings.xml` — per-user theme preference. Do NOT commit (gitignored).
 - `state.lock` — runtime lock acquired by `fileio.Begin` for the duration of each CLI invocation. Do NOT commit (gitignored).
 - `friction.json` — rate-limit telemetry: Unix-second timestamps of recent successful non-dry-run resets, used to block rapid batch dismissal (see cli.reset_friction_block). Do NOT commit (gitignored).
@@ -300,9 +302,12 @@ drift todo --json
 # Set theme.
 drift config theme gruvbox
 
-# Check spec coverage (read-only, always exit 0).
+# Check spec coverage (read-only, exit 0 without a policy file).
 drift coverage
 drift coverage --json
+
+# Enforce a coverage target (build-gate; requires .drift/coverage.xml).
+drift coverage --check
 ```
 
 ## Cookbook

@@ -596,9 +596,22 @@ type jsonCoverageTotals struct {
 	SpecsLinked       int `json:"specsLinked"`
 }
 
+type jsonCoverageCheckFailure struct {
+	Group  string `json:"group"`
+	Actual int    `json:"actual"`
+	Target int    `json:"target"`
+}
+
+type jsonCoverageCheck struct {
+	Target   int                        `json:"target"`
+	Passed   bool                       `json:"passed"`
+	Failures []jsonCoverageCheckFailure `json:"failures"`
+}
+
 type jsonCoverage struct {
 	Files  []jsonCoverageFile `json:"files"`
 	Totals jsonCoverageTotals `json:"totals"`
+	Check  *jsonCoverageCheck `json:"check,omitempty"`
 }
 
 func (p JSONPresenter) Coverage(r CoverageResult) string {
@@ -614,6 +627,14 @@ func (p JSONPresenter) Coverage(r CoverageResult) string {
 		})
 	}
 	t := r.Report.Totals
+	var check *jsonCoverageCheck
+	if r.Check != nil {
+		failures := make([]jsonCoverageCheckFailure, 0, len(r.Check.Failures))
+		for _, f := range r.Check.Failures {
+			failures = append(failures, jsonCoverageCheckFailure{Group: f.Group, Actual: f.Actual, Target: f.Target})
+		}
+		check = &jsonCoverageCheck{Target: r.Check.Target, Passed: r.Check.Passed(), Failures: failures}
+	}
 	return marshal(jsonCoverage{
 		Files: files,
 		Totals: jsonCoverageTotals{
@@ -628,6 +649,7 @@ func (p JSONPresenter) Coverage(r CoverageResult) string {
 			SpecsTotal:        t.SpecsTotal,
 			SpecsLinked:       t.SpecsLinked,
 		},
+		Check: check,
 	})
 }
 // D! id=ojcov range-end

@@ -83,3 +83,24 @@ func TestLockMode_MetaCoverage(t *testing.T) {
 		}
 	}
 }
+
+// TestLockMode_LockNoneCommandsRunWithNilSess: every registered LockNone
+// command runs end-to-end with Context.Sess == nil (the dispatcher's
+// guarantee) and must neither panic nor touch .drift/. A future command
+// that declares LockNone but dereferences Sess fails HERE, in CI, not in
+// production. See cli.command_meta.
+func TestLockMode_LockNoneCommandsRunWithNilSess(t *testing.T) {
+	for name, cmd := range Registry {
+		if cmd.Meta().Lock != commands.LockNone {
+			continue
+		}
+		dir := t.TempDir()
+		out, code := RunWithRender([]string{name}, dir, output.PlainPresenter{})
+		if code != 0 {
+			t.Errorf("%s (LockNone) must run clean with nil Sess: code=%d out=%s", name, code, out)
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".drift")); !os.IsNotExist(err) {
+			t.Errorf("%s (LockNone) must not create .drift/", name)
+		}
+	}
+}

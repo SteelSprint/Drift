@@ -10,6 +10,10 @@ examples/
 # Exclude eval (pipeline.go contains D! marker literals in prompt strings)
 eval/
 
+# Exclude third-party tool dependencies (vendored, never spec-eligible)
+.opencode/
+node_modules/
+
 # Exclude VCS
 .git/
 

@@ -549,21 +549,23 @@ func (p ColorPresenter) ChangeSummary(r ChangeSummaryResult) string {
 	for _, nc := range r.Summary.NodeChanges {
 		old := shortHash(nc.OldHash)
 		new := shortHash(nc.NewHash)
+		// Pad the RAW kind before Apply — stripping must equal Plain's %-8s
+		// column alignment (output.guardrail_property).
 		switch nc.Kind {
 		case "changed":
 			sb.WriteString(fmt.Sprintf("  %s %s  %s → %s\n",
-				t.StatusWarn.Apply(nc.Kind), t.SpecID.Apply(nc.ID), t.Hash.Apply(old), t.Hash.Apply(new)))
+				t.StatusWarn.Apply(fmt.Sprintf("%-8s", nc.Kind)), t.SpecID.Apply(nc.ID), t.Hash.Apply(old), t.Hash.Apply(new)))
 		case "added":
 			sb.WriteString(fmt.Sprintf("  %s %s  → %s\n",
-				t.StatusWarn.Apply(nc.Kind), t.SpecID.Apply(nc.ID), t.Hash.Apply(new)))
+				t.StatusWarn.Apply(fmt.Sprintf("%-8s", nc.Kind)), t.SpecID.Apply(nc.ID), t.Hash.Apply(new)))
 		case "removed":
 			sb.WriteString(fmt.Sprintf("  %s %s  %s →\n",
-				t.StatusError.Apply(nc.Kind), t.SpecID.Apply(nc.ID), t.Hash.Apply(old)))
+				t.StatusError.Apply(fmt.Sprintf("%-8s", nc.Kind)), t.SpecID.Apply(nc.ID), t.Hash.Apply(old)))
 		}
 	}
 	for _, ec := range r.Summary.EdgeChanges {
 		sb.WriteString(fmt.Sprintf("  edge %s %s → %s\n",
-			t.StatusWarn.Apply(ec.Kind), ec.From, ec.To))
+			t.StatusWarn.Apply(fmt.Sprintf("%-8s", ec.Kind)), ec.From, ec.To))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }

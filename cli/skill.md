@@ -270,6 +270,7 @@ A runtime rate-limit layer additionally blocks the 4th reset within any 30-secon
 
 ## Edge cases
 
+- **`drift config theme` requires an initialized project**: since the no-read-side-effects change (v1.4.1), state commands — including `drift config` — fail with "project not initialized here. Run 'drift init' first." (exit 2) in a folder without `.drift/state.xml`. Previously `drift config` would create `.drift/` to store the preference; it no longer creates anything outside `drift init`. Initialize first, then set the theme.
 - **Unpaired markers**: a `range-start` without a matching `range-end` (or vice versa) is an error. The scanner reports all unpaired markers at once.
 - **Nested/overlapping ranges**: supported. Inner marker declarations are blanked before hashing.
 - **Deleted specs/markers**: kept in baseline with empty scan hash → NODE_REMOVED event. Reset removes from baseline.

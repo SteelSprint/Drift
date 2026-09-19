@@ -255,6 +255,18 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 		Edges:   evaluated.Edges,
 	}
 
+	// Cycle guard: the post-reset baseline graph MUST stay acyclic. Writing
+	// a cycle deadlocks every mutating command (todo, reset, list all
+	// validate the baseline graph before acting, and closures are derived
+	// from it), leaving hand-editing of state.xml as the only repair. Refuse
+	// BEFORE the write — this applies to dry-run previews too: a preview of
+	// a reset that would be refused IS a refusal. See core.reset_action,
+	// principles.red_before_green.
+	if err := core.DetectEdgeCycle(afterState.Edges); err != nil {
+		return core.EvaluatedState{}, ChangeSummary{}, fmt.Errorf(
+			"reset refused: syncing this closure would create a directed cycle in the baseline (%w). Fix the scan instead: remove the <ref> from the spec text, then re-run drift todo.", err)
+	}
+
 	if save {
 		if err := o.stateStore.Save(sess, afterState); err != nil {
 			return core.EvaluatedState{}, ChangeSummary{}, err

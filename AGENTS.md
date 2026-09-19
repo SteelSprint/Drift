@@ -1,5 +1,16 @@
 # Drift — Agent Guide
 
+## Session start (MUST)
+
+Run `drift skill` at the start of every session before touching code. It carries the current workflow, marker rules, and decision tree. Do not rely on memory of this file alone — the skill guide is the live contract.
+
+## Development discipline (MUST follow)
+
+- **Red before green, at the integration level.** Every bug fix or behavior change starts with a FAILING test that reproduces the bug end-to-end — through `cli.RunWithRender` (integration, real temp project) or the orchestrator, whichever matches where the behavior lives. Unit-level tests alone (e.g. core package, in-memory fixtures) are NOT sufficient: bugs like state-file corruption only appear through the real file paths. Unit tests are added alongside, not instead.
+- **Green:** the fix is the minimum change that turns the red integration test green. Then add unit tests for the boundary cases.
+- **Drift-spec everything.** Every behavior change updates the spec text in the same change (spec file + marker + link when new). New commands, exported functions, and state-mutating paths MUST be specced before the commit. Run `drift todo` → `drift diff <hash>` → `drift reset <hash>` (one closure per review) until clean. The build gate (`make build`) enforces this.
+- **Spec coverage discipline.** After spec work, run `drift coverage` (and `--json` in scripts). Every new command, exported entry point, and state file gets a spec. Unlinked specs are actionable drift (todo exit 1), not acceptable resting state. Explicit numeric coverage targets are set by the maintainer; until they are published here, the rule is: no new unlinked specs, no unmarked new command paths.
+
 Drift is a spec-drift detection tool for LLM coding agents. Specs describe behavior; markers wrap the code that implements each spec. Specs also cite each other via `<ref>` tags — those citations are tracked too, so editing a spec surfaces drift on every spec that transitively cites it. When any side changes, `drift todo` derives **closures** (per-seed drift sets) so the agent can verify alignment before resolving.
 
 ## Spec discipline workflow (MUST follow)

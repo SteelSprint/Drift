@@ -194,6 +194,16 @@ func (ctx CoreAlgorithmContext) Validate() error {
 // D! id=cval range-end
 
 // D! id=crfv range-start
+// DetectEdgeCycle reports the first directed cycle among spec-spec edges as
+// an error wrapping ErrEdgeCycle. Marker edges are ignored (markers cannot
+// be cited, so they cannot participate in a cycle). Exported for the
+// orchestrator's reset guard: baseline-edge mutations must be validated
+// BEFORE they are written, or a cycle-forming reset deadlocks todo (the
+// baseline graph is what todo validates, and closures are derived from it).
+func DetectEdgeCycle(edges []Edge) error {
+	return detectEdgeCycle(edges)
+}
+
 func detectEdgeCycle(edges []Edge) error {
 	cycles := findAllEdgeCycles(edges)
 	if len(cycles) == 0 {

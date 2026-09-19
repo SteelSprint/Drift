@@ -121,17 +121,19 @@ See <ref spec="auth.hash_password">hash_password</ref> for the canonical hashing
 
 ### No directed cycles
 
-The spec-spec ref graph must stay acyclic. If A cites B and B cites A (directly or through a chain), closure derivation cannot order the citer walk and `drift todo` fails with:
+The spec-spec ref graph must stay acyclic. If A cites B and B cites A (directly or through a chain), the baseline edge graph becomes invalid. Behavior:
+
+- While the cycle exists only in the SCAN (edge not yet baselined), `drift todo` still derives the `EDGE_ADDED` closure normally. But `drift reset <hash>` REFUSES to write it: the post-reset baseline graph must stay acyclic. The refusal reads:
 
 ```
-edge graph contains a directed cycle: m.a → m.b → m.a
+reset refused: syncing this closure would create a directed cycle in the baseline (edge graph contains a directed cycle: m.a → m.b → m.a). Fix the scan instead: remove the <ref> from the spec text, then re-run drift todo.
 ```
 
-This is fatal — no closures are derived until the cycle is broken. Cross-referencing two related specs in both directions reads like good technical writing but creates exactly this failure, and LLM agents do it by default. Discipline that works:
-
+  This guard exists because a cycle in the baseline graph deadlocks every mutating command (todo, reset, and list all validate the baseline before acting, and closures are derived from it).
+- Cross-referencing two related specs in both directions reads like good technical writing but creates exactly this failure, and LLM agents do it by default. Discipline that works:
 - Assign specs to layers and let refs point in one direction only (implementation cites requirement cites intent).
 - For a genuine back-reference, name the other spec in **plain text** instead of a `<ref>` tag — readability is preserved and the graph stays acyclic.
-- When the cycle error appears, remove one ref from the cycle, then re-run `drift todo`.
+- When the reset refusal appears, remove one ref from the cycle in the spec text, then re-run `drift todo`. The tree returns to sync without any state surgery. A baseline cycle can only exist through legacy corruption or hand-editing of state.xml; the recovery is to delete the offending `<edge .../>` line from `.drift/state.xml` by hand, then run the normal todo → diff → reset workflow.
 
 ## Closure derivation
 

@@ -49,7 +49,11 @@ Drift is a spec-drift detection tool for LLM coding agents. Specs describe behav
 make build                              # build + drift gate (preferred)
 go build -o drift ./cmd/drift           # build only, skip gate
 go test -race -count=1 ./...            # full suite with race detector
-GOOS=windows go build -o /dev/null ./statestore/   # verify Windows compiles
+GOOS=windows go build ./...             # verify Windows compiles (ALL packages —
+                                        # the release builds everything cross-platform;
+                                        # a cli/orchestrator-only Windows break must be
+                                        # caught here, not in CI)
+GOOS=windows go vet ./...               # same scope for vet
 ```
 
 - Module path is `drift`, Go 1.26.

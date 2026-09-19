@@ -149,3 +149,26 @@ func TestCoverageCheck_InvalidConfig(t *testing.T) {
 		}
 	}
 }
+
+// TestCoverageCheck_GlobalIsRepoWide: the global target applies to the
+// ENTIRE walked tree, not just files matching no pattern. Per-path targets
+// are additional constraints — they can only make the gate stricter, never
+// let a project evade the global commitment. Regression: the first
+// implementation scoped the global target to unmatched files, so patterns
+// claiming every file with low targets passed --check at ~0% repo-wide
+// coverage, and the unmatched-only group could go vacuous (empty group
+// rendering a confusing "0% vs 80%").
+func TestCoverageCheck_GlobalIsRepoWide(t *testing.T) {
+	dir := setupCoverageConfigProject(t)
+	// Patterns claim every walked file at generous targets; global stays 80.
+	writeCoverageConfig(t, dir,
+		`<coverage><target lines="80"/><path pattern="code.go" target="40"/><path pattern="legacy/" target="0"/></coverage>`)
+
+	out, code := RunWithRender([]string{"coverage", "--check"}, dir, output.PlainPresenter{})
+	if code != 1 {
+		t.Fatalf("repo-wide shortfall must fail the check even when every per-path target is met, code=%d out=%s", code, out)
+	}
+	if !strings.Contains(out, "80%") || !strings.Contains(out, "20%") {
+		t.Fatalf("failure must name the repo-wide numbers:\n%s", out)
+	}
+}

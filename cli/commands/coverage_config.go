@@ -100,15 +100,23 @@ func ParseCoverageConfig(data []byte) (CoverageConfig, error) {
 // produces the values.
 
 // EvaluateCoverageCheck applies a config to a coverage report and returns
-// the failing groups. A group fails when its covered percentage is below
-// its target. Only meaningful when cfg.Present().
+// the failing groups. The global target applies to the ENTIRE walked tree
+// (repo-wide, matching the commitment it enforces); each per-path pattern
+// is an ADDITIONAL gate on its file subset — it can only make the check
+// stricter, never let a project evade the global target. A group fails
+// when its covered percentage is below its target. Only meaningful when
+// cfg.Present().
 func EvaluateCoverageCheck(cfg CoverageConfig, report orchestrator.CoverageReport) []output.CoverageFailure {
 	type group struct{ covered, total int }
-	groups := map[string]*group{"": {}}
+	// Repo-wide group: every walked file, always.
+	repo := &group{}
+	pathGroups := map[string]*group{}
 	for _, pt := range cfg.Paths {
-		groups[pt.Pattern] = &group{}
+		pathGroups[pt.Pattern] = &group{}
 	}
 	for _, f := range report.Files {
+		repo.covered += f.CoveredAny
+		repo.total += f.TotalLines
 		key := ""
 		bestLen := -1
 		norm := filepath.ToSlash(f.Path)
@@ -117,35 +125,39 @@ func EvaluateCoverageCheck(cfg CoverageConfig, report orchestrator.CoverageRepor
 				key, bestLen = pt.Pattern, len(pt.Pattern)
 			}
 		}
-		g := groups[key]
-		g.covered += f.CoveredAny
-		g.total += f.TotalLines
+		if g := pathGroups[key]; key != "" && g != nil {
+			g.covered += f.CoveredAny
+			g.total += f.TotalLines
+		}
 	}
 
-	targets := map[string]int{"": cfg.Target}
-	for _, pt := range cfg.Paths {
-		targets[pt.Pattern] = pt.Target
+	pct := func(g *group) int {
+		if g.total == 0 {
+			return 0
+		}
+		return g.covered * 100 / g.total
 	}
 
 	var failures []output.CoverageFailure
-	keys := make([]string, 0, len(groups))
-	for k := range groups {
-		keys = append(keys, k)
+	if pct(repo) < cfg.Target {
+		failures = append(failures, output.CoverageFailure{Group: "(repo)", Actual: pct(repo), Target: cfg.Target})
 	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		g := groups[k]
-		target := targets[k]
-		pct := 0
-		if g.total > 0 {
-			pct = g.covered * 100 / g.total
-		}
-		if pct < target {
-			name := k
-			if name == "" {
-				name = "(global)"
+	patterns := make([]string, 0, len(pathGroups))
+	for k := range pathGroups {
+		patterns = append(patterns, k)
+	}
+	sort.Strings(patterns)
+	for _, k := range patterns {
+		g := pathGroups[k]
+		target := 0
+		for _, pt := range cfg.Paths {
+			if pt.Pattern == k {
+				target = pt.Target
+				break
 			}
-			failures = append(failures, output.CoverageFailure{Group: name, Actual: pct, Target: target})
+		}
+		if pct(g) < target {
+			failures = append(failures, output.CoverageFailure{Group: k, Actual: pct(g), Target: target})
 		}
 	}
 	return failures

@@ -19,6 +19,7 @@ func (c ListCommand) Run(ctx Context) (output.Result, int) {
 // D! id=clst range-end
 func (c ListCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "list",
 		Short: "Show all specs, markers, links, and sync state",
 		Usage: "Usage: drift list [--verbose]\n\nShow all specs, markers, links, and sync state.\n--verbose: include spec text and marker content preview.",

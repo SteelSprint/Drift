@@ -104,6 +104,7 @@ func ensureGitignore(dir string) {
 
 func (c ConfigCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "config",
 		Short: "Set user preferences (theme)",
 		Usage: "Usage: drift config theme <name>\n\nSet or display user-specific preferences stored in .drift/user-settings.xml\n(not committed to git).\n\nSubcommands:\n  config theme <name>   Set theme preference (e.g. gruvbox, nord, dracula)\n  config theme          Display current theme preference\n\nAvailable themes:\n  default, minimal, monochrome, high-contrast, dark, light, protanopia,\n  solarized-dark, solarized-light, gruvbox, nord, dracula\n\nExample:\n  drift config theme gruvbox",

@@ -57,6 +57,7 @@ func (c UnlinkCommand) Run(ctx Context) (output.Result, int) {
 // D! id=cunlnk range-end
 func (c UnlinkCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "unlink",
 		Short: "Remove a link between a marker and a spec",
 		Usage: "Usage:\n  drift unlink <marker> <module.spec>               Remove the link (exit 0)\n  drift unlink --dry-run <marker> <module.spec>  Preview the change summary without writing (exit 3)\n\nRemove a link between a marker and a spec.\n\nExamples:\n  drift unlink validate_input core.validate_input\n  drift unlink --dry-run validate_input core.validate_input",

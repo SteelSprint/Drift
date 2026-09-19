@@ -20,6 +20,7 @@ func (c CoverageCommand) Run(ctx Context) (output.Result, int) {
 
 func (c CoverageCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "coverage",
 		Short: "Report spec coverage (lines covered by markers)",
 		Usage: "Usage: drift coverage\n\nRead-only report of how many lines marker ranges cover.\nFiles with markers are listed individually; marker-free subtrees are\ncollapsed to one row. Totals split code vs markdown, plus the size of\nthe spec layer itself. Always exits 0 — use --json for build tools.\n\nExamples:\n  drift coverage\n  drift coverage --json",

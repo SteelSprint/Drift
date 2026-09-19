@@ -55,6 +55,7 @@ func isSpecIDLocal(id string) bool {
 
 func (c TodoCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "todo",
 		Short: "Scan specs and markers, report drift closures",
 		Usage: "Usage: drift todo\n\nScan specs and markers, report drift closures.\nExit codes: 0 = clean (all linked + in sync), 1 = drift or unlinked markers, 2 = error.\n\nNo arguments.",

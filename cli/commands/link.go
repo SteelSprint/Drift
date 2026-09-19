@@ -57,6 +57,7 @@ func (c LinkCommand) Run(ctx Context) (output.Result, int) {
 // D! id=clfmt range-end
 func (c LinkCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "link",
 		Short: "Connect a marker to a spec",
 		Usage: "Usage:\n  drift link <marker> <module.spec>                 Create the link (exit 0)\n  drift link --dry-run <marker> <module.spec>    Preview the change summary without writing (exit 3)\n\nConnect a marker to a spec. Both must exist on disk.\n\nExamples:\n  drift link validate_input core.validate_input\n  drift link --dry-run validate_input core.validate_input",

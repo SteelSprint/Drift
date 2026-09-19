@@ -17,6 +17,7 @@ func (c VersionCommand) Run(ctx Context) (output.Result, int) {
 
 func (c VersionCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockNone,
 		Name:  "version",
 		Short: "Show version",
 		Usage: "Usage: drift version\n\nShow the drift version string.",

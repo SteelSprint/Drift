@@ -3,9 +3,8 @@ package output
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
-
-	"drift/internal/fileio"
 )
 
 // D! id=otty range-start
@@ -69,9 +68,12 @@ func colorModeValue(args []string) string {
 //  2. .drift/user-settings.xml (user-level, NOT committed)
 //  3. DefaultTheme
 //
-// Theme files are read via a short-lived fileio.Session opened on dir. The
-// Session is closed before this function returns; the caller (main.go) begins
-// a fresh Session for the command's actual work.
+// Theme files are read with plain file reads (os.ReadFile) — NOT via a
+// fileio.Session. Theme resolution must never create .drift/ or take the
+// state lock: it runs for every invocation (including bare `drift`, `drift
+// help`, and unknown commands) before dispatch. Writers of these files use
+// atomic rename, so a concurrent reader sees either the old or the new file —
+// never a torn read.
 func SelectPresenter(args []string, stdout *os.File, env []string, dir string) Presenter {
 	if hasFlag(args, "--json") {
 		return JSONPresenter{}
@@ -94,44 +96,47 @@ func SelectPresenter(args []string, stdout *os.File, env []string, dir string) P
 			return PlainPresenter{}
 		}
 	}
-	theme, err := loadThemeForDir(dir)
-	if err != nil {
-		// Lock failure shouldn't crash output selection; fall back to default.
-		fmt.Fprintf(os.Stderr, "warning: could not acquire session for theme resolution: %v\n", err)
-		theme = DefaultTheme
-	}
-	return ColorPresenter{Theme: theme}
+	return ColorPresenter{Theme: resolveThemeFromDir(dir)}
 }
 
-// loadThemeForDir opens a short-lived Session on dir and resolves the theme
-// via resolveTheme.
-func loadThemeForDir(dir string) (Theme, error) {
-	sess, err := fileio.Begin(dir)
-	if err != nil {
-		return DefaultTheme, err
-	}
-	defer sess.Close()
-	return resolveTheme(sess), nil
+// readDriftFile returns the bytes of .drift/<name>, or a not-exist error when
+// the file (or the .drift/ directory itself) is absent. Plain read — no lock.
+func readDriftFile(dir, name string) ([]byte, error) {
+	return os.ReadFile(filepath.Join(dir, ".drift", name))
 }
 
-// resolveTheme returns the effective Theme using the 3-level precedence:
+// resolveThemeFromDir resolves the theme by reading .drift/theme.xml and
+// .drift/user-settings.xml directly from disk. It never locks and never
+// creates anything; missing files simply mean lower-precedence defaults.
+func resolveThemeFromDir(dir string) Theme {
+	return resolveTheme(func(name string) ([]byte, error) {
+		return readDriftFile(dir, name)
+	})
+}
+
+// resolveTheme returns the effective Theme using the 3-level precedence,
+// reading each level through the supplied reader:
 //  1. .drift/theme.xml (project-level full definition, committed)
 //  2. .drift/user-settings.xml (user preference, NOT committed)
 //  3. DefaultTheme
 //
 // If user-settings.xml contains an invalid theme name, a warning is printed
 // to stderr and DefaultTheme is used.
-func resolveTheme(sess *fileio.Session) Theme {
+func resolveTheme(read func(name string) ([]byte, error)) Theme {
 	// 1. Project-level custom theme (all 18 elements)
-	if custom, err := LoadCustomTheme(sess); err == nil {
-		return custom
+	if data, err := read("theme.xml"); err == nil {
+		if custom, err := ParseCustomTheme(data); err == nil {
+			return custom
+		}
 	}
 	// 2. User preference (built-in theme name)
-	if settings, err := LoadUserSettings(sess); err == nil && settings.Theme != "" {
-		if theme, ok := lookupTheme(settings.Theme); ok {
-			return theme
+	if data, err := read("user-settings.xml"); err == nil {
+		if settings, err := ParseUserSettings(data); err == nil && settings.Theme != "" {
+			if theme, ok := lookupTheme(settings.Theme); ok {
+				return theme
+			}
+			fmt.Fprintf(os.Stderr, "warning: unknown theme %q in user-settings.xml, using default\n", settings.Theme)
 		}
-		fmt.Fprintf(os.Stderr, "warning: unknown theme %q in user-settings.xml, using default\n", settings.Theme)
 	}
 	// 3. Default
 	return DefaultTheme

@@ -16,6 +16,7 @@ func (c SkillCommand) Run(ctx Context) (output.Result, int) {
 // D! id=cskill range-end
 func (c SkillCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockNone,
 		Name:  "skill",
 		Short: "Print comprehensive guide (for LLM agents)",
 		Usage: "Usage: drift skill\n\nPrint the comprehensive drift guide for LLM agents: workflow, spec file format,\nmarker syntax and range hashing model, CLI command table, drift detection model,\n.drift/ directory layout, and edge cases.\n\nNo arguments.",

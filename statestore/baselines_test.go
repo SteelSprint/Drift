@@ -18,7 +18,7 @@ func newTestBaselineStore(t *testing.T) (*statestore.BaselineStore, *fileio.Sess
 	if err := os.MkdirAll(filepath.Join(dir, ".drift"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatalf("fileio.Begin: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestBaselineStorePersistsAcrossSessions(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".drift"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	sess1, err := fileio.Begin(dir)
+	sess1, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestBaselineStorePersistsAcrossSessions(t *testing.T) {
 	}
 	sess1.Close()
 
-	sess2, err := fileio.Begin(dir)
+	sess2, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

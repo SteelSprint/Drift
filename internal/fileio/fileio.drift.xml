@@ -4,12 +4,13 @@ Overview: Session is the sole gateway for reads and writes to files under .drift
 
 Defined terms:
   Session — see <ref spec="glossary.session">glossary.session</ref>
-  Begin   — the constructor function; acquires the lock and returns a *Session
+  Begin   — the constructor function for state commands; REQUIRES an initialized project (state.xml present), acquires the lock, returns a *Session. Returns ErrNotInitialized and touches nothing when the project is not initialized. NEVER creates .drift/.
+  BeginCreate — the constructor for the init path ONLY: same lock as Begin, but creates .drift/ and state.lock if missing. `drift init` is the sole permitted caller.
   Close   — the release function; idempotent
-  Caller  — the function that invokes Begin and is responsible for calling Close
+  Caller  — the function that invokes Begin or BeginCreate and is responsible for calling Close
 
 Requirements:
-  R1. Begin(dir) MUST acquire an exclusive advisory lock on .drift/state.lock before returning. The lock file MUST be created if it does not exist, and .drift/ MUST be created if it does not exist.
+  R1. Begin(dir) MUST acquire an exclusive advisory lock on .drift/state.lock before returning. The lock file MUST be created if it does not exist (state.lock is a gitignored runtime artifact inside an already-initialized .drift/). Begin MUST NOT create .drift/ itself: if .drift/state.xml does not exist, Begin MUST return ErrNotInitialized without touching the filesystem. BeginCreate MAY create .drift/ (os.MkdirAll) and the lock file; only the init command path may call it.
   R2. Begin MUST block until the lock is acquired. There MUST be no implicit timeout; callers needing bounded wait MUST wrap in a context-with-deadline at the call site.
   R3. The lock MUST be released when (a) Close is called, OR (b) the process exits (crash or normal termination).
   R4. Concurrent Begin calls from distinct processes MUST serialize. The implementation MUST NOT silently corrupt state under concurrent invocation.
@@ -22,7 +23,7 @@ Platform behavior:
   Unix:    lock acquired via unix.Flock(fd, unix.LOCK_EX) on .drift/state.lock
   Windows: lock acquired via windows.LockFileEx with LOCKFILE_EXCLUSIVE_LOCK flag on .drift/state.lock (1-byte range lock)
 
-See also: fileio.read, fileio.write_atomicity, glossary.session, pinstore.load, pinstore.save.
+See also: fileio.read, fileio.write_atomicity, glossary.session, pinstore.load, pinstore.save, principles.no_read_side_effects.
 </spec>
 
 <spec id="read">

@@ -19,7 +19,7 @@ func beginTestSession(t *testing.T, dir string) *fileio.Session {
 	if err := os.MkdirAll(filepath.Join(dir, ".drift"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatalf("fileio.Begin: %v", err)
 	}

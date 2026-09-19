@@ -22,7 +22,7 @@ func TestBeginCreatesDriftDir(t *testing.T) {
 	if _, err := os.Stat(driftDir); err == nil {
 		t.Fatalf("precondition: .drift/ should not exist")
 	}
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
@@ -39,14 +39,14 @@ func TestBeginCreatesDriftDir(t *testing.T) {
 // until the first Session is Closed.
 func TestBeginBlocksOnHeldLock(t *testing.T) {
 	dir := t.TempDir()
-	sess1, err := fileio.Begin(dir)
+	sess1, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatalf("Begin 1: %v", err)
 	}
 
 	began := make(chan struct{})
 	go func() {
-		_, _ = fileio.Begin(dir) // blocks
+		_, _ = fileio.BeginCreate(dir) // blocks
 		close(began)
 	}()
 
@@ -70,14 +70,14 @@ func TestBeginBlocksOnHeldLock(t *testing.T) {
 // TestCloseReleasesLockAllowsReacquire: after Close, a fresh Begin succeeds.
 func TestCloseReleasesLockAllowsReacquire(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	sess2, err := fileio.Begin(dir)
+	sess2, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatalf("Begin after Close: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestCloseReleasesLockAllowsReacquire(t *testing.T) {
 // TestCloseIsIdempotent: calling Close twice does not error.
 func TestCloseIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestCloseIsIdempotent(t *testing.T) {
 // exist returns an error for which os.IsNotExist reports true.
 func TestReadReturnsIsNotExistForMissingFile(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestReadReturnsIsNotExistForMissingFile(t *testing.T) {
 // TestWriteThenReadRoundTrip: Write followed by Read returns the same bytes.
 func TestWriteThenReadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestWriteThenReadRoundTrip(t *testing.T) {
 // TestWriteOverwritesExisting: Write on an existing file replaces its content.
 func TestWriteOverwritesExisting(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestWriteOverwritesExisting(t *testing.T) {
 // rejected, since Session only operates on direct children of .drift/.
 func TestWriteRejectsBadNames(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestWriteRejectsBadNames(t *testing.T) {
 // TestWriteAfterClose: Write on a closed Session errors.
 func TestWriteAfterClose(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestConcurrentBeginSerializes(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sess, err := fileio.Begin(dir)
+			sess, err := fileio.BeginCreate(dir)
 			if err != nil {
 				t.Errorf("Begin: %v", err)
 				return
@@ -231,7 +231,7 @@ func TestConcurrentBeginSerializes(t *testing.T) {
 // — never a partial write. Verifies atomicity of the temp+rename pattern.
 func TestParallelWriteReadConsistency(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestCrossProcessMutualExclusion(t *testing.T) {
 	}
 	if os.Getenv("FILEIO_HOLD_LOCK") == "1" {
 		// Subprocess mode: acquire and hold until stdin is closed.
-		sess, err := fileio.Begin(os.Args[len(os.Args)-1])
+		sess, err := fileio.BeginCreate(os.Args[len(os.Args)-1])
 		if err != nil {
 			os.Exit(2)
 		}
@@ -323,7 +323,7 @@ func TestCrossProcessMutualExclusion(t *testing.T) {
 	// Parent's Begin must block.
 	began := make(chan error, 1)
 	go func() {
-		sess, err := fileio.Begin(dir)
+		sess, err := fileio.BeginCreate(dir)
 		if err != nil {
 			began <- err
 			return
@@ -344,7 +344,7 @@ func TestCrossProcessMutualExclusion(t *testing.T) {
 // removed after Begin (defense-in-depth per write_atomicity R2).
 func TestWriteRecreatesDriftDirIfMissing(t *testing.T) {
 	dir := t.TempDir()
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,6 +50,7 @@ func hasFlag(args []string, flag string) bool {
 
 func (c ShowCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "show",
 		Short: "Show citation closure of a spec or marker",
 		Usage: "Usage: drift show <marker|spec> [--no-content]\n\nShow the full citation closure reachable from the seed: every spec\ntransitively connected (ancestors + descendants), every marker linked\nto any reached spec, and every edge among them. Diamond/forking cases\npreserved in the edges list.\n\nFlags:\n  --no-content  Omit Content from each node. Useful for fetching the\n                graph overview cheaply; content can be fetched per-spec\n                via a second call.\n\nExamples:\n  drift show cval\n  drift show core.validate\n  drift show core.validate --no-content",

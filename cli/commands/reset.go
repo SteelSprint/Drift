@@ -90,6 +90,7 @@ func (c ResetCommand) Run(ctx Context) (output.Result, int) {
 // D! id=crfmt range-end
 func (c ResetCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "reset",
 		Short: "Resolve a drift closure by syncing baseline to scan",
 		Usage: "Usage:\n  drift reset <hash>           Resolve a closure by syncing its seed events into baseline (exit 0)\n  drift reset --dry-run <hash>  Preview the change summary without writing; exits 3 (LLM signal: no change applied)\n  drift reset --dangerously-override-friction <hash>  Bypass the rate-limit block (see cli.reset_friction_block); intended for tests and CI\n\nThe hash is the 8-character closure ID printed by `drift todo`.\nClosures containing only broken-edge events are refused (fix the scan instead).\n\nRate limit: drift blocks the 4th reset within any 30-second window. The block enforces per-closure review (the friction principle); the override exists for tests and CI but is not advertised in error output.\n\nExamples:\n  drift reset a3f7b2c1\n  drift reset --dry-run a3f7b2c1",

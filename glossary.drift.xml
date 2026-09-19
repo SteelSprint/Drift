@@ -3,7 +3,7 @@
 
 <spec id="marker">Marker: a code region tagged with drift range markers. A marker is a pair of code lines "// D! id=&lt;shortcode&gt; range-start" and "// D! id=&lt;shortcode&gt; range-end" wrapping the implementing region. The shortcode contains no dot. The scanner hashes the lines between the markers (see scanner.marker_discovery, scanner.range_markers). Markers are the implementation side of the spec/code duality. Markers cannot be cited (see model.provenance A2).</spec>
 
-<spec id="session">Session: an opaque value of type *fileio.Session returned by fileio.Begin. A Session is the exclusive owner of the advisory lock on .drift/state.lock for the duration of a CLI invocation (see fileio.session). All reads and writes to .drift/ files MUST route through a Session.</spec>
+<spec id="session">Session: an opaque value of type *fileio.Session returned by fileio.Begin (state commands; requires an initialized project) or fileio.BeginCreate (the init path; creates .drift/). A Session is the exclusive owner of the advisory lock on .drift/state.lock for the duration of a CLI invocation (see fileio.session). All reads and writes to .drift/ files MUST route through a Session.</spec>
 
 <spec id="baseline">Baseline: the last-reviewed state of the drift citation graph, persisted in .drift/state.xml. Concretely: the set of specs (with hashes), markers (with hashes), and edges at the time of the most recent drift reset. Baseline content snapshots are stored separately in .drift/baselines.bin. A baseline hash that matches the current scan hash means "this node has not changed since last review."</spec>
 

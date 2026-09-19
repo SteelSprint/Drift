@@ -10,14 +10,13 @@ import (
 // TestResolveTheme_Level1CustomTheme: .drift/theme.xml overrides everything.
 func TestResolveTheme_Level1CustomTheme(t *testing.T) {
 	dir := t.TempDir()
-	sess := beginSettingsSession(t, dir)
 	writeCustomThemeFile(t, dir)
 
 	// Also write user-settings — must be ignored when custom theme present.
 	os.WriteFile(filepath.Join(dir, ".drift", "user-settings.xml"),
 		[]byte(`<settings><theme>gruvbox</theme></settings>`), 0o644)
 
-	theme := resolveTheme(sess)
+	theme := resolveThemeFromDir(dir)
 	if theme.Name != "custom" {
 		t.Fatalf("custom theme should win; got Name=%q", theme.Name)
 	}
@@ -27,11 +26,11 @@ func TestResolveTheme_Level1CustomTheme(t *testing.T) {
 // built-in name applies.
 func TestResolveTheme_Level2UserSettings(t *testing.T) {
 	dir := t.TempDir()
-	sess := beginSettingsSession(t, dir)
-	os.WriteFile(filepath.Join(dir, ".drift", "user-settings.xml"),
+	os.MkdirAll(filepath.Join(dir, ".drift"), 0755)
+os.WriteFile(filepath.Join(dir, ".drift", "user-settings.xml"),
 		[]byte(`<settings><theme>gruvbox</theme></settings>`), 0o644)
 
-	theme := resolveTheme(sess)
+	theme := resolveThemeFromDir(dir)
 	if theme.Name != "gruvbox" {
 		t.Fatalf("user-settings theme should apply; got Name=%q", theme.Name)
 	}
@@ -40,9 +39,8 @@ func TestResolveTheme_Level2UserSettings(t *testing.T) {
 // TestResolveTheme_Level3Default: no files → DefaultTheme.
 func TestResolveTheme_Level3Default(t *testing.T) {
 	dir := t.TempDir()
-	sess := beginSettingsSession(t, dir)
 
-	theme := resolveTheme(sess)
+	theme := resolveThemeFromDir(dir)
 	if theme.Name != DefaultTheme.Name {
 		t.Fatalf("expected DefaultTheme %q, got %q", DefaultTheme.Name, theme.Name)
 	}
@@ -52,8 +50,8 @@ func TestResolveTheme_Level3Default(t *testing.T) {
 // prints a warning to stderr and falls back to DefaultTheme.
 func TestResolveTheme_InvalidUserSettingsName(t *testing.T) {
 	dir := t.TempDir()
-	sess := beginSettingsSession(t, dir)
-	os.WriteFile(filepath.Join(dir, ".drift", "user-settings.xml"),
+	os.MkdirAll(filepath.Join(dir, ".drift"), 0755)
+os.WriteFile(filepath.Join(dir, ".drift", "user-settings.xml"),
 		[]byte(`<settings><theme>nonexistent-theme</theme></settings>`), 0o644)
 
 	// Capture stderr.
@@ -62,7 +60,7 @@ func TestResolveTheme_InvalidUserSettingsName(t *testing.T) {
 	os.Stderr = w
 	t.Cleanup(func() { os.Stderr = oldStderr })
 
-	theme := resolveTheme(sess)
+	theme := resolveThemeFromDir(dir)
 	w.Close()
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
@@ -82,11 +80,11 @@ func TestResolveTheme_InvalidUserSettingsName(t *testing.T) {
 // theme element empty → falls back to DefaultTheme (level 3), no warning.
 func TestResolveTheme_EmptyUserSettingsFallsBack(t *testing.T) {
 	dir := t.TempDir()
-	sess := beginSettingsSession(t, dir)
+	os.MkdirAll(filepath.Join(dir, ".drift"), 0755)
 	os.WriteFile(filepath.Join(dir, ".drift", "user-settings.xml"),
 		[]byte(`<settings><theme></theme></settings>`), 0o644)
 
-	theme := resolveTheme(sess)
+	theme := resolveThemeFromDir(dir)
 	if theme.Name != DefaultTheme.Name {
 		t.Fatalf("empty theme should fall back to DefaultTheme %q, got %q", DefaultTheme.Name, theme.Name)
 	}
@@ -95,6 +93,9 @@ func TestResolveTheme_EmptyUserSettingsFallsBack(t *testing.T) {
 // writeCustomThemeFile writes a valid .drift/theme.xml with all 18 elements.
 func writeCustomThemeFile(t *testing.T, dir string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".drift"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	var elements []byte
 	for _, id := range AllElementIDs {
 		elements = append(elements, []byte(`<element id="`+id+`" color="red"/>`+"\n")...)

@@ -37,6 +37,7 @@ func (c DiffCommand) Run(ctx Context) (output.Result, int) {
 // D! id=cdiff range-end
 func (c DiffCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockRequire,
 		Name:  "diff",
 		Short: "Show what changed in a closure (or all closures)",
 		Usage: "Usage:\n  drift diff <hash>     Show unified diff for every node in the closure\n  drift diff --all      Show diffs for ALL closures at once\n\nThe hash is the 8-character closure ID printed by `drift todo`.\n\nExamples:\n  drift diff a3f7b2c1\n  drift diff --all",

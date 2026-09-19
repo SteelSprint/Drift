@@ -21,17 +21,11 @@ type elementXML struct {
 	Dim   bool   `xml:"dim,attr"`
 }
 
-// LoadCustomTheme reads .drift/theme.xml via the Session and returns a Theme
+// ParseCustomTheme parses the bytes of a theme.xml file and returns a Theme
 // built from the 18 element entries. All 18 element IDs must be present (full
-// override — no inheritance from built-in themes). Returns os.ErrNotExist if
-// the file does not exist; returns a descriptive error if any element is
-// missing.
-func LoadCustomTheme(sess *fileio.Session) (Theme, error) {
-	data, err := sess.Read("theme.xml")
-	if err != nil {
-		return Theme{}, err
-	}
-
+// override — no inheritance from built-in themes). Returns a descriptive
+// error if the XML is malformed or any element is missing.
+func ParseCustomTheme(data []byte) (Theme, error) {
 	var raw themeXML
 	if err := xml.Unmarshal(data, &raw); err != nil {
 		return Theme{}, fmt.Errorf("theme.xml: %s", err)
@@ -71,6 +65,17 @@ func LoadCustomTheme(sess *fileio.Session) (Theme, error) {
 		CodeKeyword:   styleMap["code_keyword"],
 		CodeNumber:    styleMap["code_number"],
 	}, nil
+}
+
+// LoadCustomTheme reads .drift/theme.xml via the Session and parses it with
+// ParseCustomTheme. Returns the Session's not-exist error if the file does
+// not exist (callers treat this as "no custom theme, use built-in").
+func LoadCustomTheme(sess *fileio.Session) (Theme, error) {
+	data, err := sess.Read("theme.xml")
+	if err != nil {
+		return Theme{}, err
+	}
+	return ParseCustomTheme(data)
 }
 
 // D! id=otload range-end

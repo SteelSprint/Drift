@@ -14,7 +14,7 @@ func newFrictionSession(t *testing.T) (*fileio.Session, string) {
 	t.Helper()
 	dir := t.TempDir()
 	driftDir := filepath.Join(dir, ".drift")
-	sess, err := fileio.Begin(dir)
+	sess, err := fileio.BeginCreate(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestCheckFriction_PermitsBelowBurst(t *testing.T) {
 func TestCheckFriction_PermitsWhenStale(t *testing.T) {
 	sess, driftDir := newFrictionSession(t)
 	now := time.Now().Unix()
-	old := now - int64((frictionWindow + 5*time.Second)/time.Second)
+	old := now - int64((frictionWindow+5*time.Second)/time.Second)
 	writeFrictionFile(t, driftDir, frictionFile{Resets: []int64{old, old, old, old, old}})
 	if err := checkFriction(sess); err != nil {
 		t.Fatalf("expected nil for stale-only timestamps, got: %v", err)

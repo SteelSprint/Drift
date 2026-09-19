@@ -27,17 +27,48 @@ const driftSubdir = ".drift"
 // lockFileName is the name of the lock file inside .drift/.
 const lockFileName = "state.lock"
 
+// stateFileName is the state file whose presence marks an initialized project.
+const stateFileName = "state.xml"
+
 // D! id=fbeg range-start
 
-// Begin acquires an exclusive advisory lock on .drift/state.lock (creating it
-// if needed) and returns a Session through which all .drift/ I/O during the
-// transaction must route. Blocks until the lock is acquired. The lock is
+// ErrNotInitialized is returned by Begin when the project has no
+// .drift/state.xml. Callers surface it as a "run 'drift init' first" error.
+// It distinguishes "not a drift project here" from I/O failure.
+var ErrNotInitialized = errors.New("fileio: project not initialized (.drift/state.xml not found)")
+
+// Begin acquires an exclusive advisory lock on .drift/state.lock and returns
+// a Session through which all .drift/ I/O during the transaction must route.
+// Begin NEVER creates .drift/ — only init (via BeginCreate) and Session.Write
+// do. If .drift/state.xml does not exist, Begin returns ErrNotInitialized and
+// touches nothing. Blocks until the lock is acquired. The lock is
 // auto-released when the Session is Closed or the process exits.
 //
 // Concurrent Begin calls from different processes serialize. Within the same
 // process, concurrent Begin calls block on each other (flock is not reentrant
 // across separate file descriptors of the same file).
 func Begin(dir string) (*Session, error) {
+	statePath := filepath.Join(dir, driftSubdir, stateFileName)
+	if _, err := os.Stat(statePath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNotInitialized
+		}
+		return nil, fmt.Errorf("fileio: stat %s: %w", statePath, err)
+	}
+	return beginWithLock(dir)
+}
+
+// BeginCreate acquires the same exclusive advisory lock as Begin, but creates
+// .drift/ and .drift/state.lock if they do not exist. Only the init command
+// path may call it: it exists so `drift init` can lock a project it is about
+// to create. Every other caller MUST use Begin and handle ErrNotInitialized.
+func BeginCreate(dir string) (*Session, error) {
+	return beginWithLock(dir)
+}
+
+// beginWithLock opens (creating if needed) .drift/state.lock inside an
+// existing or about-to-be-created .drift/ and takes the exclusive lock.
+func beginWithLock(dir string) (*Session, error) {
 	driftDir := filepath.Join(dir, driftSubdir)
 	if err := os.MkdirAll(driftDir, 0755); err != nil {
 		return nil, fmt.Errorf("fileio: create %s: %w", driftDir, err)

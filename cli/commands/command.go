@@ -30,6 +30,26 @@ type Context struct {
 	Sess *fileio.Session
 }
 
+// LockMode declares a command's state-access needs. The dispatcher reads it
+// before Run and decides whether — and how — to open the fileio.Session:
+//
+//	LockNone     the command never touches .drift/ (help, skill, version).
+//	             No session is opened; Context.Sess is nil.
+//	LockRequire  the command reads or writes state of an initialized project
+//	             (todo, list, show, coverage, diff, link, unlink, reset,
+//	             config). The dispatcher locks via fileio.Begin; an
+//	             uninitialized project fails with exit code 2 and a "run
+//	             'drift init' first" message. No .drift/ is created.
+//	LockInit     only init. The dispatcher locks via fileio.BeginCreate, which
+//	             creates .drift/ — init is the single command that may.
+type LockMode int
+
+const (
+	LockNone LockMode = iota
+	LockRequire
+	LockInit
+)
+
 // Meta describes a command's user-facing metadata. The dispatcher derives
 // help text, flag validation, and the command table from Meta — this is the
 // single source of truth that replaces the former help.txt,
@@ -39,9 +59,11 @@ type Meta struct {
 	Short string   // one-line description for the command table in `drift help`
 	Usage string   // multi-line usage text for `drift <cmd> --help`
 	Flags []string // recognized long flags beyond --help (e.g. "--verbose", "--all")
+	Lock  LockMode // state-access mode; see LockMode. Zero value is LockNone.
 }
 
 // Version is the build version string, set by main.go via ldflags before any
 // command dispatches. VersionCommand reads this at Run time.
 var Version = "dev"
+
 // D! id=ocmd range-end

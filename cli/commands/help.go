@@ -19,6 +19,7 @@ func (c HelpCommand) Run(ctx Context) (output.Result, int) {
 
 func (c HelpCommand) Meta() Meta {
 	return Meta{
+		Lock:  LockNone,
 		Name:  "help",
 		Short: "Show command reference with examples",
 		Usage: "Usage: drift help\n\nShow the drift command reference with examples.",

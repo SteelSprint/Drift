@@ -21,6 +21,16 @@ type settingsXML struct {
 	Theme   string   `xml:"theme"`
 }
 
+// ParseUserSettings parses the bytes of a user-settings.xml file. Malformed
+// XML returns an error.
+func ParseUserSettings(data []byte) (UserSettings, error) {
+	var raw settingsXML
+	if err := xml.Unmarshal(data, &raw); err != nil {
+		return UserSettings{}, err
+	}
+	return UserSettings{Theme: raw.Theme}, nil
+}
+
 // LoadUserSettings reads .drift/user-settings.xml via the Session. Returns
 // (UserSettings{}, nil) if the file does not exist — the normal case for
 // fresh projects or users who haven't set a preference.
@@ -32,13 +42,7 @@ func LoadUserSettings(sess *fileio.Session) (UserSettings, error) {
 		}
 		return UserSettings{}, err
 	}
-
-	var raw settingsXML
-	if err := xml.Unmarshal(data, &raw); err != nil {
-		return UserSettings{}, err
-	}
-
-	return UserSettings{Theme: raw.Theme}, nil
+	return ParseUserSettings(data)
 }
 
 // SaveUserSettings writes settings to .drift/user-settings.xml via the Session.

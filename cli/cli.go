@@ -2,6 +2,7 @@ package cli
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -88,14 +89,41 @@ func RunWithRender(args []string, dir string, presenter output.Presenter) (strin
 	baselines := statestore.NewBaselineStore()
 	orch := orchestrator.NewOrchestrator(stateStore, scn, baselines)
 
-	sess, err := fileio.Begin(dir)
-	if err != nil {
-		return presenter.Error(output.ErrorResult{
-			Message: fmt.Sprintf("drift: could not acquire session lock on %s: %v", filepath.Join(dir, ".drift"), err),
-			Exit:    1,
-		}), 1
+	// Lock handling: only LockInit may create .drift/; LockRequire fails loud
+	// on an uninitialized project; LockNone never touches the filesystem.
+	var sess *fileio.Session
+	switch cmd.Meta().Lock {
+	case commands.LockNone:
+		// No state access; commands in this group never read ctx.Sess.
+	case commands.LockInit:
+		s, err := fileio.BeginCreate(dir)
+		if err != nil {
+			return presenter.Error(output.ErrorResult{
+				Message: fmt.Sprintf("drift: could not acquire session lock on %s: %v", filepath.Join(dir, ".drift"), err),
+				Exit:    2,
+			}), 2
+		}
+		sess = s
+	default: // commands.LockRequire
+		s, err := fileio.Begin(dir)
+		if errors.Is(err, fileio.ErrNotInitialized) {
+			return presenter.Error(output.ErrorResult{
+				Command: args[0],
+				Message: fmt.Sprintf("%s: project not initialized here. Run 'drift init' first.", args[0]),
+				Exit:    2,
+			}), 2
+		}
+		if err != nil {
+			return presenter.Error(output.ErrorResult{
+				Message: fmt.Sprintf("drift: could not acquire session lock on %s: %v", filepath.Join(dir, ".drift"), err),
+				Exit:    2,
+			}), 2
+		}
+		sess = s
 	}
-	defer sess.Close()
+	if sess != nil {
+		defer sess.Close()
+	}
 
 	ctx := commands.Context{
 		Args: args,

@@ -17,6 +17,7 @@ import (
 //   - code.go with a linked marker (3 interior lines)
 //   - doc.md with a linked marker (1 interior line)
 //   - plain.go and a clean subtree (lib/) with no markers
+//
 // and baselines everything so todo is clean.
 func setupCoverageProject(t *testing.T) string {
 	t.Helper()
@@ -153,16 +154,19 @@ func TestCoverage_ExitAlwaysZero(t *testing.T) {
 	}
 }
 
-// TestCoverage_NotInitialized: prescriptive error naming the fix surfaces
-// from the state store (coverage adds no duplicate message).
+// TestCoverage_NotInitialized: dispatch refuses before the command runs —
+// exit 2, one message naming the fix, and no .drift/ directory is created.
 func TestCoverage_NotInitialized(t *testing.T) {
 	dir := t.TempDir()
 	out, code := cli.RunWithRender([]string{"coverage"}, dir, output.PlainPresenter{})
-	if code != 1 {
+	if code != 2 {
 		t.Fatalf("not-initialized: code=%d out=%s", code, out)
 	}
-	if !strings.Contains(out, "not found") || !strings.Contains(out, "drift init") {
+	if !strings.Contains(out, "not initialized") || !strings.Contains(out, "drift init") {
 		t.Fatalf("expected prescriptive not-initialized error, got:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".drift")); !os.IsNotExist(err) {
+		t.Fatalf("not-initialized run must not create .drift/")
 	}
 }
 
@@ -199,16 +203,16 @@ func TestCoverage_JSONShape(t *testing.T) {
 			LinkedMarkers int    `json:"linkedMarkers"`
 		} `json:"files"`
 		Totals struct {
-			FilesWalked       int `json:"filesWalked"`
-			FilesWithMarkers  int `json:"filesWithMarkers"`
-			TotalLines        int `json:"totalLines"`
-			CoveredAny        int `json:"coveredAny"`
-			CoveredLinked     int `json:"coveredLinked"`
-			MarkersTotal      int `json:"markersTotal"`
-			MarkersLinked     int `json:"markersLinked"`
-			SpecLines         int `json:"specLines"`
-			SpecsTotal        int `json:"specsTotal"`
-			SpecsLinked       int `json:"specsLinked"`
+			FilesWalked      int `json:"filesWalked"`
+			FilesWithMarkers int `json:"filesWithMarkers"`
+			TotalLines       int `json:"totalLines"`
+			CoveredAny       int `json:"coveredAny"`
+			CoveredLinked    int `json:"coveredLinked"`
+			MarkersTotal     int `json:"markersTotal"`
+			MarkersLinked    int `json:"markersLinked"`
+			SpecLines        int `json:"specLines"`
+			SpecsTotal       int `json:"specsTotal"`
+			SpecsLinked      int `json:"specsLinked"`
 		} `json:"totals"`
 	}
 	if err := json.Unmarshal([]byte(out), &doc); err != nil {

@@ -1,3 +1,8 @@
+---
+name: write-code
+description: The Drift repo working loop. Use when implementing features or fixing bugs in this project — walking-skeleton outer loop, spec-to-test-to-code inner loop, marker placement, and commit discipline.
+---
+
 # write-code
 
 Use this skill when implementing features, fixing bugs, or making any code changes in this project.

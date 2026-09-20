@@ -2,46 +2,26 @@
 
 ## Session start (MUST)
 
-Run `drift skill` at the start of every session before touching code. It carries the current workflow, marker rules, and decision tree. Do not rely on memory of this file alone — the skill guide is the live contract.
+Run `drift skill` at the start of every session before touching code. It carries the current workflow, marker rules, decision tree, spec-discipline workflow, exit codes, closure properties, and the command reference. Do not rely on memory of this file alone — the skill guide is the live contract. This file holds only what is specific to this repo (the dogfood layer); the shared engineering discipline cascades from the workspace root `AGENTS.md`.
 
 ## Development discipline (MUST follow)
 
-- **Red before green, at the integration level.** Every bug fix or behavior change starts with a FAILING test that reproduces the bug end-to-end — through `cli.RunWithRender` (integration, real temp project) or the orchestrator, whichever matches where the behavior lives. Unit-level tests alone (e.g. core package, in-memory fixtures) are NOT sufficient: bugs like state-file corruption only appear through the real file paths. Unit tests are added alongside, not instead.
-- **Green:** the fix is the minimum change that turns the red integration test green. Then add unit tests for the boundary cases.
-- **Drift-spec everything.** Every behavior change updates the spec text in the same change (spec file + marker + link when new). New commands, exported functions, and state-mutating paths MUST be specced before the commit. Run `drift todo` → `drift diff <hash>` → `drift reset <hash>` (one closure per review) until clean. The build gate (`make build`) enforces this.
-- **Spec coverage discipline (target: 80%).** Every new command, exported entry point, and state-mutating path MUST be inside a linked marker — 100% for new work, no exceptions. The repo-wide target is ≥80% of walked lines covered by linked markers, measured with `drift coverage --json` (totals.coveredAny / totals.totalLines). `drift.ignore` MUST exclude third-party, generated, vendored, and backup trees so the denominator is first-party code only. Unlinked specs are actionable drift (todo exit 1), not acceptable resting state. Baseline when this rule was set (2026-09-19): 63.0% — the gap closes through normal spec work, not bulk marking.
+The shared root `AGENTS.md` carries the standing discipline: red before green at the integration level, one-closure-per-review, drift-spec everything, coverage discipline, verify-before-commit, format-only-touched, no tracker files. This repo applies them as follows:
 
-Drift is a spec-drift detection tool for LLM coding agents. Specs describe behavior; markers wrap the code that implements each spec. Specs also cite each other via `<ref>` tags — those citations are tracked too, so editing a spec surfaces drift on every spec that transitively cites it. When any side changes, `drift todo` derives **closures** (per-seed drift sets) so the agent can verify alignment before resolving.
-
-## Spec discipline workflow (MUST follow)
-
-1. **`drift todo`** — see which closures drifted (each with an 8-character hash)
-2. **`drift diff <hash>`** — review every node in the closure
-3. **For each closure:** decide whether the *code* is wrong (fix the code), the *spec* is wrong (update the spec), or the *citation* is wrong (fix the `<ref>` target)
-4. **`drift reset <hash>`** — resolve ONE closure at a time, only after reviewing it
-
-**NEVER batch-reset — the rule is one closure per REVIEW, not one invocation per command.** There is no `drift reset --all`, and there is no scripted way to reset either: do not loop, script, or pipe `drift reset`, and do not collect hashes up front to resolve in sequence. Each closure is individually reviewed before its reset. A runtime rate-limit layer (`cli.reset_friction_block`) additionally blocks the 4th reset within any 30-second window; `--dangerously-override-friction` bypasses it but is not advertised in error output.
-
-**`drift todo` exit 1 means unfinished work.** Exit 0 requires both (a) all markers linked and (b) no closures derived. Unlinked markers are actionable drift.
-
-**Exit codes** (apply to every command):
-- `0` — clean success.
-- `1` — drift present / unlinked markers / todo pending.
-- `2` — error (bad args, corrupt state, I/O failure).
-- `3` — dry-run preview (no state mutation). Used by `drift reset --dry-run`, `drift link --dry-run`, `drift unlink --dry-run`. LLMs should treat exit 3 as "I haven't changed anything yet" — a successful preview, not a no-op.
+- **Red before green means `cli.RunWithRender` or the orchestrator.** Integration tests go through `cli.RunWithRender` (real temp project) or the orchestrator, whichever matches where the behavior lives. Unit-level tests alone (e.g. core package, in-memory fixtures) are NOT sufficient: bugs like state-file corruption only appear through the real file paths. Unit tests are added alongside, not instead.
+- **The build gate enforces `drift todo` cleanliness.** `make build` runs `./drift todo` as a spec-drift gate; the build fails if any drift is detected. The daily loop: `drift todo` → `drift diff <hash>` → `drift reset <hash>` (one closure per review).
+- **Coverage baseline (2026-09-19): 63.0%.** The repo-wide target is ≥80% of walked lines covered by linked markers; the gap closes through normal spec work, not bulk marking.
 
 ## Critical rules
 
-- **Specs and markers are symmetric nodes** in a directed citation graph. Both can drift; drift propagates along the citer chain (cited → citer), transitive to fixpoint. Markers cannot be cited, so drift through a marker stops there — the single retained asymmetry.
-- **Spec IDs have exactly one dot** (module separator): `main.bootstrap`, `orch.link`. Marker shortcodes have no dot. Never put a dot in a `<spec id="...">` local ID.
-- **Markers wrap the implementation region** with `// D! id=<shortcode> range-start` and `// D! id=<shortcode> range-end`. The scanner hashes the lines between the markers.
-- **Refs (`<ref spec="module.localid">label</ref>`) declare spec-spec edges.** The scanner parses them from spec content; they are stored in `state.xml` as baseline edges. Direction records who-cited-whom (used for cycle detection and provenance propagation). Renaming a referenced spec ID does NOT invalidate the referrer's hash — refs are stripped from spec content before hashing.
-- **No directed cycles among spec-spec edges.** `$1 → $2 → $1` is rejected by validation. The scanner reports all cycles in one pass.
-- **Closures are derived per-seed.** Each drift event has a seed node (the citer-side party of the change). Closure membership = seed + transitive citers (plus, for marker seeds, the linked specs so reviewers can verify the marker still implements them). Closure identity is the first 8 hex chars of SHA1(sorted node IDs + sorted undirected edge keys) — stable across drift-state changes, changes only when membership changes.
-- **Closures are strictly disjoint.** Two seeds produce two closures, even if they share non-seed citers. A non-seed citer that cites multiple drifted specs appears in each spec's closure independently.
-- **Reset is per-closure, per-seed events.** `drift reset <hash>` syncs the closure's seed events to baseline (NODE_CHANGED → set hash, EDGE_ADDED → add edge, EDGE_REMOVED → remove edge, NODE_REMOVED → remove node). Broken-edge events are no-ops on reset and persist until the user fixes the scan. Citers' state is never modified by reset — only the seed's events sync.
+The full mechanics — marker format, ref semantics, closure identity and properties, reset events, state-file committing and locking — live in `drift skill`. The rules below are the ones sessions get wrong in THIS repo; everything else is in the skill guide.
+
 - **Commit `.drift/state.xml` and `.drift/baselines.bin` to git.** They are shared baselines, not local artifacts. Do NOT commit `.drift/user-settings.xml`, `.drift/state.lock`, or `.drift/friction.json` (all gitignored).
-- **State file locking is built in.** Concurrent `drift link`/`unlink`/`reset` calls are safe — `internal/fileio` acquires an exclusive advisory lock (flock on Unix, LockFileEx on Windows) on `.drift/state.lock` for the entire CLI invocation via `fileio.Begin`; all state/baseline I/O routes through the resulting `Session`. Safe to batch these in parallel tool calls.
+- **`GOOS=windows go build ./...` and `go vet` on ALL packages** before a release: the release builds everything cross-platform; a cli/orchestrator-only Windows break must be caught here, not in CI.
+- **One external dependency**: `golang.org/x/sys` (cross-platform file locking). Do not add dependencies without strong justification.
+- **The race test (`cli/race_test.go`) runs on every `go test ./...`** — a regression guard for concurrent state mutations, not optional.
+- **State.xml v4 only.** Pre-v4 files are refused with a clear error directing the user to re-init.
+- **`make build` backs up the prior binary** to `bak/drift-<UTC-timestamp>` (gitignored). Roll back with `cp bak/drift-<ts> drift`.
 
 ## Build / test / lint
 
@@ -58,9 +38,7 @@ GOOS=windows go vet ./...               # same scope for vet
 
 - Module path is `drift`, Go 1.26.
 - One external dependency: `golang.org/x/sys` (for cross-platform file locking in `internal/fileio/`). Do not add dependencies without strong justification.
-- The race test (`cli/race_test.go`) runs on every `go test ./...` — it is a regression guard for concurrent state mutations, not optional.
-- `make build` runs `./drift todo` as a spec-drift gate. The build fails if any drift is detected. On each successful rebuild the prior binary is backed up to `bak/drift-<UTC-timestamp>` (gitignored). Roll back with `cp bak/drift-<ts> drift`.
-- State.xml v4 is the provenance-closure format (baseline only, no per-edge resolutions). Pre-v4 files are refused with a clear error directing the user to re-init.
+- `make build` runs `./drift todo` as a spec-drift gate (see Critical rules).
 
 ## Repo layout
 
@@ -93,46 +71,9 @@ The drift codebase dogfoods drift. Specs live in `*.drift.xml` files next to the
 
 Current state: 132 specs, 71 markers, 153 edges. `drift todo` should report clean on a resting tree.
 
-## Editing code that drift tracks
+Current state: `drift todo` should report clean on a resting tree.
 
-When you change code inside a `// D! id=… range-start … range-end` region:
-
-1. Run `drift todo` — the marker drifts and seeds a closure
-2. Run `drift diff <hash>` — see the code delta + deltas of every other node in the closure
-3. Read the linked spec and decide: does the spec still describe the new code?
-4. If yes → `drift reset <hash>` (baseline syncs)
-5. If no → update the spec text in the `*.drift.xml` file, then reset
-
-When you change a spec's wording in a `*.drift.xml` file:
-
-1. Run `drift todo` — the spec drifts and seeds a closure
-2. Read the linked marker region in the code (visible via `drift diff <hash>`)
-3. Decide: does the code still implement the new spec?
-4. If yes → `drift reset <hash>`
-5. If no → fix the code, then reset
-
-If the spec you changed is cited by other specs (via `<ref>`), every spec that transitively cites it appears in the same closure (provenance propagation). Every marker linked to those specs also appears in the closure. Reset the closure when verified.
-
-## Adding new specs
-
-1. Add `<spec id="localid">description</spec>` to the relevant `*.drift.xml` module file (local ID must NOT contain a dot)
-2. Wrap the implementing code region with `// D! id=<shortcode> range-start` / `range-end`
-3. `drift link <shortcode> <module.localid>` — registers the new marker and appends the edge only; it never baselines spec content
-4. `drift todo` — the new spec appears as a NODE_ADDED closure; review it (`drift diff <hash>`) and `drift reset <hash>` to establish the baseline, then todo reports clean
-
-## Citing other specs
-
-1. Add `<ref spec="module.localid">label text</ref>` (or self-closing `<ref spec="module.localid" />`) inside a `<spec>` element's content. The label text is preserved in the canonical hash; the `<ref>` tag is stripped.
-2. `drift todo` — first time, this surfaces as a closure with an EDGE_ADDED event (a new spec-spec edge). Review and run `drift reset <hash>` to baseline it.
-3. Future changes to the *cited* spec will propagate along the citer chain: every transitively-citing spec appears in the closure, plus every marker linked to those specs.
-
-## Closure properties
-
-- **Identity**: 8-character hash of sorted node IDs + sorted undirected edge keys. Stable across drift-state changes; changes only when nodes/edges are added or removed.
-- **Ephemeral**: closures exist for the current `drift todo` run; they are NOT stored in state.xml.
-- **Per-seed**: each closure has one seed (the citer-side party of the change). Reset syncs only the seed's events. Non-seed citers' state is untouched.
-- **Strictly disjoint**: two seeds produce two closures, even when sharing non-seed citers. Resetting one closure never affects another.
-- **Broken edges persist**: closures with broken-edge events survive reset (the broken edge event is a no-op on reset). The user must fix the scan (add the missing spec or remove the ref) to clear the broken edge.
+The daily workflow — editing code inside markers, editing specs, adding specs, citing specs — is the standard loop from `drift skill`; this repo follows it without modification. Marker shortcodes in this repo follow the module's spec files (see the specs list above).
 
 ## Eval harness
 
@@ -144,31 +85,5 @@ go run ./eval --battery --repeat 10 --subject <model> --judge <model>
 
 Per-prompt overrides via `<name>-subject.md` and `<name>-judge.md` files alongside `<name>.md`. The `--repeat N` flag runs the same prompt N times in parallel for a statistical baseline.
 
-## Output modes
+For output modes, themes, and the full command reference, see `drift skill`.
 
-Every command supports three output modes:
-
-- **Plain** (default when piped) — stable text, no ANSI
-- **Color** (default in TTY) — themed ANSI + syntax highlighting
-- **JSON** (`--json`) — structured output for programmatic consumption
-
-For scripting or LLM consumption, use `--json` or `--no-color`.
-
-## Themes
-
-`drift config theme <name>` sets a per-user preference (stored in `.drift/user-settings.xml`, not committed). 12 built-in themes. Project-level custom theme via `.drift/theme.xml` (committed, full override of all 18 elements).
-
-## Quick reference
-
-| Task | Command |
-|---|---|
-| What drifted? | `drift todo` |
-| Show closure diffs | `drift diff <hash>` |
-| Show all closures' diffs | `drift diff --all` |
-| Resolve one closure | `drift reset <hash>` |
-| List everything | `drift list --verbose` |
-| Show citation closure of one entity | `drift show <marker\|spec>` (add `--no-content` for graph overview) |
-| Spec coverage report | `drift coverage` (add `--json` for build tools; read-only, exit 0) |
-| Full guide | `drift skill` |
-| Command reference | `drift help` |
-| Structured output | `drift todo --json` |

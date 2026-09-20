@@ -393,6 +393,12 @@ agents. This section is the interim home for patterns; they graduate to the
 drift book later. Each pattern: when to use, numbered steps, expected yield,
 pitfalls. Do not delete existing patterns when adding new ones.
 
+**Capture rule.** When a session discovers or successfully applies a
+generalized drift workflow (an audit, a migration, an onboarding, a review
+loop), record it here: name it, write it in the pattern shape above, keep it
+short and procedural, one pattern per section. The first recorded pattern is
+the parallelized spec audit, below.
+
 ### Pattern: parallelized spec audit
 
 **When to use.** Periodic maintenance on a mature drift project (monthly, or

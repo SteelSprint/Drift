@@ -4,7 +4,7 @@ Drift is a spec-drift detection tool. Specs describe behavior in plain English. 
 
 ## Mental model
 
-- **Specs** — `*.drift.xml` files with `<spec id="localid">` elements under `<main>` or `<module name="...">` roots.
+- **Specs** — `*.drift.xml` files with `<spec id="localid">` elements under `<main>` or `<module name="...">` roots. Only files reachable from `main.drift.xml` via `<import path="..."/>` are scanned — see "Imports" below.
 - **Markers** — `// D! id=<shortcode> range-start` and `// D! id=<shortcode> range-end` comment pairs in code files, wrapping the lines that implement a spec.
 - **Edges** — `marker → spec` (link, user-declared via `drift link`) or `spec → spec` (ref, auto-parsed from `<ref>` tags).
 - **Closures** — per-seed drift sets. The unit of review. Each closure has an 8-character hash.
@@ -47,6 +47,25 @@ A spec is plain English inside an XML element:
 
 - Spec IDs are module-qualified: `auth.login`. The local ID (after the dot) must NOT contain a dot.
 - Specs can be any length, any language, any notation. The scanner hashes the spec text (with `<ref>` tags stripped before hashing — renaming a referenced spec ID does NOT invalidate the referrer's hash).
+
+### Imports: only reachable files are scanned
+
+The scanner starts at `main.drift.xml` and follows `<import path="..."/>` elements. A spec file that is not reachable from `main.drift.xml` is **not scanned at all** — its specs are invisible to `drift todo`, `drift list`, and `drift coverage`.
+
+```xml
+<main>
+  <spec id="overview">Top-level spec, lives in module "main".</spec>
+  <import path="./auth.drift.xml" />
+  <import path="./api/api.drift.xml" />
+</main>
+```
+
+Rules:
+
+- Paths are relative to the importing file. Imports nest (an imported module file may import further files). Diamond imports are deduplicated; import cycles are errors.
+- Each module name must be unique across the whole import graph.
+- `drift todo` and `drift list` print one warning line per spec file that exists on disk but was not imported, with the exact `<import>` line to add. `drift todo --json` reports them under `unimported_spec_files`.
+- If you create a new module spec file, add its `<import>` to `main.drift.xml` in the same change. A baseline taken before the import will not contain the file's specs — after importing, review and reset the resulting `NODE_ADDED` closures.
 
 ## Placing markers
 
@@ -275,7 +294,7 @@ A runtime rate-limit layer additionally blocks the 4th reset within any 30-secon
 - **Nested/overlapping ranges**: supported. Inner marker declarations are blanked before hashing.
 - **Deleted specs/markers**: kept in baseline with empty scan hash → NODE_REMOVED event. Reset removes from baseline.
 - **Orphan specs/markers**: 1-node closures. Resolved with `drift reset <hash>` like any other closure.
-- **Broken refs**: EDGE_BROKEN events. Closures containing only broken-edge events are refused on reset — fix the scan (add the missing spec or remove the ref).
+- **Broken refs**: EDGE_BROKEN events. Closures containing only broken-edge events are refused on reset — fix the scan (add the missing spec or remove the ref). When the ref target is an unqualified local id that matches exactly one known spec, the event line includes a `did you mean "module.localid"?` hint.
 - **`drift reset` semantics**: syncs the closure's seed events to baseline. Prints "Closure HASH resolved. Baseline updated." on success.
 - **Exit codes**: `drift todo` exits 0 clean (all linked + no closures), 1 drift/unlinked markers, 2 error. `drift diff` exits 0 always (read-only). `drift reset` exits 0 on success, 2 on friction block, 3 on dry-run preview. All commands: exit 1 for usage errors.
 

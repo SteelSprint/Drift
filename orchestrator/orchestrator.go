@@ -14,17 +14,18 @@ import (
 
 // D! id=oerr range-start
 var (
-	ErrLinkMarkerNotFound      = fmt.Errorf("link references unknown marker")
-	ErrLinkSpecNotFound        = fmt.Errorf("link references unknown spec")
-	ErrLinkAlreadyExists       = fmt.Errorf("link already exists")
-	ErrUnlinkNotFound          = fmt.Errorf("no link found between marker and spec")
-	ErrDiffClosureNotFound     = fmt.Errorf("closure hash not found in current drift")
-	ErrDiffNodeNotFound        = fmt.Errorf("no spec or marker found for diff")
-	ErrAlreadyInitialized      = fmt.Errorf("project already initialized")
-	ErrResetClosureNotFound    = fmt.Errorf("closure hash not found; run `drift todo` to list current closures")
-	ErrResetClosureOnlyBroken  = fmt.Errorf("closure contains only broken-edge events; fix the spec text or restore the missing spec")
-	markerSyntax               = "D" + "! id=<shortcode>"
+	ErrLinkMarkerNotFound     = fmt.Errorf("link references unknown marker")
+	ErrLinkSpecNotFound       = fmt.Errorf("link references unknown spec")
+	ErrLinkAlreadyExists      = fmt.Errorf("link already exists")
+	ErrUnlinkNotFound         = fmt.Errorf("no link found between marker and spec")
+	ErrDiffClosureNotFound    = fmt.Errorf("closure hash not found in current drift")
+	ErrDiffNodeNotFound       = fmt.Errorf("no spec or marker found for diff")
+	ErrAlreadyInitialized     = fmt.Errorf("project already initialized")
+	ErrResetClosureNotFound   = fmt.Errorf("closure hash not found; run `drift todo` to list current closures")
+	ErrResetClosureOnlyBroken = fmt.Errorf("closure contains only broken-edge events; fix the spec text or restore the missing spec")
+	markerSyntax              = "D" + "! id=<shortcode>"
 )
+
 // D! id=oerr range-end
 
 // D! id=octor range-start
@@ -43,6 +44,7 @@ func NewOrchestrator(stateStore statestore.StateStore, scanner scanner.Scanner, 
 		baselines:  baselines,
 	}
 }
+
 // D! id=octor range-end
 
 // D! id=otypes range-start
@@ -74,7 +76,7 @@ type DiffResult struct {
 // ResetClosure, Link, and Unlink in both preview and post-apply forms.
 // See cli.reset_format, cli.link_format, cli.unlink_format.
 type ChangeSummary struct {
-	Operation   string        // human-readable: "resolve closure a3f7b2c1" / "link cval → main.validate"
+	Operation   string // human-readable: "resolve closure a3f7b2c1" / "link cval → main.validate"
 	NodeChanges []NodeChange
 	EdgeChanges []EdgeChange
 }
@@ -93,6 +95,7 @@ type EdgeChange struct {
 	To   string
 	Kind string // "added" / "removed"
 }
+
 // D! id=otypes range-end
 
 // D! id=owbase range-start
@@ -122,6 +125,7 @@ func (o *Orchestrator) resolvePath(p string) string {
 	}
 	return filepath.Join(o.scanner.Dir(), p)
 }
+
 // D! id=owbase range-end
 
 // D! id=oinit range-start
@@ -169,7 +173,12 @@ func (o *Orchestrator) Todo(sess *fileio.Session) (core.EvaluatedState, error) {
 		Action:  core.TodoAction{Scan: scan},
 	}
 
-	return o.core.EvaluateState(ctx)
+	evaluated, err := o.core.EvaluateState(ctx)
+	if err != nil {
+		return core.EvaluatedState{}, err
+	}
+	evaluated.UnimportedSpecFiles = scanResult.UnimportedSpecFiles
+	return evaluated, nil
 }
 
 // D! id=otodo range-end
@@ -239,6 +248,7 @@ func (o *Orchestrator) resetClosureInner(sess *fileio.Session, hash string, save
 		}
 		return core.EvaluatedState{}, ChangeSummary{}, err
 	}
+	evaluated.UnimportedSpecFiles = scanResult.UnimportedSpecFiles
 
 	// The saved Edges are exactly the event-synced set the core returned:
 	// baseline edges plus only the target closure's own EDGE_ADDED /
@@ -314,6 +324,7 @@ func findMarkerByID(markers []core.Marker, id string) (core.Marker, bool) {
 	}
 	return core.Marker{}, false
 }
+
 // D! id=olookup range-end
 
 // D! id=olink range-start
@@ -592,6 +603,7 @@ func computeChangeSummary(before, after statestore.State, operation string) Chan
 
 	return summary
 }
+
 // D! id=ocsum2 range-end
 
 // D! id=ounlnk range-end
@@ -954,4 +966,5 @@ func buildScan(scanResult scanner.ScanResult, reconciledSpecs []core.Spec, recon
 		Edges:        scanResult.Edges,
 	}
 }
+
 // D! id=oscan range-end

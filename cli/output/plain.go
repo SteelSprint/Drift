@@ -33,8 +33,9 @@ func (p PlainPresenter) Todo(r TodoResult) string {
 		sb.WriteString(fmt.Sprintf("No changes detected. %d specs, %d markers, %d edges in sync.", len(state.Specs), len(state.Markers), len(state.Edges)))
 	} else {
 		sb.WriteString(fmt.Sprintf("%d closure(s) with drift.\n\n", len(state.Closures)))
+		suggestions := specIDSuggestions(state.Specs)
 		for _, c := range state.Closures {
-			sb.WriteString(p.formatClosure(c))
+			sb.WriteString(p.formatClosure(c, suggestions))
 		}
 	}
 
@@ -48,10 +49,30 @@ func (p PlainPresenter) Todo(r TodoResult) string {
 		sb.WriteString(block)
 	}
 
+	// See cli.todo_unimported_warning: informational only, no exit-code effect.
+	if warning := unimportedSpecFilesWarning(state.UnimportedSpecFiles); warning != "" {
+		sb.WriteString("\n")
+		sb.WriteString(warning)
+	}
+
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func (p PlainPresenter) formatClosure(c core.Closure) string {
+// unimportedSpecFilesWarning renders one line per *.drift.xml file that is on
+// disk but not reachable from main.drift.xml via <import>. Such files are
+// not scanned — their specs are invisible to every command.
+func unimportedSpecFilesWarning(files []string) string {
+	if len(files) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, f := range files {
+		sb.WriteString(fmt.Sprintf("warning: %s is not imported by main.drift.xml and was not scanned. Add <import path=\"./%s\" /> inside <main>.\n", f, f))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func (p PlainPresenter) formatClosure(c core.Closure, suggestions map[string]string) string {
 	var sb strings.Builder
 	specNodes, markerNodes := 0, 0
 	for _, n := range c.Nodes {
@@ -65,7 +86,7 @@ func (p PlainPresenter) formatClosure(c core.Closure) string {
 		c.Hash, len(c.Nodes), specNodes, markerNodes, len(c.Edges)))
 	sb.WriteString("  Events:\n")
 	for _, ev := range c.Events {
-		sb.WriteString("    " + p.formatEvent(ev) + "\n")
+		sb.WriteString("    " + p.formatEvent(ev, suggestions) + "\n")
 	}
 	if len(c.Nodes) > 0 {
 		sb.WriteString("  Members:\n")
@@ -101,7 +122,7 @@ func (p PlainPresenter) formatClosure(c core.Closure) string {
 	return sb.String()
 }
 
-func (p PlainPresenter) formatEvent(ev core.DriftEvent) string {
+func (p PlainPresenter) formatEvent(ev core.DriftEvent, suggestions map[string]string) string {
 	kindLabel := eventKindLabel(ev.Kind)
 	switch ev.Kind {
 	case core.EventNodeChanged:
@@ -122,7 +143,15 @@ func (p PlainPresenter) formatEvent(ev core.DriftEvent) string {
 		}
 	case core.EventEdgeBroken:
 		if ev.Edge != nil {
-			return fmt.Sprintf("[%s] edge to nonexistent node: %q → %q (fix scan: add missing spec or remove the ref)", kindLabel, ev.Edge.From, ev.Edge.To)
+			msg := fmt.Sprintf("[%s] edge to nonexistent node: %q → %q (fix scan: add missing spec or remove the ref)", kindLabel, ev.Edge.From, ev.Edge.To)
+			// See cli.broken_edge_suggestion: an unqualified ref target that
+			// matches a known spec's local id gets a did-you-mean hint.
+			if !strings.Contains(ev.Edge.To, ".") {
+				if qualified, ok := suggestions[ev.Edge.To]; ok {
+					msg += fmt.Sprintf(" — did you mean %q?", qualified)
+				}
+			}
+			return msg
 		}
 	}
 	return fmt.Sprintf("[%s] unknown event", kindLabel)
@@ -168,6 +197,27 @@ func isSpecIDOutput(id string) bool {
 		return false
 	}
 	return strings.Index(id[first+1:], ".") < 0
+}
+
+// specIDSuggestions maps unqualified local spec ids to their module-qualified
+// IDs. Ambiguous local ids (same local id in two modules) are omitted —
+// guessing between two candidates would be worse than no suggestion.
+func specIDSuggestions(specs []core.Spec) map[string]string {
+	counts := make(map[string]int, len(specs))
+	for _, s := range specs {
+		if i := strings.Index(s.ID, "."); i >= 0 {
+			counts[s.ID[i+1:]]++
+		}
+	}
+	suggestions := make(map[string]string, len(specs))
+	for _, s := range specs {
+		i := strings.Index(s.ID, ".")
+		if i < 0 || counts[s.ID[i+1:]] != 1 {
+			continue
+		}
+		suggestions[s.ID[i+1:]] = s.ID
+	}
+	return suggestions
 }
 
 // unlinkedMarkerWarning returns the one-line warning summary for non-deleted
@@ -338,6 +388,12 @@ func (p PlainPresenter) List(r ListResult) string {
 		}
 	}
 
+	// See cli.todo_unimported_warning: informational only, no exit-code effect.
+	if warning := unimportedSpecFilesWarning(state.UnimportedSpecFiles); warning != "" {
+		sb.WriteString("\n")
+		sb.WriteString(warning + "\n")
+	}
+
 	return strings.TrimRight(sb.String(), "\n")
 }
 
@@ -357,6 +413,7 @@ func sortMarkersByID(markers []core.Marker) {
 		}
 	}
 }
+
 // D! id=osorth range-end
 
 // D! id=ofmtl range-end
@@ -451,6 +508,7 @@ func (p PlainPresenter) Show(r ShowResult) string {
 
 	return strings.TrimRight(sb.String(), "\n")
 }
+
 // D! id=oshow range-end
 
 // D! id=oclas range-start
@@ -519,6 +577,7 @@ func classifyClosureSpecs(r ShowResult, seedID string) (ancestors, descendants [
 	sort.Slice(descendants, func(i, j int) bool { return descendants[i].ID < descendants[j].ID })
 	return ancestors, descendants
 }
+
 // D! id=oclas range-end
 
 // D! id=osec range-start
@@ -551,6 +610,7 @@ func renderMarkerSection(sb *strings.Builder, n ShowNode) {
 	sb.WriteString(n.Content)
 	sb.WriteString("\n")
 }
+
 // D! id=osec range-end
 
 // D! id=cdifffmt range-start
@@ -778,4 +838,5 @@ func (p PlainPresenter) Coverage(r CoverageResult) string {
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
+
 // D! id=opcov range-end

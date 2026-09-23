@@ -129,24 +129,29 @@ type EvaluatedState struct {
 	Edges    []Edge
 	Closures []Closure
 	Orphans  []string
+	// UnimportedSpecFiles: *.drift.xml files found on disk but not reachable
+	// from main.drift.xml via <import> (see scanner.unimported_spec_files).
+	// Informational only — they do not affect exit codes.
+	UnimportedSpecFiles []string
 }
 
 var (
-	ErrDuplicateSpecID        = errors.New("duplicate spec id")
-	ErrDuplicateMarkerID      = errors.New("duplicate marker id")
-	ErrEdgeUnknownFrom        = errors.New("edge references unknown from-node")
-	ErrEdgeUnknownTo          = errors.New("edge references unknown to-node")
-	ErrDuplicateEdge          = errors.New("duplicate edge")
-	ErrEdgeSelfReference      = errors.New("edge references its own source")
-	ErrEdgeCycle              = errors.New("edge graph contains a directed cycle")
-	ErrScanMissingSpecHash    = errors.New("scan missing spec hash")
-	ErrScanMissingMarkerHash  = errors.New("scan missing marker hash")
-	ErrScanUnknownSpecHash    = errors.New("scan contains unknown spec hash")
-	ErrScanUnknownMarkerHash  = errors.New("scan contains unknown marker hash")
-	ErrUnknownAction          = errors.New("unknown action")
-	ErrClosureNotFound        = errors.New("closure hash not found in derived closures")
+	ErrDuplicateSpecID         = errors.New("duplicate spec id")
+	ErrDuplicateMarkerID       = errors.New("duplicate marker id")
+	ErrEdgeUnknownFrom         = errors.New("edge references unknown from-node")
+	ErrEdgeUnknownTo           = errors.New("edge references unknown to-node")
+	ErrDuplicateEdge           = errors.New("duplicate edge")
+	ErrEdgeSelfReference       = errors.New("edge references its own source")
+	ErrEdgeCycle               = errors.New("edge graph contains a directed cycle")
+	ErrScanMissingSpecHash     = errors.New("scan missing spec hash")
+	ErrScanMissingMarkerHash   = errors.New("scan missing marker hash")
+	ErrScanUnknownSpecHash     = errors.New("scan contains unknown spec hash")
+	ErrScanUnknownMarkerHash   = errors.New("scan contains unknown marker hash")
+	ErrUnknownAction           = errors.New("unknown action")
+	ErrClosureNotFound         = errors.New("closure hash not found in derived closures")
 	ErrBrokenEdgeNotResettable = errors.New("closure contains only broken-edge events, which require scan fix")
 )
+
 // D! id=ctypes range-end
 
 // D! id=cval range-start
@@ -349,6 +354,7 @@ func (algorithm *CoreAlgorithm) EvaluateState(ctx CoreAlgorithmContext) (Evaluat
 		return EvaluatedState{}, fmt.Errorf("%w: %T", ErrUnknownAction, ctx.Action)
 	}
 }
+
 // D! id=ceval range-end
 
 // D! id=ctodo range-start
@@ -866,6 +872,7 @@ func makeNodeRef(id string, specsByID map[string]*Spec, markersByID map[string]*
 	}
 	return NodeRef{ID: id}
 }
+
 // D! id=cid range-end
 
 // D! id=ccopy range-start
@@ -904,6 +911,7 @@ func markersFromMutableMap(markersByID map[string]*Marker) []Marker {
 	}
 	return out
 }
+
 // D! id=ccopy range-end
 
 // D! id=cedge range-start
@@ -941,4 +949,5 @@ func removeEdge(edges []Edge, target Edge) []Edge {
 	}
 	return out
 }
+
 // D! id=cedge range-end

@@ -95,6 +95,7 @@ func isTextFile(path string) bool {
 // from being mistaken for a real marker. The suffix is also mandatory so a
 // bare `D! id=foo` without a range is not matched.
 var markerPattern = regexp.MustCompile(`D!\s+id=([A-Za-z][A-Za-z0-9_]*)\s+(range-start|range-end)`)
+
 // D! id=mregex range-end
 
 // D! id=signor range-start
@@ -103,6 +104,7 @@ var markerPattern = regexp.MustCompile(`D!\s+id=([A-Za-z][A-Za-z0-9_]*)\s+(range
 // A pair (ignore-span-start ... ignore-span-end) brackets lines that the
 // scanner skips when looking for markers. See scanner.ignore_span.
 var ignoreSpanPattern = regexp.MustCompile(`D!\s+instruction=(ignore-span-start|ignore-span-end)`)
+
 // D! id=signor range-end
 
 // D! id=sint range-start
@@ -111,6 +113,11 @@ type ScanResult struct {
 	Markers     []core.Marker
 	Edges       []core.Edge
 	FilesWalked []string
+	// UnimportedSpecFiles lists *.drift.xml files found on disk that were
+	// NOT reachable from main.drift.xml via <import>. Their specs are not
+	// scanned. Sorted, slash-separated paths relative to the scan root.
+	// See scanner.unimported_spec_files.
+	UnimportedSpecFiles []string
 }
 
 type Scanner interface {
@@ -129,6 +136,7 @@ func NewFileScanner(dir string) *FileScanner {
 func (s *FileScanner) Dir() string {
 	return s.dir
 }
+
 // D! id=sint range-end
 
 // D! id=sscn2 range-start
@@ -137,16 +145,31 @@ func (s *FileScanner) Scan() (ScanResult, error) {
 	if err != nil {
 		return ScanResult{}, err
 	}
-	specs, edges, err := s.scanSpecs()
+	specs, edges, loadedSpecFiles, err := s.scanSpecs()
 	if err != nil {
 		return ScanResult{}, err
 	}
-	markers, walked, err := s.scanMarkers(ignore)
+	markers, walked, diskSpecFiles, err := s.scanMarkers(ignore)
 	if err != nil {
 		return ScanResult{}, err
 	}
-	return ScanResult{Specs: specs, Markers: markers, Edges: edges, FilesWalked: walked}, nil
+	// Detect spec files that exist on disk but were never loaded through
+	// the import chain — their content is silently untracked otherwise.
+	// See scanner.unimported_spec_files.
+	loaded := make(map[string]bool, len(loadedSpecFiles))
+	for _, f := range loadedSpecFiles {
+		loaded[f] = true
+	}
+	var unimported []string
+	for _, f := range diskSpecFiles {
+		if !loaded[f] {
+			unimported = append(unimported, f)
+		}
+	}
+	sort.Strings(unimported)
+	return ScanResult{Specs: specs, Markers: markers, Edges: edges, FilesWalked: walked, UnimportedSpecFiles: unimported}, nil
 }
+
 // D! id=sscn2 range-end
 
 // D! id=sxmld range-start
@@ -168,13 +191,14 @@ type specElem struct {
 	Attr    []xml.Attr `xml:",any,attr"`
 	Content string     `xml:",innerxml"`
 }
+
 // D! id=sxmld range-end
 
 // D! id=sspec range-start
-func (s *FileScanner) scanSpecs() ([]core.Spec, []core.Edge, error) {
+func (s *FileScanner) scanSpecs() ([]core.Spec, []core.Edge, []string, error) {
 	mainPath := filepath.Join(s.dir, "main.drift.xml")
 	if _, err := os.Stat(mainPath); os.IsNotExist(err) {
-		return nil, nil, fmt.Errorf("main.drift.xml not found in %s", s.dir)
+		return nil, nil, nil, fmt.Errorf("main.drift.xml not found in %s", s.dir)
 	}
 
 	loader := &importLoader{
@@ -185,10 +209,19 @@ func (s *FileScanner) scanSpecs() ([]core.Spec, []core.Edge, error) {
 	}
 	absRoot, err := filepath.Abs(s.dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	loader.rootDir = absRoot
-	return loader.load(mainPath)
+	specs, edges, err := loader.load(mainPath)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	loadedFiles := make([]string, 0, len(loader.seenFiles))
+	for abs := range loader.seenFiles {
+		loadedFiles = append(loadedFiles, filepath.ToSlash(relPath(absRoot, abs)))
+	}
+	sort.Strings(loadedFiles)
+	return specs, edges, loadedFiles, nil
 }
 
 // D! id=sspec range-end
@@ -341,13 +374,15 @@ func (l *importLoader) load(absPath string) ([]core.Spec, []core.Edge, error) {
 
 	return specs, edges, nil
 }
+
 // D! id=simpl range-end
 
 // D! id=smark range-start
-func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, []string, error) {
+func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, []string, []string, error) {
 	var markers []core.Marker
 	seenIDs := make(map[string]bool)
 	var walked []string
+	var specFiles []string
 
 	err := filepath.WalkDir(s.dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -373,8 +408,10 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, []string,
 			return nil
 		}
 		// spec files (*.drift.xml) are parsed for specs, not markers — their
-		// spec text may legitimately mention the D! marker syntax as documentation
+		// spec text may legitimately mention the D! marker syntax as documentation.
+		// They are still recorded so Scan can detect unimported spec files.
 		if strings.HasSuffix(relPath, ".drift.xml") {
+			specFiles = append(specFiles, filepath.ToSlash(relPath))
 			return nil
 		}
 		walked = append(walked, filepath.ToSlash(relPath))
@@ -394,10 +431,11 @@ func (s *FileScanner) scanMarkers(ignore *driftIgnore) ([]core.Marker, []string,
 		return nil
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	sort.Strings(walked)
-	return markers, walked, nil
+	sort.Strings(specFiles)
+	return markers, walked, specFiles, nil
 }
 
 // D! id=smark range-end
@@ -543,6 +581,7 @@ func parseMarkerFile(path, storePath string) ([]core.Marker, error) {
 	}
 	return markers, nil
 }
+
 // D! id=smpair range-end
 
 // blankMarkerDecl strips the D! declaration from a line, leaving only the comment prefix.
@@ -627,6 +666,7 @@ func (ig *driftIgnore) matches(relPath string, isDir bool) bool {
 	}
 	return false
 }
+
 // D! id=signorf range-end
 
 func relPath(rootDir, absPath string) string {

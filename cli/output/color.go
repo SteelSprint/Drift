@@ -84,7 +84,7 @@ func (p ColorPresenter) Todo(r TodoResult) string {
 	} else {
 		sb.WriteString(t.StatusWarn.Apply(fmt.Sprintf("%d closure(s) with drift.", len(state.Closures))) + "\n\n")
 		for _, c := range state.Closures {
-			sb.WriteString(p.formatClosureColor(c))
+			sb.WriteString(p.formatClosureColor(c, specIDSuggestions(state.Specs)))
 		}
 	}
 
@@ -98,10 +98,16 @@ func (p ColorPresenter) Todo(r TodoResult) string {
 		sb.WriteString(t.StatusWarn.Apply(block))
 	}
 
+	// See cli.todo_unimported_warning: informational only, no exit-code effect.
+	if warning := unimportedSpecFilesWarning(state.UnimportedSpecFiles); warning != "" {
+		sb.WriteString("\n")
+		sb.WriteString(t.StatusWarn.Apply(warning))
+	}
+
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func (p ColorPresenter) formatClosureColor(c core.Closure) string {
+func (p ColorPresenter) formatClosureColor(c core.Closure, suggestions map[string]string) string {
 	t := p.Theme
 	var sb strings.Builder
 	specNodes, markerNodes := 0, 0
@@ -118,7 +124,7 @@ func (p ColorPresenter) formatClosureColor(c core.Closure) string {
 		len(c.Nodes), specNodes, markerNodes, len(c.Edges)))
 	sb.WriteString(fmt.Sprintf("  %s\n", t.SectionHeader.Apply("Events:")))
 	for _, ev := range c.Events {
-		sb.WriteString("    " + p.formatEventColor(ev) + "\n")
+		sb.WriteString("    " + p.formatEventColor(ev, suggestions) + "\n")
 	}
 	if len(c.Nodes) > 0 {
 		sb.WriteString(fmt.Sprintf("  %s\n", t.SectionHeader.Apply("Members:")))
@@ -143,7 +149,7 @@ func (p ColorPresenter) formatClosureColor(c core.Closure) string {
 	return sb.String()
 }
 
-func (p ColorPresenter) formatEventColor(ev core.DriftEvent) string {
+func (p ColorPresenter) formatEventColor(ev core.DriftEvent, suggestions map[string]string) string {
 	t := p.Theme
 	kindLabel := eventKindLabel(ev.Kind)
 	var labelStyled string
@@ -180,9 +186,17 @@ func (p ColorPresenter) formatEventColor(ev core.DriftEvent) string {
 		}
 	case core.EventEdgeBroken:
 		if ev.Edge != nil {
-			return fmt.Sprintf("%s edge to nonexistent node: %s → %s (fix scan: add missing spec or remove the ref)", labelStyled,
+			msg := fmt.Sprintf("%s edge to nonexistent node: %s → %s (fix scan: add missing spec or remove the ref)", labelStyled,
 				t.SpecID.Apply(fmt.Sprintf("%q", ev.Edge.From)),
 				t.SpecID.Apply(fmt.Sprintf("%q", ev.Edge.To)))
+			// See cli.broken_edge_suggestion: an unqualified ref target that
+			// matches a known spec's local id gets a did-you-mean hint.
+			if !strings.Contains(ev.Edge.To, ".") {
+				if qualified, ok := suggestions[ev.Edge.To]; ok {
+					msg += fmt.Sprintf(" — did you mean %q?", qualified)
+				}
+			}
+			return msg
 		}
 	}
 	return fmt.Sprintf("%s unknown event", labelStyled)
@@ -291,6 +305,12 @@ func (p ColorPresenter) List(r ListResult) string {
 			toStyled := t.SpecID.Apply(fmt.Sprintf("%-30s", e.To))
 			sb.WriteString(fmt.Sprintf("  %s → %s %s\n", fromStyled, toStyled, status))
 		}
+	}
+
+	// See cli.todo_unimported_warning: informational only, no exit-code effect.
+	if warning := unimportedSpecFilesWarning(state.UnimportedSpecFiles); warning != "" {
+		sb.WriteString("\n")
+		sb.WriteString(t.StatusWarn.Apply(warning) + "\n")
 	}
 
 	return strings.TrimRight(sb.String(), "\n")

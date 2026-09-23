@@ -28,20 +28,21 @@ func marshal(v interface{}) string {
 // --- Todo ---
 
 type jsonTodo struct {
-	Ok              bool            `json:"ok"`
-	Specs           int             `json:"specs"`
-	Markers         int             `json:"markers"`
-	Edges           int             `json:"edges"`
-	Closures        []jsonClosure   `json:"closures"`
-	UnlinkedMarkers int             `json:"unlinkedMarkers"`
-	Orphans         []string        `json:"orphans"`
+	Ok                  bool          `json:"ok"`
+	Specs               int           `json:"specs"`
+	Markers             int           `json:"markers"`
+	Edges               int           `json:"edges"`
+	Closures            []jsonClosure `json:"closures"`
+	UnlinkedMarkers     int           `json:"unlinkedMarkers"`
+	Orphans             []string      `json:"orphans"`
+	UnimportedSpecFiles []string      `json:"unimported_spec_files"`
 }
 
 type jsonClosure struct {
-	Hash   string          `json:"hash"`
-	Nodes  []jsonNodeRef   `json:"nodes"`
+	Hash   string            `json:"hash"`
+	Nodes  []jsonNodeRef     `json:"nodes"`
 	Edges  []jsonClosureEdge `json:"edges"`
-	Events []jsonEvent     `json:"events"`
+	Events []jsonEvent       `json:"events"`
 }
 
 type jsonNodeRef struct {
@@ -57,12 +58,12 @@ type jsonClosureEdge struct {
 }
 
 type jsonEvent struct {
-	Kind     string          `json:"kind"`
-	NodeID   string          `json:"nodeId,omitempty"`
-	Edge     *jsonClosureEdge `json:"edge,omitempty"`
-	OldHash  string          `json:"oldHash,omitempty"`
-	NewHash  string          `json:"newHash,omitempty"`
-	Seed     string          `json:"seed"`
+	Kind    string           `json:"kind"`
+	NodeID  string           `json:"nodeId,omitempty"`
+	Edge    *jsonClosureEdge `json:"edge,omitempty"`
+	OldHash string           `json:"oldHash,omitempty"`
+	NewHash string           `json:"newHash,omitempty"`
+	Seed    string           `json:"seed"`
 }
 
 func eventKindString(k core.EventKind) string {
@@ -94,14 +95,19 @@ func (p JSONPresenter) Todo(r TodoResult) string {
 	if orphans == nil {
 		orphans = []string{}
 	}
+	unimported := state.UnimportedSpecFiles
+	if unimported == nil {
+		unimported = []string{}
+	}
 	out := jsonTodo{
-		Ok:              len(state.Closures) == 0 && len(state.Orphans) == 0 && (len(state.Specs) > 0 || len(state.Markers) > 0),
-		Specs:           len(state.Specs),
-		Markers:         len(state.Markers),
-		Edges:           len(state.Edges),
-		Closures:        closures,
-		UnlinkedMarkers: countUnlinkedMarkers(state),
-		Orphans:         orphans,
+		Ok:                  len(state.Closures) == 0 && len(state.Orphans) == 0 && (len(state.Specs) > 0 || len(state.Markers) > 0),
+		Specs:               len(state.Specs),
+		Markers:             len(state.Markers),
+		Edges:               len(state.Edges),
+		Closures:            closures,
+		UnlinkedMarkers:     countUnlinkedMarkers(state),
+		Orphans:             orphans,
+		UnimportedSpecFiles: unimported,
 	}
 	return marshal(out)
 }
@@ -309,24 +315,24 @@ func (p JSONPresenter) Show(r ShowResult) string {
 	}
 
 	return marshal(jsonShowClosure{
-		Seed:   r.ID,
-		Nodes:  nodes,
-		Edges:  edges,
+		Seed:  r.ID,
+		Nodes: nodes,
+		Edges: edges,
 		Summary: jsonShowSummary{
-			NodeCount:        len(r.Nodes),
-			EdgeCount:        len(r.Edges),
-			SpecCount:        specCount,
-			MarkerCount:      markerCount,
+			NodeCount:         len(r.Nodes),
+			EdgeCount:         len(r.Edges),
+			SpecCount:         specCount,
+			MarkerCount:       markerCount,
 			TotalContentBytes: contentBytes,
 		},
 	})
 }
 
 type jsonShowClosure struct {
-	Seed    string           `json:"seed"`
-	Nodes   []jsonShowNode   `json:"nodes"`
-	Edges   []jsonShowEdge   `json:"edges"`
-	Summary jsonShowSummary  `json:"summary"`
+	Seed    string          `json:"seed"`
+	Nodes   []jsonShowNode  `json:"nodes"`
+	Edges   []jsonShowEdge  `json:"edges"`
+	Summary jsonShowSummary `json:"summary"`
 }
 
 type jsonShowNode struct {
@@ -526,9 +532,9 @@ type jsonChangeSummary struct {
 }
 
 type jsonChangeSummaryResult struct {
-	Preview bool             `json:"preview"`
-	Message string           `json:"message,omitempty"`
-	Warning string           `json:"warning,omitempty"`
+	Preview bool              `json:"preview"`
+	Message string            `json:"message,omitempty"`
+	Warning string            `json:"warning,omitempty"`
 	Summary jsonChangeSummary `json:"summary"`
 }
 
@@ -584,16 +590,16 @@ type jsonCoverageFile struct {
 }
 
 type jsonCoverageTotals struct {
-	FilesWalked       int `json:"filesWalked"`
-	FilesWithMarkers  int `json:"filesWithMarkers"`
-	TotalLines        int `json:"totalLines"`
-	CoveredAny        int `json:"coveredAny"`
-	CoveredLinked     int `json:"coveredLinked"`
-	MarkersTotal      int `json:"markersTotal"`
-	MarkersLinked     int `json:"markersLinked"`
-	SpecLines         int `json:"specLines"`
-	SpecsTotal        int `json:"specsTotal"`
-	SpecsLinked       int `json:"specsLinked"`
+	FilesWalked      int `json:"filesWalked"`
+	FilesWithMarkers int `json:"filesWithMarkers"`
+	TotalLines       int `json:"totalLines"`
+	CoveredAny       int `json:"coveredAny"`
+	CoveredLinked    int `json:"coveredLinked"`
+	MarkersTotal     int `json:"markersTotal"`
+	MarkersLinked    int `json:"markersLinked"`
+	SpecLines        int `json:"specLines"`
+	SpecsTotal       int `json:"specsTotal"`
+	SpecsLinked      int `json:"specsLinked"`
 }
 
 type jsonCoverageCheckFailure struct {
@@ -638,18 +644,19 @@ func (p JSONPresenter) Coverage(r CoverageResult) string {
 	return marshal(jsonCoverage{
 		Files: files,
 		Totals: jsonCoverageTotals{
-			FilesWalked:       t.FilesWalked,
-			FilesWithMarkers:  t.FilesWithMarkers,
-			TotalLines:        t.TotalLines,
-			CoveredAny:        t.CoveredAny,
-			CoveredLinked:     t.CoveredLinked,
-			MarkersTotal:      t.MarkersTotal,
-			MarkersLinked:     t.MarkersLinked,
-			SpecLines:         t.SpecLines,
-			SpecsTotal:        t.SpecsTotal,
-			SpecsLinked:       t.SpecsLinked,
+			FilesWalked:      t.FilesWalked,
+			FilesWithMarkers: t.FilesWithMarkers,
+			TotalLines:       t.TotalLines,
+			CoveredAny:       t.CoveredAny,
+			CoveredLinked:    t.CoveredLinked,
+			MarkersTotal:     t.MarkersTotal,
+			MarkersLinked:    t.MarkersLinked,
+			SpecLines:        t.SpecLines,
+			SpecsTotal:       t.SpecsTotal,
+			SpecsLinked:      t.SpecsLinked,
 		},
 		Check: check,
 	})
 }
+
 // D! id=ojcov range-end

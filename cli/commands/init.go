@@ -38,7 +38,9 @@ func (c InitCommand) Run(ctx Context) (output.Result, int) {
 	}
 	return output.OkResult{
 		Command: "init",
-		Message: msg + "\nEdit main.drift.xml to add your specs, then place " + markerSyntax + " markers in your code.\nRun `drift skill` for a comprehensive guide.",
+		Message: msg + "\nEdit main.drift.xml to add your specs, then place " + markerSyntax + " markers in your code.\n" +
+			"Split specs across files? Import each from main.drift.xml with <import path=\"./file.drift.xml\" /> — only imported files are scanned.\n" +
+			"Run `drift skill` for a comprehensive guide.",
 	}, 0
 }
 

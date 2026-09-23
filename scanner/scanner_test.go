@@ -1695,3 +1695,88 @@ x
 		}
 	})
 }
+
+// Tests for scanner.unimported_spec_files: *.drift.xml files on disk that
+// are not reachable from main.drift.xml via <import> are reported in
+// ScanResult.UnimportedSpecFiles (sorted, relative paths).
+func TestScannerUnimportedSpecFiles(t *testing.T) {
+	t.Run("unimported_file_reported", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main><spec id="a">Main spec.</spec></main>`)
+		testutil.WriteSpecFile(t, dir, "requirements.drift.xml", `<module name="requirements">
+  <spec id="readme">The README must exist.</spec>
+</module>`)
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.UnimportedSpecFiles) != 1 || result.UnimportedSpecFiles[0] != "requirements.drift.xml" {
+			t.Fatalf("UnimportedSpecFiles = %v, want [requirements.drift.xml]", result.UnimportedSpecFiles)
+		}
+		// The unimported file's specs must NOT be scanned.
+		if _, ok := testutil.FindScanResultSpec(result.Specs, "requirements.readme"); ok {
+			t.Fatalf("unimported spec should not be scanned")
+		}
+	})
+
+	t.Run("imported_file_not_reported", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main>
+  <spec id="a">Main spec.</spec>
+  <import path="./core.drift.xml" />
+</main>`)
+		writeModuleFile(t, dir, "core.drift.xml", `<module name="core">
+  <spec id="validate">Validation.</spec>
+</module>`)
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.UnimportedSpecFiles) != 0 {
+			t.Fatalf("UnimportedSpecFiles = %v, want empty", result.UnimportedSpecFiles)
+		}
+	})
+
+	t.Run("transitively_imported_not_reported", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main>
+  <import path="./core.drift.xml" />
+</main>`)
+		writeModuleFile(t, dir, "core.drift.xml", `<module name="core">
+  <spec id="validate">Validation.</spec>
+  <import path="./sub/leaf.drift.xml" />
+</module>`)
+		_ = os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+		testutil.WriteSpecFile(t, dir, "sub/leaf.drift.xml", `<module name="leaf">
+  <spec id="x">Leaf spec.</spec>
+</module>`)
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.UnimportedSpecFiles) != 0 {
+			t.Fatalf("UnimportedSpecFiles = %v, want empty", result.UnimportedSpecFiles)
+		}
+	})
+
+	t.Run("ignored_files_not_reported", func(t *testing.T) {
+		dir := t.TempDir()
+		writeMainDrift(t, dir, `<main><spec id="a">Main spec.</spec></main>`)
+		_ = os.MkdirAll(filepath.Join(dir, "vendor"), 0o755)
+		testutil.WriteSpecFile(t, dir, "vendor/vendored.drift.xml", `<module name="vendored">
+  <spec id="x">Vendored.</spec>
+</module>`)
+		testutil.WriteIgnoreFile(t, dir, "vendor/\n")
+
+		sc := scanner.NewFileScanner(dir)
+		result, err := sc.Scan()
+		testutil.AssertNoError(t, err)
+
+		if len(result.UnimportedSpecFiles) != 0 {
+			t.Fatalf("UnimportedSpecFiles = %v, want empty (drift.ignore excludes vendor/)", result.UnimportedSpecFiles)
+		}
+	})
+}
